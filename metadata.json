@@ -1,0 +1,5 @@
+{
+  "name": "Collaborative Draw & Chat",
+  "description": "A real-time shared drawing space and IRC-style chat room for collaborative learning and fun.",
+  "requestFramePermissions": []
+}
