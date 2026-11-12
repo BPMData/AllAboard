@@ -780,6 +780,30 @@ export default function App() {
     [socket, activeBoardId]
   );
 
+  const handleElementRemove = useCallback(
+    (id: string) => {
+      if (activeBoardId === 'main') {
+        setElements((prev) => prev.filter((el) => el.id !== id));
+      } else {
+        setSubBoards((prev) => {
+          const sb = prev[activeBoardId];
+          if (!sb) return prev;
+          return {
+            ...prev,
+            [activeBoardId]: {
+              ...sb,
+              elements: sb.elements.filter((el) => el.id !== id),
+            },
+          };
+        });
+      }
+      if (socket) {
+        socket.emit('element-remove', { id, boardId: activeBoardId });
+      }
+    },
+    [socket, activeBoardId]
+  );
+
   const handleCursorMove = useCallback(
     (cursor: Omit<RemoteCursor, 'updatedAt'>) => {
       if (socket) {
@@ -998,6 +1022,7 @@ export default function App() {
           onElementStart={handleElementStart}
           onElementAppendPoints={handleElementAppendPoints}
           onElementUpdate={handleElementUpdate}
+          onElementRemove={handleElementRemove}
           onCursorMove={handleCursorMove}
           onUndo={handleUndo}
           onClearMine={handleClearMine}

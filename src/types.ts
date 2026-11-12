@@ -30,9 +30,12 @@ export interface CanvasElement {
   points?: number[]; // Used for freehand strokes (solid, hollow, spray, highlighter, eraser) and line
   x?: number;        // Used for rect, circle, text, stamp
   y?: number;        // Used for rect, circle, text, stamp
-  width?: number;    // Used for rect, circle
-  height?: number;   // Used for rect, circle
+  width?: number;    // Used for rect, circle, text bounding box
+  height?: number;   // Used for rect, circle, text bounding box
   text?: string;     // Used for text elements
+  fontSize?: number; // Used for text elements (OverBoard note font size)
+  isCover?: boolean; // Used for opaque Highlighter Cover bars (OverBoard answer-hiding cover mode)
+  hlStrength?: number; // Used for Highlighter strength % (10..100)
   stamp?: StampKind; // Used for stamp elements
   timestamp?: number;
 }

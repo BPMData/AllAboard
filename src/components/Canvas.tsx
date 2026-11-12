@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import { Stage, Layer, Line, Circle, Rect, Text as KonvaText, Group, Image as KonvaImage } from 'react-konva';
+import { Stage, Layer, Line, Circle, Rect, Text as KonvaText, Group, Image as KonvaImage, Shape } from 'react-konva';
 import {
   CanvasElement,
   ChatMessage,
@@ -19,6 +19,23 @@ import {
   BuiltInTemplateId,
   generateTemplateBackground,
 } from '../lib/worksheetLoader';
+import {
+  NOTE_FONT,
+  NOTE_LH,
+  LiveSmoothState,
+  hlInk,
+  isSeeThroughHighlight,
+  getPaletteColors,
+  pointerKind,
+  liveStart,
+  liveAddPoint,
+  liveLiftPoint,
+  traceSmoothStrokePath,
+  getNoteFontSize,
+  noteSize,
+  computeNotesGone,
+  hitEditableNote,
+} from '../lib/inkCore';
 import {
   Eraser,
   Undo2,
@@ -53,6 +70,8 @@ import {
   Users,
   LayoutGrid,
   Shuffle,
+  ChevronDown,
+  EyeOff,
 } from 'lucide-react';
 import { cn } from '../lib/utils';
 
@@ -85,6 +104,7 @@ interface CanvasProps {
   onElementStart: (element: CanvasElement) => void;
   onElementAppendPoints: (id: string, newPoints: number[]) => void;
   onElementUpdate: (patch: Partial<CanvasElement> & { id: string }) => void;
+  onElementRemove: (id: string) => void;
   onCursorMove: (cursor: Omit<RemoteCursor, 'updatedAt'>) => void;
   onUndo: () => void;
   onClearMine: () => void;
@@ -107,20 +127,6 @@ interface CanvasProps {
   fullMainBackground: RoomBackground | null;
 }
 
-const COLORS = [
-  '#0f172a',
-  '#dc2626',
-  '#ea580c',
-  '#d97706',
-  '#059669',
-  '#0891b2',
-  '#2563eb',
-  '#4f46e5',
-  '#7c3aed',
-  '#db2777',
-  '#ffffff',
-];
-
 const STAMP_OPTIONS: Array<{ kind: StampKind; symbol: string; label: string }> = [
   { kind: 'check', symbol: '✓', label: 'Got It (Check)' },
   { kind: 'question', symbol: '?', label: 'Confused (Question)' },
@@ -133,6 +139,111 @@ const STAMP_OPTIONS: Array<{ kind: StampKind; symbol: string; label: string }> =
 const MIN_SCALE = 0.1;
 const MAX_SCALE = 5.0;
 const PAGE_GAP = 32;
+const PALM_ERASER_SCREEN_PX = 56;
+
+function readLocalNum(key: string, fallback: number, min: number, max: number): number {
+  try {
+    const raw = localStorage.getItem(key);
+    if (raw === null) return fallback;
+    const n = Number(raw);
+    return Number.isFinite(n) && n >= min && n <= max ? n : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function readLocalColor(key: string, fallback: string): string {
+  try {
+    const raw = localStorage.getItem(key);
+    return raw && /^#[0-9a-f]{6}$/i.test(raw) ? raw : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function saveLocal(key: string, value: string) {
+  try {
+    localStorage.setItem(key, value);
+  } catch {
+    // Ignore storage errors
+  }
+}
+
+/**
+ * OverBoard-style Midpoint Quadratic Curve + Single-Tap Dot Shape for Konva.
+ */
+function SmoothStrokeShape({
+  points,
+  color,
+  strokeWidth,
+  globalCompositeOperation = 'source-over',
+  opacity = 1,
+}: {
+  points: number[];
+  color: string;
+  strokeWidth: number;
+  globalCompositeOperation?: GlobalCompositeOperation;
+  opacity?: number;
+}) {
+  return (
+    <Shape
+      opacity={opacity}
+      globalCompositeOperation={globalCompositeOperation}
+      listening={false}
+      perfectDrawEnabled={false}
+      sceneFunc={(ctx) => {
+        const rawCtx = (ctx as any)._context as CanvasRenderingContext2D;
+        if (!rawCtx || !points || points.length < 2) return;
+        rawCtx.save();
+        rawCtx.strokeStyle = color;
+        rawCtx.fillStyle = color;
+        rawCtx.lineWidth = strokeWidth;
+        rawCtx.lineCap = 'round';
+        rawCtx.lineJoin = 'round';
+        const kind = traceSmoothStrokePath(rawCtx, points, strokeWidth);
+        if (kind === 'dot') {
+          rawCtx.fill();
+        } else if (kind === 'stroke') {
+          rawCtx.stroke();
+        }
+        rawCtx.restore();
+      }}
+    />
+  );
+}
+
+/**
+ * Dedicated Konva Layer whose underlying HTML5 canvas uses `mix-blend-mode: multiply`,
+ * matching OverBoard's `#ink-hl` multiply highlighter layer so printed worksheet text stays crisp black.
+ */
+function MultiplyHighlightLayer({
+  x,
+  y,
+  scaleX,
+  scaleY,
+  children,
+}: {
+  x: number;
+  y: number;
+  scaleX: number;
+  scaleY: number;
+  children: React.ReactNode;
+}) {
+  const layerRef = useRef<any>(null);
+
+  useEffect(() => {
+    const domCanvas: HTMLCanvasElement | undefined = layerRef.current?.getCanvas?.()?._canvas;
+    if (domCanvas) {
+      domCanvas.style.mixBlendMode = 'multiply';
+    }
+  });
+
+  return (
+    <Layer ref={layerRef} x={x} y={y} scaleX={scaleX} scaleY={scaleY} listening={false}>
+      {children}
+    </Layer>
+  );
+}
 
 // Subcomponent to load and render a single background worksheet page image
 function WorksheetPageNode({
@@ -208,6 +319,7 @@ export default function Canvas({
   onElementStart,
   onElementAppendPoints,
   onElementUpdate,
+  onElementRemove,
   onCursorMove,
   onUndo,
   onClearMine,
@@ -220,42 +332,88 @@ export default function Canvas({
   fullMainMessages,
   fullMainBackground,
 }: CanvasProps) {
-  const [color, setColor] = useState('#0f172a');
-  const [strokeWidth, setStrokeWidth] = useState(6);
+  // OverBoard-style Separate Tool Settings & Memory
+  const [penColor, setPenColor] = useState<string>(() => readLocalColor('allaboard-pen-color', '#111111'));
+  const [penWidth, setPenWidth] = useState<number>(() => readLocalNum('allaboard-pen-width', 6, 1, 50));
+  const [hlColor, setHlColor] = useState<string>(() => readLocalColor('allaboard-hl-color', '#fdd835'));
+  const [hlWidth, setHlWidth] = useState<number>(() => readLocalNum('allaboard-hl-width', 22, 4, 60));
+  const [hlStrength, setHlStrength] = useState<number>(() => readLocalNum('allaboard-hl-strength', 45, 10, 100));
+  const [isCovering, setIsCovering] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem('allaboard-hl-cover') === '1';
+    } catch {
+      return false;
+    }
+  });
+  const [coverColor, setCoverColor] = useState<string>(() => readLocalColor('allaboard-cover-color', '#111111'));
+  const [smoothLevel, setSmoothLevel] = useState<number>(() => readLocalNum('allaboard-smooth-v2', 0, 0, 8));
+  const [fingerScrolls, setFingerScrolls] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem('allaboard-finger-scrolls') === '1';
+    } catch {
+      return false;
+    }
+  });
+  const [showHlMenu, setShowHlMenu] = useState<boolean>(false);
+  const hlMenuRef = useRef<HTMLDivElement>(null);
+  const customColorInputRef = useRef<HTMLInputElement>(null);
+
   const [tool, setTool] = useState<ToolType>('solid');
   const [stampKind, setStampKind] = useState<StampKind>('check');
   const [showGrid, setShowGrid] = useState(true);
+
+  // Derived active color & width based on whether Highlighter/Cover or Pen is active
+  const paletteMode: 'pen' | 'hl' | 'cover' =
+    tool === 'highlighter' ? (isCovering ? 'cover' : 'hl') : 'pen';
+  const color =
+    tool === 'highlighter' ? (isCovering ? coverColor : hlColor) : penColor;
+  const strokeWidth = tool === 'highlighter' ? hlWidth : penWidth;
 
   // Infinite Canvas Viewport Transform
   const [stageScale, setStageScale] = useState(1);
   const [stagePos, setStagePos] = useState({ x: 0, y: 0 });
   const [isSpacePressed, setIsSpacePressed] = useState(false);
   const [isPanning, setIsPanning] = useState(false);
-  const panStartRef = useRef<{ x: number; y: number; stageX: number; stageY: number } | null>(null);
+  const panStartRef = useRef<{
+    x: number;
+    y: number;
+    stageX: number;
+    stageY: number;
+    tapForNote?: boolean;
+  } | null>(null);
 
   // Teacher dragging worksheet state
   const [isMovingBg, setIsMovingBg] = useState(false);
   const bgMoveStartRef = useRef<{ worldX: number; worldY: number; origX: number; origY: number } | null>(null);
 
-  // Active Drawing / Shape State
+  // Active Drawing / Shape / Smoothing State
   const [isDrawing, setIsDrawing] = useState(false);
   const [currentElementId, setCurrentElementId] = useState<string | null>(null);
+  const activeStrokeToolRef = useRef<Exclude<ToolType, 'pan' | 'move-bg'> | null>(null);
+  const activeStrokePointsRef = useRef<number[]>([]);
+  const liveSmoothRef = useRef<LiveSmoothState | null>(null);
+  const downAtRef = useRef<number>(0);
+  const activePointerIdRef = useRef<number | null>(null);
   const shapeOriginRef = useRef<{ x: number; y: number } | null>(null);
 
   // Pointer position in screen and world coordinates
   const [screenPos, setScreenPos] = useState({ x: -100, y: -100 });
   const [worldPos, setWorldPos] = useState({ x: 0, y: 0 });
+  const [hoveredNoteId, setHoveredNoteId] = useState<string | null>(null);
 
-  // Floating Text Input State + Focus Guard Ref to prevent canvas mousedown from blurring on open
-  const [textDraft, setTextDraft] = useState<{
+  // OverBoard v45 Editable Multiline Text Note State (`makeTyping`)
+  const [editingNote, setEditingNote] = useState<{
+    existingId: string | null;
     worldX: number;
     worldY: number;
-    screenX: number;
-    screenY: number;
     value: string;
+    color: string;
+    strokeWidth: number;
+    fontSize: number;
     openedAt: number;
   } | null>(null);
-  const textInputRef = useRef<HTMLInputElement>(null);
+  const noteTextareaRef = useRef<HTMLTextAreaElement>(null);
+  const noteClosedAtRef = useRef<number>(0);
 
   // Confirmation States
   const [confirmClearAll, setConfirmClearAll] = useState(false);
@@ -339,15 +497,112 @@ export default function Canvas({
     return () => window.removeEventListener('resize', updateSize);
   }, []);
 
-  // Ensure text input receives focus reliably after Konva canvas pointer event completes
+  // Close Highlighter/Cover popout menu when clicking outside or pressing Escape
   useEffect(() => {
-    if (textDraft) {
-      const id = requestAnimationFrame(() => {
-        textInputRef.current?.focus();
-      });
-      return () => cancelAnimationFrame(id);
+    if (!showHlMenu) return;
+    const handlePointerDownOutside = (e: PointerEvent) => {
+      if (hlMenuRef.current && !hlMenuRef.current.contains(e.target as Node)) {
+        setShowHlMenu(false);
+      }
+    };
+    const handleEsc = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setShowHlMenu(false);
+    };
+    document.addEventListener('pointerdown', handlePointerDownOutside, true);
+    document.addEventListener('keydown', handleEsc);
+    return () => {
+      document.removeEventListener('pointerdown', handlePointerDownOutside, true);
+      document.removeEventListener('keydown', handleEsc);
+    };
+  }, [showHlMenu]);
+
+  // Auto-focus and auto-size the multiline note textarea (OverBoard `makeTyping.place` + `open`)
+  const resizeNoteTextarea = useCallback(() => {
+    const el = noteTextareaRef.current;
+    if (!el || !editingNote) return;
+    const scaledFont = editingNote.fontSize * stageScale;
+    el.style.width = '1px';
+    el.style.height = '1px';
+    el.style.width = `${Math.max(el.scrollWidth + 6, scaledFont * 3)}px`;
+    el.style.height = `${Math.max(el.scrollHeight, Math.round(scaledFont * NOTE_LH))}px`;
+  }, [editingNote, stageScale]);
+
+  useEffect(() => {
+    if (editingNote) {
+      resizeNoteTextarea();
     }
-  }, [textDraft]);
+  }, [editingNote, stageScale, stagePos.x, stagePos.y, resizeNoteTextarea]);
+
+  useEffect(() => {
+    if (!editingNote) return;
+    const id = requestAnimationFrame(() => {
+      const ta = noteTextareaRef.current;
+      if (ta) {
+        ta.focus();
+        const len = ta.value.length;
+        ta.setSelectionRange(len, len);
+        resizeNoteTextarea();
+      }
+    });
+    return () => cancelAnimationFrame(id);
+    // Only run when opening a note or switching which note is being edited
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editingNote?.openedAt, editingNote?.existingId]);
+
+  // Helper to update active color and restyle an open note if one is being edited (OverBoard `restyle`)
+  const handleSelectColor = useCallback(
+    (nextColor: string) => {
+      if (tool === 'highlighter') {
+        if (isCovering) {
+          setCoverColor(nextColor);
+          saveLocal('allaboard-cover-color', nextColor);
+        } else {
+          setHlColor(nextColor);
+          saveLocal('allaboard-hl-color', nextColor);
+        }
+      } else {
+        setPenColor(nextColor);
+        saveLocal('allaboard-pen-color', nextColor);
+        if (tool === 'eraser' || tool === 'pan' || tool === 'move-bg') {
+          setTool('solid');
+        }
+      }
+      setEditingNote((prev) => {
+        if (!prev) return null;
+        return {
+          ...prev,
+          color: nextColor === '#ffffff' ? '#0f172a' : nextColor,
+        };
+      });
+      requestAnimationFrame(() => noteTextareaRef.current?.focus());
+    },
+    [tool, isCovering]
+  );
+
+  // Helper to update brush/note size and restyle an open note live
+  const handleSelectStrokeWidth = useCallback(
+    (nextWidth: number) => {
+      const clamped = Math.max(1, Math.min(60, nextWidth));
+      if (tool === 'highlighter') {
+        setHlWidth(clamped);
+        saveLocal('allaboard-hl-width', String(clamped));
+      } else {
+        setPenWidth(clamped);
+        saveLocal('allaboard-pen-width', String(clamped));
+      }
+      setEditingNote((prev) => {
+        if (!prev) return null;
+        const nextFontSize = Math.max(14, clamped * 3 + 8);
+        return {
+          ...prev,
+          strokeWidth: clamped,
+          fontSize: nextFontSize,
+        };
+      });
+      requestAnimationFrame(() => noteTextareaRef.current?.focus());
+    },
+    [tool]
+  );
 
   // Helper to initialize draft groups in the Breakout Modal
   const initializeDraftGroups = useCallback(
@@ -396,7 +651,8 @@ export default function Canvas({
     setShowBreakoutModal(true);
   };
 
-  // Group all elements on the current board by userId so each student's elements live on their own isolated Konva Layer.
+  // Group all elements on the current board by userId so each student's elements live on their own isolated Konva Layer,
+  // and compute OverBoard's `notesGone` set per user so erasers remove whole text notes cleanly (and Undo brings them back!).
   const elementsGroupedByUser = useMemo(() => {
     const groups = new Map<string, CanvasElement[]>();
     for (const el of elements) {
@@ -408,8 +664,23 @@ export default function Canvas({
         groups.set(uid, [el]);
       }
     }
-    return Array.from(groups.entries());
+    return Array.from(groups.entries()).map(([uid, userElements]) => ({
+      userId: uid,
+      userElements,
+      goneNoteIds: computeNotesGone(userElements),
+      hasSeeThroughHighlights: userElements.some(isSeeThroughHighlight),
+    }));
   }, [elements]);
+
+  const allGoneNoteIds = useMemo(() => {
+    const combined = new Set<string>();
+    for (const g of elementsGroupedByUser) {
+      for (const id of g.goneNoteIds) {
+        combined.add(id);
+      }
+    }
+    return combined;
+  }, [elementsGroupedByUser]);
 
   // Compute positioned geometry for each page of the background worksheet
   const computedBackgroundPages = useMemo(() => {
@@ -444,7 +715,146 @@ export default function Canvas({
     });
   }, [background]);
 
-  // Spacebar shortcut for quick panning on the infinite canvas
+  const screenToWorld = useCallback(
+    (sx: number, sy: number) => ({
+      x: Number(((sx - stagePos.x) / stageScale).toFixed(1)),
+      y: Number(((sy - stagePos.y) / stageScale).toFixed(1)),
+    }),
+    [stagePos.x, stagePos.y, stageScale]
+  );
+
+  // OverBoard `makeTyping.close()`: commits a new or edited multiline note (or deletes it if emptied)
+  const commitEditingNote = useCallback(() => {
+    if (!editingNote) return;
+    const note = editingNote;
+    setEditingNote(null);
+    noteClosedAtRef.current = Date.now();
+
+    if (!canDraw) return;
+    const trimmed = note.value.replace(/\s+$/, '');
+
+    if (note.existingId) {
+      const existing = elements.find((el) => el.id === note.existingId);
+      if (!existing) return; // Removed meanwhile (e.g. Undo or Clear)
+      if (!trimmed.trim()) {
+        onElementRemove(note.existingId);
+        return;
+      }
+      const existingFont = getNoteFontSize(existing);
+      if (
+        trimmed === existing.text &&
+        note.color === existing.color &&
+        note.fontSize === existingFont
+      ) {
+        return;
+      }
+      const [w, h] = noteSize(trimmed, note.fontSize);
+      onElementUpdate({
+        id: note.existingId,
+        text: trimmed,
+        color: note.color,
+        strokeWidth: note.strokeWidth,
+        fontSize: note.fontSize,
+        width: w,
+        height: h,
+      });
+      return;
+    }
+
+    if (!trimmed.trim()) return;
+    const [w, h] = noteSize(trimmed, note.fontSize);
+    const id = Math.random().toString(36).substring(2, 11);
+    const newElement: CanvasElement = {
+      id,
+      boardId: activeBoardId,
+      userId,
+      userName,
+      tool: 'text',
+      color: note.color,
+      strokeWidth: note.strokeWidth,
+      fontSize: note.fontSize,
+      x: note.worldX,
+      y: note.worldY,
+      width: w,
+      height: h,
+      text: trimmed,
+      timestamp: Date.now(),
+    };
+    onElementStart(newElement);
+  }, [
+    editingNote,
+    canDraw,
+    elements,
+    onElementRemove,
+    onElementUpdate,
+    activeBoardId,
+    userId,
+    userName,
+    onElementStart,
+  ]);
+
+  // Open an existing note for re-typing, or start a new note at (worldX, worldY) (OverBoard `makeTyping.open` / `tap`)
+  const openOrTapNoteAt = useCallback(
+    (worldX: number, worldY: number, forceExisting?: CanvasElement | null) => {
+      if (!canDraw) return;
+      if (editingNote) {
+        commitEditingNote();
+        return;
+      }
+      if (!forceExisting && Date.now() - noteClosedAtRef.current < 450) {
+        return;
+      }
+      const tol = 8 / stageScale;
+      const targetNote =
+        forceExisting !== undefined
+          ? forceExisting
+          : hitEditableNote(elements, allGoneNoteIds, worldX, worldY, tol, userId, isTeacher);
+
+      const defaultFontSize = Math.max(14, penWidth * 3 + 8);
+      const safePenColor = penColor === '#ffffff' ? '#0f172a' : penColor;
+
+      if (targetNote) {
+        const f = getNoteFontSize(targetNote);
+        setEditingNote({
+          existingId: targetNote.id,
+          worldX: targetNote.x || 0,
+          worldY: targetNote.y || 0,
+          value: targetNote.text || '',
+          color: targetNote.color || safePenColor,
+          strokeWidth: targetNote.strokeWidth || penWidth,
+          fontSize: f,
+          openedAt: Date.now(),
+        });
+      } else {
+        // Lift a new note by half a line height so the tap lands in the middle of its first line (OverBoard `makeTyping.open`)
+        const liftedY = Math.round((worldY - (defaultFontSize * NOTE_LH) / 2) * 10) / 10;
+        setEditingNote({
+          existingId: null,
+          worldX,
+          worldY: liftedY,
+          value: '',
+          color: safePenColor,
+          strokeWidth: penWidth,
+          fontSize: defaultFontSize,
+          openedAt: Date.now(),
+        });
+      }
+    },
+    [
+      canDraw,
+      editingNote,
+      commitEditingNote,
+      stageScale,
+      elements,
+      allGoneNoteIds,
+      userId,
+      isTeacher,
+      penWidth,
+      penColor,
+    ]
+  );
+
+  // Spacebar shortcut for quick panning & Ctrl/Cmd+Z Undo
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement;
@@ -456,6 +866,9 @@ export default function Canvas({
         setIsSpacePressed(true);
       } else if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'z') {
         e.preventDefault();
+        if (editingNote) {
+          commitEditingNote();
+        }
         if (canDraw) onUndo();
       }
     };
@@ -471,38 +884,7 @@ export default function Canvas({
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('keyup', handleKeyUp);
     };
-  }, [canDraw, onUndo]);
-
-  const screenToWorld = useCallback(
-    (sx: number, sy: number) => ({
-      x: Number(((sx - stagePos.x) / stageScale).toFixed(1)),
-      y: Number(((sy - stagePos.y) / stageScale).toFixed(1)),
-    }),
-    [stagePos.x, stagePos.y, stageScale]
-  );
-
-  const commitTextDraft = useCallback(() => {
-    if (!textDraft) return;
-    const trimmed = textDraft.value.trim();
-    if (trimmed && canDraw) {
-      const id = Math.random().toString(36).substring(2, 11);
-      const newElement: CanvasElement = {
-        id,
-        boardId: activeBoardId,
-        userId,
-        userName,
-        tool: 'text',
-        color: color === '#ffffff' ? '#0f172a' : color,
-        strokeWidth,
-        x: textDraft.worldX,
-        y: textDraft.worldY,
-        text: trimmed,
-        timestamp: Date.now(),
-      };
-      onElementStart(newElement);
-    }
-    setTextDraft(null);
-  }, [textDraft, canDraw, activeBoardId, userId, userName, color, strokeWidth, onElementStart]);
+  }, [canDraw, onUndo, editingNote, commitEditingNote]);
 
   const handleWheel = (e: any) => {
     e.evt.preventDefault();
@@ -635,6 +1017,9 @@ export default function Canvas({
 
   // Auto-fit when switching between sub-boards
   useEffect(() => {
+    if (editingNote) {
+      commitEditingNote();
+    }
     if (elements.length > 0 || background) {
       const id = setTimeout(() => {
         fitElementsAndBackgroundInView(elements, background);
@@ -822,28 +1207,58 @@ export default function Canvas({
     }
   };
 
-  const handlePointerDown = (e: any) => {
-    const stage = e.target.getStage();
-    const pos = stage.getPointerPosition();
-    if (!pos) return;
+  // Get local container coordinates from a native PointerEvent or MouseEvent
+  const getLocalPosFromEvent = useCallback((clientX: number, clientY: number) => {
+    const rect = containerRef.current?.getBoundingClientRect();
+    if (!rect) return { x: clientX, y: clientY };
+    return {
+      x: clientX - rect.left,
+      y: clientY - rect.top,
+    };
+  }, []);
 
-    const isMiddleClick = e.evt && e.evt.button === 1;
-    if (effectiveTool === 'pan' || isMiddleClick) {
+  // OverBoard-powered PointerDown handler (supports SMART Board palm eraser, finger-scrolls mode, and click-to-edit notes)
+  const handleViewportPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (activePointerIdRef.current !== null) return;
+    if (e.pointerType === 'mouse' && e.button !== 0 && e.button !== 1) return;
+
+    const pos = getLocalPosFromEvent(e.clientX, e.clientY);
+    const world = screenToWorld(pos.x, pos.y);
+    const kind = pointerKind(e);
+    const isMiddleClick = e.pointerType === 'mouse' && e.button === 1;
+
+    // In OverBoard, when "Finger: pans" is enabled (or when using the Text tool and dragging), a finger drag pans
+    const shouldFingerPan = kind === 'finger' && fingerScrolls && !isMiddleClick;
+    const isTypeDragOrTap = effectiveTool === 'text' && kind !== 'palm' && !isMiddleClick;
+
+    if (effectiveTool === 'pan' || isMiddleClick || shouldFingerPan || isTypeDragOrTap) {
+      activePointerIdRef.current = e.pointerId;
+      try {
+        containerRef.current?.setPointerCapture(e.pointerId);
+      } catch {
+        // Ignore
+      }
       setIsPanning(true);
       panStartRef.current = {
         x: pos.x,
         y: pos.y,
         stageX: stagePos.x,
         stageY: stagePos.y,
+        tapForNote: isTypeDragOrTap,
       };
+      e.preventDefault();
       return;
     }
-
-    const world = screenToWorld(pos.x, pos.y);
 
     // Teacher dragging background worksheet
     if (effectiveTool === 'move-bg') {
       if (isTeacher && background) {
+        activePointerIdRef.current = e.pointerId;
+        try {
+          containerRef.current?.setPointerCapture(e.pointerId);
+        } catch {
+          // Ignore
+        }
         setIsMovingBg(true);
         bgMoveStartRef.current = {
           worldX: world.x,
@@ -857,34 +1272,19 @@ export default function Canvas({
 
     if (!canDraw) return;
 
-    if (effectiveTool === 'text') {
-      // Prevent native canvas mousedown from stealing focus from the text input we are about to open
-      if (e.evt && typeof e.evt.preventDefault === 'function') {
-        e.evt.preventDefault();
-      }
-      if (textDraft && textDraft.value.trim()) {
-        commitTextDraft();
-      } else {
-        setTextDraft({
-          worldX: world.x,
-          worldY: world.y,
-          screenX: Math.min(dimensions.width - 220, Math.max(12, pos.x)),
-          screenY: Math.min(dimensions.height - 60, Math.max(12, pos.y)),
-          value: '',
-          openedAt: Date.now(),
-        });
-      }
-      return;
-    }
-
-    if (textDraft) {
-      commitTextDraft();
+    // If a note was open and the user started drawing with another tool, commit the note first
+    if (editingNote) {
+      commitEditingNote();
     }
 
     const id = Math.random().toString(36).substring(2, 11);
 
-    // One-click Stamp placement (including 'username' badge stamp)
-    if (effectiveTool === 'stamp') {
+    // SMART Board palm / pen-eraser automatically erases regardless of selected tool (OverBoard `pointerKind(e) === 'palm'`)
+    const strokeTool: Exclude<ToolType, 'pan' | 'move-bg'> =
+      kind === 'palm' ? 'eraser' : (effectiveTool as Exclude<ToolType, 'pan' | 'move-bg'>);
+
+    // One-click Stamp placement (when not using palm eraser)
+    if (strokeTool === 'stamp') {
       const stampElement: CanvasElement = {
         id,
         boardId: activeBoardId,
@@ -902,17 +1302,26 @@ export default function Canvas({
       return;
     }
 
+    activePointerIdRef.current = e.pointerId;
+    try {
+      containerRef.current?.setPointerCapture(e.pointerId);
+    } catch {
+      // Ignore
+    }
+
     setCurrentElementId(id);
     setIsDrawing(true);
+    activeStrokeToolRef.current = strokeTool;
+    downAtRef.current = performance.now();
 
-    if (effectiveTool === 'rect' || effectiveTool === 'circle') {
+    if (strokeTool === 'rect' || strokeTool === 'circle') {
       shapeOriginRef.current = { x: world.x, y: world.y };
       const newElement: CanvasElement = {
         id,
         boardId: activeBoardId,
         userId,
         userName,
-        tool: effectiveTool,
+        tool: strokeTool,
         color,
         strokeWidth,
         x: world.x,
@@ -922,7 +1331,7 @@ export default function Canvas({
         timestamp: Date.now(),
       };
       onElementStart(newElement);
-    } else if (effectiveTool === 'line') {
+    } else if (strokeTool === 'line') {
       shapeOriginRef.current = { x: world.x, y: world.y };
       const newElement: CanvasElement = {
         id,
@@ -937,29 +1346,59 @@ export default function Canvas({
       };
       onElementStart(newElement);
     } else {
+      // Freehand stroke: solid, hollow, spray, highlighter (see-through or cover), or eraser (personal or palm)
+      const effectiveStrokeWidth =
+        kind === 'palm'
+          ? Math.max(12, Math.round((PALM_ERASER_SCREEN_PX / stageScale) * 10) / 10)
+          : strokeWidth;
+
+      const strokeColor =
+        strokeTool === 'highlighter'
+          ? isCovering
+            ? coverColor
+            : hlInk(hlColor, hlStrength)
+          : color;
+
+      activeStrokePointsRef.current = [world.x, world.y];
+      liveSmoothRef.current = liveStart(world.x, world.y);
+
       const newElement: CanvasElement = {
         id,
         boardId: activeBoardId,
         userId,
         userName,
-        tool: effectiveTool,
-        color,
-        strokeWidth,
+        tool: strokeTool,
+        color: strokeColor,
+        strokeWidth: effectiveStrokeWidth,
+        isCover: strokeTool === 'highlighter' ? isCovering : undefined,
+        hlStrength: strokeTool === 'highlighter' && !isCovering ? hlStrength : undefined,
         points: [world.x, world.y],
         timestamp: Date.now(),
       };
       onElementStart(newElement);
     }
+    e.preventDefault();
   };
 
-  const handlePointerMove = (e: any) => {
-    const stage = e.target.getStage();
-    const pos = stage.getPointerPosition();
-    if (!pos) return;
-
+  const handleViewportPointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
+    const pos = getLocalPosFromEvent(e.clientX, e.clientY);
     setScreenPos(pos);
     const world = screenToWorld(pos.x, pos.y);
     setWorldPos(world);
+
+    // Highlight hover state when over an editable text note in Type mode
+    if (!isDrawing && !isPanning && canDraw && effectiveTool === 'text') {
+      const hit = hitEditableNote(
+        elements,
+        allGoneNoteIds,
+        world.x,
+        world.y,
+        8 / stageScale,
+        userId,
+        isTeacher
+      );
+      setHoveredNoteId(hit ? hit.id : null);
+    }
 
     const now = Date.now();
     if (now - lastCursorEmitRef.current > 50) {
@@ -976,9 +1415,16 @@ export default function Canvas({
       });
     }
 
+    if (e.pointerId !== activePointerIdRef.current) return;
+
     if (isPanning && panStartRef.current) {
       const dx = pos.x - panStartRef.current.x;
       const dy = pos.y - panStartRef.current.y;
+      // In Type mode, require 8px drag threshold before panning so a tap cleanly opens/edits a note (OverBoard v45)
+      if (panStartRef.current.tapForNote && Math.abs(dx) + Math.abs(dy) < 8) {
+        return;
+      }
+      panStartRef.current.tapForNote = false;
       setStagePos({
         x: panStartRef.current.stageX + dx,
         y: panStartRef.current.stageY + dy,
@@ -997,8 +1443,9 @@ export default function Canvas({
     }
 
     if (!isDrawing || !currentElementId) return;
+    const strokeTool = activeStrokeToolRef.current || effectiveTool;
 
-    if (effectiveTool === 'rect' || effectiveTool === 'circle') {
+    if (strokeTool === 'rect' || strokeTool === 'circle') {
       const origin = shapeOriginRef.current;
       if (!origin) return;
       onElementUpdate({
@@ -1008,37 +1455,138 @@ export default function Canvas({
         width: Number((world.x - origin.x).toFixed(1)),
         height: Number((world.y - origin.y).toFixed(1)),
       });
-    } else if (effectiveTool === 'line') {
+    } else if (strokeTool === 'line') {
       const origin = shapeOriginRef.current;
       if (!origin) return;
       onElementUpdate({
         id: currentElementId,
         points: [origin.x, origin.y, world.x, world.y],
       });
-    } else {
-      onElementAppendPoints(currentElementId, [world.x, world.y]);
+    } else if (liveSmoothRef.current) {
+      // Only unpack getCoalescedEvents() when smoothing > 0; at smoothLevel === 0 (default for Chromebooks),
+      // sample the frame pointer event directly with a larger step threshold so React/Konva isn't flooded.
+      const rawEvt = e.nativeEvent;
+      const coalesced: PointerEvent[] =
+        smoothLevel > 0 &&
+        typeof rawEvt.getCoalescedEvents === 'function' &&
+        rawEvt.getCoalescedEvents().length > 0
+          ? rawEvt.getCoalescedEvents()
+          : [rawEvt];
+
+      const appended: number[] = [];
+      const minDist =
+        smoothLevel === 0
+          ? Math.max(1.2, 1.5 / stageScale)
+          : Math.max(0.4, 0.7 / stageScale);
+      for (const ev of coalesced) {
+        const evPos = getLocalPosFromEvent(ev.clientX, ev.clientY);
+        const evWorld = screenToWorld(evPos.x, evPos.y);
+        const pt = liveAddPoint(
+          activeStrokePointsRef.current,
+          liveSmoothRef.current,
+          evWorld.x,
+          evWorld.y,
+          smoothLevel,
+          minDist
+        );
+        if (pt) {
+          appended.push(pt[0], pt[1]);
+        }
+      }
+      if (appended.length > 0) {
+        onElementAppendPoints(currentElementId, appended);
+      }
     }
   };
 
-  const handlePointerUp = () => {
+  const handleViewportPointerUp = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (e.pointerId !== activePointerIdRef.current) return;
+    activePointerIdRef.current = null;
+
+    const pos = getLocalPosFromEvent(e.clientX, e.clientY);
+    const world = screenToWorld(pos.x, pos.y);
+
     if (isPanning) {
+      const panInfo = panStartRef.current;
       setIsPanning(false);
       panStartRef.current = null;
+      // OverBoard v45 Type tool: a tap (< 8px movement) creates a note or opens the clicked note for re-typing!
+      if (
+        e.type === 'pointerup' &&
+        panInfo?.tapForNote &&
+        Math.abs(pos.x - panInfo.x) + Math.abs(pos.y - panInfo.y) < 8
+      ) {
+        openOrTapNoteAt(world.x, world.y);
+      }
+      return;
     }
+
     if (isMovingBg) {
       setIsMovingBg(false);
       bgMoveStartRef.current = null;
+      return;
     }
-    if (isDrawing) {
+
+    if (isDrawing && currentElementId) {
+      const id = currentElementId;
+      const strokeTool = activeStrokeToolRef.current;
+      const pts = activeStrokePointsRef.current;
+
       setIsDrawing(false);
       setCurrentElementId(null);
+      activeStrokeToolRef.current = null;
       shapeOriginRef.current = null;
+      liveSmoothRef.current = null;
+
+      // OverBoard hardware blip filter: drop accidental <15ms pen/hand switch blips
+      if (
+        strokeTool !== 'rect' &&
+        strokeTool !== 'circle' &&
+        strokeTool !== 'line' &&
+        performance.now() - downAtRef.current < 15 &&
+        pts.length <= 4
+      ) {
+        onElementRemove(id);
+        return;
+      }
+
+      // Catch up smoothed stroke to exact pen-lift point (`liveLiftPoint`)
+      if (
+        e.type === 'pointerup' &&
+        strokeTool !== 'rect' &&
+        strokeTool !== 'circle' &&
+        strokeTool !== 'line'
+      ) {
+        const liftPt = liveLiftPoint(pts, world.x, world.y, Math.max(0.2, 0.5 / stageScale));
+        if (liftPt) {
+          onElementAppendPoints(id, [liftPt[0], liftPt[1]]);
+        }
+      }
     }
   };
 
-  const renderElement = (el: CanvasElement) => {
+  // Double-clicking any editable note on the canvas (even while using a pen/shape tool) opens it for re-typing!
+  const handleViewportDoubleClick = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (!canDraw) return;
+    const pos = getLocalPosFromEvent(e.clientX, e.clientY);
+    const world = screenToWorld(pos.x, pos.y);
+    const hit = hitEditableNote(
+      elements,
+      allGoneNoteIds,
+      world.x,
+      world.y,
+      10 / stageScale,
+      userId,
+      isTeacher
+    );
+    if (hit) {
+      e.preventDefault();
+      openOrTapNoteAt(world.x, world.y, hit);
+    }
+  };
+
+  const renderElement = (el: CanvasElement, goneNoteIds?: Set<string>) => {
     if (el.tool === 'stamp') {
-      // Special Username Badge Stamp!
       if (el.stamp === 'username') {
         const label = el.userName || 'Student';
         const fontSize = Math.max(13, Math.round(el.strokeWidth * 1.1 + 10));
@@ -1142,7 +1690,10 @@ export default function Canvas({
     }
 
     if (el.tool === 'text') {
-      const fontSize = Math.max(14, el.strokeWidth * 3 + 8);
+      // Hide note if an eraser stroke touched it (`notesGone`) or if it is currently open in the inline note editor
+      if (goneNoteIds?.has(el.id)) return null;
+      if (editingNote?.existingId === el.id) return null;
+      const fontSize = getNoteFontSize(el);
       return (
         <KonvaText
           key={el.id}
@@ -1151,7 +1702,8 @@ export default function Canvas({
           text={el.text || ''}
           fill={el.color}
           fontSize={fontSize}
-          fontFamily="Plus Jakarta Sans, sans-serif"
+          lineHeight={NOTE_LH}
+          fontFamily={NOTE_FONT}
           fontStyle="600"
         />
       );
@@ -1162,14 +1714,11 @@ export default function Canvas({
 
     if (el.tool === 'eraser') {
       return (
-        <Line
+        <SmoothStrokeShape
           key={el.id}
           points={pts}
-          stroke="#000000"
+          color="#000000"
           strokeWidth={Math.max(8, el.strokeWidth * 1.5)}
-          tension={0.45}
-          lineCap="round"
-          lineJoin="round"
           globalCompositeOperation="destination-out"
         />
       );
@@ -1192,16 +1741,15 @@ export default function Canvas({
     }
 
     if (el.tool === 'highlighter') {
+      // Both see-through highlights (on MultiplyHighlightLayer) and opaque Cover bars (on main Layer)
+      // use OverBoard's round midpoint quadratic curve rendering at full opacity.
       return (
-        <Line
+        <SmoothStrokeShape
           key={el.id}
           points={pts}
-          stroke={el.color}
-          strokeWidth={Math.max(12, el.strokeWidth * 2.2)}
-          tension={0.3}
-          lineCap="square"
-          lineJoin="round"
-          opacity={0.32}
+          color={el.color}
+          strokeWidth={el.strokeWidth}
+          opacity={1}
         />
       );
     }
@@ -1209,35 +1757,39 @@ export default function Canvas({
     if (el.tool === 'hollow') {
       return (
         <Group key={el.id}>
-          <Line
+          <SmoothStrokeShape
             points={pts}
-            stroke={el.color}
+            color={el.color}
             strokeWidth={Math.max(4, el.strokeWidth)}
-            tension={0.5}
-            lineCap="round"
-            lineJoin="round"
           />
-          <Line
+          <SmoothStrokeShape
             points={pts}
-            stroke="#ffffff"
+            color="#ffffff"
             strokeWidth={Math.max(1, el.strokeWidth - 4)}
-            tension={0.5}
-            lineCap="round"
-            lineJoin="round"
           />
         </Group>
       );
     }
 
+    if (el.tool === 'line') {
+      return (
+        <Line
+          key={el.id}
+          points={pts}
+          stroke={el.color}
+          strokeWidth={el.strokeWidth}
+          lineCap="round"
+          lineJoin="round"
+        />
+      );
+    }
+
     return (
-      <Line
+      <SmoothStrokeShape
         key={el.id}
         points={pts}
-        stroke={el.color}
+        color={el.color}
         strokeWidth={el.strokeWidth}
-        tension={el.tool === 'line' ? 0 : 0.45}
-        lineCap="round"
-        lineJoin="round"
       />
     );
   };
@@ -1255,6 +1807,7 @@ export default function Canvas({
   }, [subBoards, breakoutConfig.mode]);
 
   const gridSpacing = Math.max(20, Math.round(40 * stageScale));
+  const activeSwatches = useMemo(() => getPaletteColors(paletteMode), [paletteMode]);
 
   return (
     <div className="flex flex-col h-full bg-white select-none relative">
@@ -1274,8 +1827,11 @@ export default function Canvas({
         className="hidden"
       />
 
-      {/* Primary Drawing & Studio Toolbar */}
-      <div className="px-4 py-2.5 border-b border-slate-200 flex flex-wrap items-center gap-3 bg-white z-20">
+      {/* Primary Drawing & Studio Toolbar (`data-keep-note` lets users restyle an open note without closing it) */}
+      <div
+        data-keep-note="true"
+        className="px-4 py-2 border-b border-slate-200 flex flex-wrap items-center gap-2.5 bg-white z-20"
+      >
         {/* Navigation & Brush Tools */}
         <div className="flex items-center gap-0.5 bg-slate-100 p-1 rounded-lg border border-slate-200/80">
           <button
@@ -1304,7 +1860,7 @@ export default function Canvas({
                 ? "bg-white text-blue-600 shadow-xs"
                 : "text-slate-600 hover:text-slate-900"
             )}
-            title="Solid Brush"
+            title="Solid Pen"
           >
             <Paintbrush size={17} />
           </button>
@@ -1336,20 +1892,175 @@ export default function Canvas({
           >
             <SprayCan size={17} />
           </button>
-          <button
-            type="button"
-            disabled={!canDraw}
-            onClick={() => setTool('highlighter')}
-            className={cn(
-              "p-1.5 rounded-md transition-colors cursor-pointer disabled:opacity-40",
-              tool === 'highlighter' && effectiveTool !== 'pan'
-                ? "bg-white text-blue-600 shadow-xs"
-                : "text-slate-600 hover:text-slate-900"
+
+          {/* OverBoard Split Highlighter & Cover Menu Button */}
+          <div ref={hlMenuRef} className="relative flex items-center">
+            <button
+              type="button"
+              disabled={!canDraw}
+              onClick={() => setTool('highlighter')}
+              className={cn(
+                "px-2 py-1.5 rounded-l-md transition-colors cursor-pointer disabled:opacity-40 flex items-center gap-1 text-xs font-semibold",
+                tool === 'highlighter' && effectiveTool !== 'pan'
+                  ? isCovering
+                    ? "bg-slate-900 text-amber-300 shadow-xs"
+                    : "bg-amber-200 text-slate-900 shadow-xs"
+                  : "text-slate-600 hover:text-slate-900"
+              )}
+              title={
+                isCovering
+                  ? "Cover Mode: draws an opaque bar that hides answers (erase to reveal)"
+                  : "Highlighter Mode: see-through multiply highlight under pen ink (never dulls black worksheet text)"
+              }
+            >
+              {isCovering ? <EyeOff size={15} /> : <Highlighter size={16} />}
+              <span className="hidden sm:inline">{isCovering ? 'Cover' : 'Highlight'}</span>
+            </button>
+            <button
+              type="button"
+              disabled={!canDraw}
+              onClick={() => {
+                setTool('highlighter');
+                setShowHlMenu((prev) => !prev);
+              }}
+              aria-haspopup="true"
+              aria-expanded={showHlMenu}
+              className={cn(
+                "px-1 py-1.5 rounded-r-md border-l border-slate-300/70 transition-colors cursor-pointer disabled:opacity-40",
+                showHlMenu || (tool === 'highlighter' && effectiveTool !== 'pan')
+                  ? isCovering
+                    ? "bg-slate-800 text-white"
+                    : "bg-amber-300/80 text-slate-900"
+                  : "text-slate-500 hover:text-slate-900"
+              )}
+              title="Highlight strength or Cover (black out answers)"
+            >
+              <ChevronDown size={13} />
+            </button>
+
+            {/* OverBoard Highlighter / Cover Popout Menu */}
+            {showHlMenu && (
+              <div
+                role="menu"
+                aria-label="Highlighter and Cover options"
+                className="absolute left-0 top-full mt-1.5 z-50 w-64 p-2.5 rounded-xl bg-slate-900 text-white shadow-xl border border-slate-700 space-y-2"
+              >
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsCovering(false);
+                    saveLocal('allaboard-hl-cover', '0');
+                    setTool('highlighter');
+                    setShowHlMenu(false);
+                  }}
+                  className={cn(
+                    "w-full flex items-center gap-2.5 p-2 rounded-lg text-left transition-colors cursor-pointer border-2",
+                    !isCovering
+                      ? "bg-slate-800 border-amber-400"
+                      : "bg-slate-800/60 border-transparent hover:bg-slate-800"
+                  )}
+                >
+                  <span
+                    className="w-6 h-6 rounded border-2 border-white shrink-0"
+                    style={{ backgroundColor: hlInk(hlColor, hlStrength) }}
+                  />
+                  <div>
+                    <div className="text-xs font-bold text-white">Highlight</div>
+                    <div className="text-[11px] text-slate-300">See-through (multiplies under ink)</div>
+                  </div>
+                </button>
+
+                <label className="block px-1.5 py-1 space-y-1">
+                  <div className="flex items-center justify-between text-xs font-semibold text-slate-200">
+                    <span>Highlight strength</span>
+                    <span className="font-mono text-amber-400">{hlStrength}%</span>
+                  </div>
+                  <input
+                    type="range"
+                    min="10"
+                    max="100"
+                    step="5"
+                    value={hlStrength}
+                    onChange={(e) => {
+                      const next = parseInt(e.target.value, 10);
+                      setHlStrength(next);
+                      saveLocal('allaboard-hl-strength', String(next));
+                      setIsCovering(false);
+                      saveLocal('allaboard-hl-cover', '0');
+                      setTool('highlighter');
+                    }}
+                    className="w-full h-2 rounded-lg appearance-none cursor-pointer accent-amber-400"
+                    style={{
+                      background: `linear-gradient(90deg, #ffffff, ${hlInk(hlColor, hlStrength)})`,
+                    }}
+                  />
+                </label>
+
+                <div className="border-t border-slate-700/80 pt-1.5 space-y-1">
+                  <div className="px-1 text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                    Cover Mode (Hides Answers — Erase to Reveal)
+                  </div>
+                  {[
+                    { c: '#111111', label: 'Cover: Black' },
+                    { c: '#a6a6a6', label: 'Cover: Light gray' },
+                    { c: '#ffffff', label: 'Cover: White' },
+                  ].map((item) => (
+                    <button
+                      key={item.c}
+                      type="button"
+                      onClick={() => {
+                        setIsCovering(true);
+                        saveLocal('allaboard-hl-cover', '1');
+                        setCoverColor(item.c);
+                        saveLocal('allaboard-cover-color', item.c);
+                        setTool('highlighter');
+                        setShowHlMenu(false);
+                      }}
+                      className={cn(
+                        "w-full flex items-center gap-2.5 p-1.5 rounded-lg text-left transition-colors cursor-pointer border-2",
+                        isCovering && coverColor.toLowerCase() === item.c
+                          ? "bg-slate-800 border-amber-400"
+                          : "bg-slate-800/50 border-transparent hover:bg-slate-800"
+                      )}
+                    >
+                      <span
+                        className="w-5 h-5 rounded border border-white shrink-0"
+                        style={{ backgroundColor: item.c }}
+                      />
+                      <div>
+                        <div className="text-xs font-bold text-white">{item.label}</div>
+                        <div className="text-[10px] text-slate-400">Hides answers</div>
+                      </div>
+                    </button>
+                  ))}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsCovering(true);
+                      saveLocal('allaboard-hl-cover', '1');
+                      setTool('highlighter');
+                      setShowHlMenu(false);
+                      setTimeout(() => customColorInputRef.current?.click(), 20);
+                    }}
+                    className="w-full flex items-center gap-2.5 p-1.5 rounded-lg text-left bg-slate-800/50 hover:bg-slate-800 transition-colors cursor-pointer border-2 border-transparent"
+                  >
+                    <span
+                      className="w-5 h-5 rounded border border-white shrink-0"
+                      style={{
+                        background:
+                          'conic-gradient(#f44336,#ffeb3b,#4caf50,#00bcd4,#3f51b5,#e91e63,#f44336)',
+                      }}
+                    />
+                    <div>
+                      <div className="text-xs font-bold text-white">Cover: Any color…</div>
+                      <div className="text-[10px] text-slate-400">Pick custom cover color</div>
+                    </div>
+                  </button>
+                </div>
+              </div>
             )}
-            title="Highlighter"
-          >
-            <Highlighter size={17} />
-          </button>
+          </div>
+
           <button
             type="button"
             disabled={!canDraw}
@@ -1360,14 +2071,14 @@ export default function Canvas({
                 ? "bg-white text-blue-600 shadow-xs"
                 : "text-slate-600 hover:text-slate-900"
             )}
-            title="Personal Eraser Brush (Erases ONLY your own ink, never the worksheet or classmates' drawings)"
+            title="Personal Eraser (Erases your own ink, highlights, covers, and whole text notes — SMART Board palm always erases)"
           >
             <Eraser size={17} />
           </button>
 
           <div className="h-4 w-px bg-slate-300 mx-0.5" />
 
-          {/* Geometric Shapes, Text & Quick Stamp */}
+          {/* Geometric Shapes, Editable Text Notes & Quick Stamp */}
           <button
             type="button"
             disabled={!canDraw}
@@ -1415,14 +2126,15 @@ export default function Canvas({
             disabled={!canDraw}
             onClick={() => setTool('text')}
             className={cn(
-              "p-1.5 rounded-md transition-colors cursor-pointer disabled:opacity-40",
+              "px-2 py-1.5 rounded-md transition-colors cursor-pointer disabled:opacity-40 flex items-center gap-1 text-xs font-semibold",
               tool === 'text' && effectiveTool !== 'pan'
                 ? "bg-white text-blue-600 shadow-xs"
                 : "text-slate-600 hover:text-slate-900"
             )}
-            title="Text Annotation (Click on canvas to type)"
+            title="Type Note: Tap canvas to type a multiline note; tap any existing note (or double-click in any tool) to re-type or restyle it!"
           >
-            <Type size={17} />
+            <Type size={16} />
+            <span className="hidden md:inline">Type</span>
           </button>
           <button
             type="button"
@@ -1463,46 +2175,130 @@ export default function Canvas({
           </div>
         )}
 
-        {/* One-Click Color Palette */}
+        {/* OverBoard Mode-Aware Color Swatches + Custom Color Picker */}
         <div className="flex items-center gap-1.5">
-          {COLORS.map((c) => (
+          {activeSwatches.map((sw) => {
+            const activeTargetColor = editingNote ? editingNote.color : color;
+            const isSelected =
+              activeTargetColor.toLowerCase() === sw.color.toLowerCase() && tool !== 'eraser';
+            return (
+              <button
+                key={`${paletteMode}_${sw.color}`}
+                type="button"
+                onClick={() => handleSelectColor(sw.color)}
+                className={cn(
+                  "w-5 h-5 rounded-full border border-slate-300 transition-transform hover:scale-110 cursor-pointer",
+                  isSelected && "ring-2 ring-blue-600 ring-offset-2 scale-110"
+                )}
+                style={{ backgroundColor: sw.color }}
+                title={sw.label}
+              />
+            );
+          })}
+
+          {/* Custom Color Wheel Picker (OverBoard `#ink-picker`) */}
+          <div className="relative flex items-center">
             <button
-              key={c}
               type="button"
-              onClick={() => {
-                setColor(c);
-                if (tool === 'eraser' || tool === 'pan' || tool === 'move-bg') setTool('solid');
+              onClick={() => customColorInputRef.current?.click()}
+              className="w-5 h-5 rounded-full border border-slate-300 flex items-center justify-center transition-transform hover:scale-110 cursor-pointer"
+              style={{
+                background:
+                  'conic-gradient(#f44336,#ffeb3b,#4caf50,#00bcd4,#3f51b5,#e91e63,#f44336)',
               }}
-              className={cn(
-                "w-5 h-5 rounded-full border border-slate-300 transition-transform hover:scale-110 cursor-pointer",
-                color === c && tool !== 'eraser' && "ring-2 ring-blue-600 ring-offset-2"
-              )}
-              style={{ backgroundColor: c }}
-              title={`Color ${c}`}
+              title="Pick any custom color"
+            >
+              <span
+                className="w-2.5 h-2.5 rounded-full border border-white"
+                style={{ backgroundColor: editingNote ? editingNote.color : color }}
+              />
+            </button>
+            <input
+              ref={customColorInputRef}
+              type="color"
+              value={editingNote ? editingNote.color : color}
+              onChange={(e) => handleSelectColor(e.target.value)}
+              className="sr-only"
+              tabIndex={-1}
+              aria-hidden="true"
             />
-          ))}
+          </div>
         </div>
 
         <div className="h-5 w-px bg-slate-200" />
 
-        {/* Labeled Brush Size Slider */}
-        <div className="flex items-center gap-2">
+        {/* Labeled Brush / Font Size Slider */}
+        <div className="flex items-center gap-1.5">
           <label htmlFor="brush-size-slider" className="text-xs font-medium text-slate-600 whitespace-nowrap">
-            Size:
+            {tool === 'highlighter' ? (isCovering ? 'Cover:' : 'Highlight:') : 'Size:'}
           </label>
           <input
             id="brush-size-slider"
             type="range"
-            min="1"
-            max="50"
-            value={strokeWidth}
-            onChange={(e) => setStrokeWidth(parseInt(e.target.value, 10))}
-            className="w-24 h-1.5 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-blue-600"
+            min={tool === 'highlighter' ? 4 : 1}
+            max={tool === 'highlighter' ? 60 : 50}
+            value={editingNote ? editingNote.strokeWidth : strokeWidth}
+            onChange={(e) => handleSelectStrokeWidth(parseInt(e.target.value, 10))}
+            className="w-20 h-1.5 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-blue-600"
           />
-          <span className="text-xs font-mono tabular-nums text-slate-600 w-8">
-            {strokeWidth}px
+          <span className="text-xs font-mono tabular-nums text-slate-600 w-7">
+            {editingNote ? editingNote.strokeWidth : strokeWidth}
           </span>
         </div>
+
+        {/* OverBoard Smoothing Control (0..8) & Smartboard Finger Mode Toggle */}
+        <div className="flex items-center gap-1 bg-slate-100 px-1.5 py-0.5 rounded-lg border border-slate-200/80 text-xs">
+          <span className="text-[11px] text-slate-500 font-medium" title="OverBoard exponential stroke smoothing (0 = off, 8 = max)">
+            Smooth:
+          </span>
+          <button
+            type="button"
+            disabled={smoothLevel <= 0}
+            onClick={() => {
+              const next = Math.max(0, smoothLevel - 1);
+              setSmoothLevel(next);
+              saveLocal('allaboard-smooth-v2', String(next));
+            }}
+            className="w-5 h-5 rounded hover:bg-white text-slate-700 font-bold disabled:opacity-35 cursor-pointer"
+            title="Less smoothing"
+          >
+            &minus;
+          </button>
+          <span className="font-mono font-semibold text-slate-700 w-5 text-center">
+            {smoothLevel === 0 ? 'Off' : smoothLevel}
+          </span>
+          <button
+            type="button"
+            disabled={smoothLevel >= 8}
+            onClick={() => {
+              const next = Math.min(8, smoothLevel + 1);
+              setSmoothLevel(next);
+              saveLocal('allaboard-smooth-v2', String(next));
+            }}
+            className="w-5 h-5 rounded hover:bg-white text-slate-700 font-bold disabled:opacity-35 cursor-pointer"
+            title="More smoothing"
+          >
+            +
+          </button>
+        </div>
+
+        <button
+          type="button"
+          onClick={() => {
+            const next = !fingerScrolls;
+            setFingerScrolls(next);
+            saveLocal('allaboard-finger-scrolls', next ? '1' : '0');
+          }}
+          className={cn(
+            "px-2 py-1 rounded-lg text-[11px] font-medium border transition-colors cursor-pointer whitespace-nowrap",
+            fingerScrolls
+              ? "bg-amber-50 text-amber-900 border-amber-300"
+              : "bg-slate-100 text-slate-600 border-slate-200/80 hover:text-slate-900"
+          )}
+          title="Smartboard / Tablet mode: Choose whether finger/mouse drags pan the board (while stylus writes & palm erases) or draw directly"
+        >
+          Finger: {fingerScrolls ? 'pans' : 'draws'}
+        </button>
 
         <div className="flex-1" />
 
@@ -1511,9 +2307,12 @@ export default function Canvas({
           <button
             type="button"
             disabled={!canDraw}
-            onClick={onUndo}
+            onClick={() => {
+              if (editingNote) commitEditingNote();
+              onUndo();
+            }}
             className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-100 rounded-lg transition-colors whitespace-nowrap shrink-0 cursor-pointer disabled:opacity-40"
-            title="Undo your last stroke (Ctrl+Z)"
+            title="Undo your last stroke or note (Ctrl+Z)"
           >
             <Undo2 size={15} />
             <span>Undo</span>
@@ -1525,6 +2324,7 @@ export default function Canvas({
               <button
                 type="button"
                 onClick={() => {
+                  if (editingNote) setEditingNote(null);
                   onClearMine();
                   setConfirmClearMine(false);
                 }}
@@ -2593,6 +3393,12 @@ export default function Canvas({
       {/* Infinite Canvas Viewport (Hidden when Teacher is in Live Grid Overview) */}
       <div
         ref={containerRef}
+        onPointerDown={handleViewportPointerDown}
+        onPointerMove={handleViewportPointerMove}
+        onPointerUp={handleViewportPointerUp}
+        onPointerCancel={handleViewportPointerUp}
+        onDoubleClick={handleViewportDoubleClick}
+        onContextMenu={(e) => e.preventDefault()}
         className={cn(
           "flex-1 relative overflow-hidden touch-none",
           showLiveGridOverview && isTeacher && "hidden",
@@ -2600,6 +3406,10 @@ export default function Canvas({
             ? isPanning || isMovingBg
               ? "cursor-grabbing"
               : "cursor-grab"
+            : effectiveTool === 'text'
+            ? hoveredNoteId
+              ? "cursor-text"
+              : "cursor-crosshair"
             : "cursor-none"
         )}
         style={
@@ -2616,12 +3426,6 @@ export default function Canvas({
           width={dimensions.width}
           height={dimensions.height}
           onWheel={handleWheel}
-          onMouseDown={handlePointerDown}
-          onMouseMove={handlePointerMove}
-          onMouseUp={handlePointerUp}
-          onTouchStart={handlePointerDown}
-          onTouchMove={handlePointerMove}
-          onTouchEnd={handlePointerUp}
           ref={stageRef}
         >
           {/* Layer 1: Indelible Teacher Background Worksheet Layer */}
@@ -2645,19 +3449,37 @@ export default function Canvas({
             ))}
           </Layer>
 
-          {/* Layer 2..N: Per-Student Isolated Ink Layers */}
-          {elementsGroupedByUser.map(([groupUserId, userElements]) => (
-            <Layer
-              key={groupUserId}
-              x={stagePos.x}
-              y={stagePos.y}
-              scaleX={stageScale}
-              scaleY={stageScale}
-              listening={false}
-            >
-              {userElements.map((el) => renderElement(el))}
-            </Layer>
-          ))}
+          {/* Layer 2..N: Per-Student Isolated Multiply-Highlight Layer + Top Ink Layer (OverBoard architecture) */}
+          {elementsGroupedByUser.map(
+            ({ userId: groupUserId, userElements, goneNoteIds, hasSeeThroughHighlights }) => (
+              <React.Fragment key={groupUserId}>
+                {hasSeeThroughHighlights && (
+                  <MultiplyHighlightLayer
+                    x={stagePos.x}
+                    y={stagePos.y}
+                    scaleX={stageScale}
+                    scaleY={stageScale}
+                  >
+                    {userElements
+                      .filter((el) => isSeeThroughHighlight(el) || el.tool === 'eraser')
+                      .map((el) => renderElement(el, goneNoteIds))}
+                  </MultiplyHighlightLayer>
+                )}
+
+                <Layer
+                  x={stagePos.x}
+                  y={stagePos.y}
+                  scaleX={stageScale}
+                  scaleY={stageScale}
+                  listening={false}
+                >
+                  {userElements
+                    .filter((el) => !isSeeThroughHighlight(el))
+                    .map((el) => renderElement(el, goneNoteIds))}
+                </Layer>
+              </React.Fragment>
+            )
+          )}
 
           {/* Top Overlay Layer: Live Remote Cursors (filtered to current activeBoardId) & Local Brush/Stamp Preview */}
           <Layer
@@ -2700,8 +3522,6 @@ export default function Canvas({
                   radius={
                     effectiveTool === 'stamp'
                       ? Math.max(16, strokeWidth * 1.8 + 10)
-                      : effectiveTool === 'highlighter'
-                      ? Math.max(12, strokeWidth * 2.2) / 2
                       : effectiveTool === 'eraser'
                       ? Math.max(8, strokeWidth * 1.5) / 2
                       : strokeWidth / 2
@@ -2714,76 +3534,66 @@ export default function Canvas({
           </Layer>
         </Stage>
 
-        {/* Inline Floating Text Input for Text ('T') Tool — with mousedown/blur race guard & explicit Commit button */}
-        {textDraft && (
+        {/* OverBoard v45 Editable Multiline Text Note (`makeTyping` port) — Click to type or click existing text to re-type */}
+        {editingNote && (
           <div
-            className="absolute z-40 flex items-center gap-1 bg-white/95 p-1 rounded-lg border-2 border-blue-600 shadow-lg select-text"
+            className="absolute z-40 select-text"
             style={{
-              left: textDraft.screenX,
-              top: textDraft.screenY,
+              left: stagePos.x + editingNote.worldX * stageScale,
+              top: stagePos.y + editingNote.worldY * stageScale,
             }}
-            onMouseDown={(e) => e.stopPropagation()}
-            onTouchStart={(e) => e.stopPropagation()}
+            onPointerDown={(e) => e.stopPropagation()}
+            onDoubleClick={(e) => e.stopPropagation()}
           >
-            <input
-              ref={textInputRef}
-              type="text"
-              value={textDraft.value}
-              onChange={(e) => setTextDraft({ ...textDraft, value: e.target.value })}
+            <textarea
+              ref={noteTextareaRef}
+              rows={1}
+              wrap="off"
+              dir="auto"
+              spellCheck={false}
+              aria-label="Editable text note"
+              value={editingNote.value}
+              onChange={(e) => {
+                setEditingNote({ ...editingNote, value: e.target.value });
+              }}
               onKeyDown={(e) => {
-                if (e.key === 'Enter') {
+                if (e.key === 'Escape' || (e.key === 'Enter' && (e.ctrlKey || e.metaKey))) {
                   e.preventDefault();
-                  commitTextDraft();
-                } else if (e.key === 'Escape') {
-                  setTextDraft(null);
+                  e.stopPropagation();
+                  commitEditingNote();
                 }
               }}
-              onBlur={() => {
-                // Ignore immediate blur caused by the canvas click that just opened this box
-                if (Date.now() - textDraft.openedAt < 250) {
-                  requestAnimationFrame(() => textInputRef.current?.focus());
+              onBlur={(e) => {
+                // Keep note open if user clicked the toolbar to change color or size (`restyle`)
+                const related = e.relatedTarget as HTMLElement | null;
+                if (related && related.closest && related.closest('[data-keep-note="true"]')) {
                   return;
                 }
-                commitTextDraft();
+                if (Date.now() - editingNote.openedAt < 200) {
+                  requestAnimationFrame(() => noteTextareaRef.current?.focus());
+                  return;
+                }
+                setTimeout(() => {
+                  if (document.activeElement !== noteTextareaRef.current) {
+                    commitEditingNote();
+                  }
+                }, 0);
               }}
-              placeholder="Type text & press Enter..."
-              className="px-2 py-0.5 bg-transparent focus:outline-none min-w-[180px]"
+              placeholder="Type note… (Enter = new line, Esc = done)"
+              className="m-0 p-0 border-0 outline-2 outline-dashed outline-blue-600 rounded-xs bg-white/88 resize-none overflow-hidden focus:outline-blue-600 shadow-sm"
               style={{
-                color: color === '#ffffff' ? '#0f172a' : color,
-                fontSize: `${Math.min(28, Math.max(14, strokeWidth * 2 + 10))}px`,
-                fontFamily: 'var(--font-display)',
+                color: editingNote.color,
+                fontSize: `${editingNote.fontSize * stageScale}px`,
+                lineHeight: NOTE_LH,
+                fontFamily: NOTE_FONT,
                 fontWeight: 600,
               }}
             />
-            <button
-              type="button"
-              onMouseDown={(e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                commitTextDraft();
-              }}
-              className="p-1.5 bg-blue-600 text-white rounded hover:bg-blue-700 cursor-pointer shrink-0"
-              title="Add text to board (Enter)"
-            >
-              <Check size={14} />
-            </button>
-            <button
-              type="button"
-              onMouseDown={(e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                setTextDraft(null);
-              }}
-              className="p-1.5 text-slate-400 hover:text-slate-700 rounded cursor-pointer shrink-0"
-              title="Cancel (Esc)"
-            >
-              <X size={14} />
-            </button>
           </div>
         )}
 
         {/* Custom Precision Cursor Overlay when Drawing */}
-        {effectiveTool !== 'pan' && effectiveTool !== 'move-bg' && (
+        {effectiveTool !== 'pan' && effectiveTool !== 'move-bg' && effectiveTool !== 'text' && (
           <div
             className="pointer-events-none absolute z-30 flex items-center justify-center"
             style={{
