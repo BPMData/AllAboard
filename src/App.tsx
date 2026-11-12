@@ -164,6 +164,7 @@ export default function App() {
   }, [breakoutConfig.chatScope, activeBoardId, subBoards, messages]);
 
   useEffect(() => {
+    document.title = roomId && roomId !== 'main' ? `AllAboard — #${roomId}` : 'AllAboard';
     try {
       const url = new URL(window.location.href);
       if (roomId === 'main') {
