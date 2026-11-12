@@ -875,6 +875,30 @@ async function startServer() {
       }
     });
 
+    socket.on('element-remove', ({ id, boardId = 'main' }) => {
+      const meta = socketMeta.get(socket.id);
+      if (!meta || !id) return;
+      const room = rooms.get(meta.roomId);
+      if (!room) return;
+
+      const senderRecord = room.usersByUserId.get(meta.userId);
+      if (room.isCanvasLocked && !senderRecord?.isTeacher) return;
+
+      const targetElements = getBoardElements(room, boardId);
+      if (!targetElements) return;
+
+      const idx = targetElements.findIndex((item) => item.id === id);
+      if (idx !== -1) {
+        const el = targetElements[idx];
+        if (el.userId === meta.userId || senderRecord?.isTeacher) {
+          targetElements.splice(idx, 1);
+          room.lastActiveAt = Date.now();
+          scheduleSaveToDisk();
+          io.to(room.id).emit('element-removed', { id, boardId });
+        }
+      }
+    });
+
     socket.on('cursor-move', (cursorData) => {
       const meta = socketMeta.get(socket.id);
       if (!meta) return;
