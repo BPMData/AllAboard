@@ -9,7 +9,7 @@ import { fileURLToPath } from 'url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-const DATA_DIR = path.join(process.cwd(), '.data');
+const DATA_DIR = process.env.DATA_DIR || path.join(process.cwd(), '.data');
 const STORE_FILE = path.join(DATA_DIR, 'rooms-store.json');
 const ROOM_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 days inactivity cleanup
 
@@ -71,7 +71,11 @@ async function startServer() {
     maxHttpBufferSize: 3e7, // 30 MB for PDF worksheets, subBoards, and JSON snapshots
   });
 
-  const PORT = 3000;
+  const PORT = Number(process.env.PORT) || 3000;
+
+  app.get('/healthz', (_req, res) => {
+    res.status(200).json({ status: 'ok' });
+  });
 
   const rooms: Map<string, RoomState> = new Map();
   const socketMeta: Map<string, { roomId: string; userId: string }> = new Map();
@@ -106,6 +110,7 @@ async function startServer() {
 
   function loadRoomsFromDisk() {
     try {
+      fs.mkdirSync(DATA_DIR, { recursive: true });
       if (!fs.existsSync(STORE_FILE)) return;
       const raw = fs.readFileSync(STORE_FILE, 'utf-8');
       const parsed = JSON.parse(raw);
@@ -151,9 +156,7 @@ async function startServer() {
       saveTimeout = null;
     }
     try {
-      if (!fs.existsSync(DATA_DIR)) {
-        fs.mkdirSync(DATA_DIR, { recursive: true });
-      }
+      fs.mkdirSync(DATA_DIR, { recursive: true });
       const now = Date.now();
       const serialized: SerializedRoom[] = [];
       for (const [roomId, room] of rooms.entries()) {
@@ -188,11 +191,13 @@ async function startServer() {
           });
         }
       }
+      const tmpFile = `${STORE_FILE}.tmp`;
       fs.writeFileSync(
-        STORE_FILE,
+        tmpFile,
         JSON.stringify({ updatedAt: now, rooms: serialized }),
         'utf-8'
       );
+      fs.renameSync(tmpFile, STORE_FILE);
     } catch (err) {
       console.error('Failed to save rooms to disk:', err);
     }
@@ -1013,6 +1018,28 @@ async function startServer() {
   httpServer.listen(PORT, '0.0.0.0', () => {
     console.log(`Server running on http://localhost:${PORT}`);
   });
+
+  let isShuttingDown = false;
+  function handleShutdown(signal: string) {
+    if (isShuttingDown) return;
+    isShuttingDown = true;
+    console.log(`Received ${signal}, flushing rooms to disk and shutting down...`);
+    flushRoomsToDisk();
+
+    const forceExitTimeout = setTimeout(() => {
+      process.exit(0);
+    }, 8000);
+    forceExitTimeout.unref();
+
+    io.close(() => {
+      httpServer.close(() => {
+        process.exit(0);
+      });
+    });
+  }
+
+  process.on('SIGTERM', () => handleShutdown('SIGTERM'));
+  process.on('SIGINT', () => handleShutdown('SIGINT'));
 }
 
 startServer();

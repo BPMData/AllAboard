@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { io, Socket } from 'socket.io-client';
 import {
   CanvasElement,
@@ -81,6 +81,15 @@ export default function App() {
       return false;
     }
   });
+
+  const userNameRef = useRef<string>(userName);
+  const isJoinedRef = useRef<boolean>(isJoined);
+  useEffect(() => {
+    userNameRef.current = userName;
+  }, [userName]);
+  useEffect(() => {
+    isJoinedRef.current = isJoined;
+  }, [isJoined]);
 
   // Main Board State + Sub-Boards State
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -169,26 +178,35 @@ export default function App() {
   }, [roomId]);
 
   useEffect(() => {
-    const newSocket = io();
+    const newSocket = io({
+      reconnection: true,
+      reconnectionAttempts: Infinity,
+      reconnectionDelay: 1000,
+      reconnectionDelayMax: 5000,
+    });
     setSocket(newSocket);
 
     newSocket.on('connect', () => {
-      try {
-        const savedName = localStorage.getItem(STORAGE_KEYS.USER_NAME);
-        const savedJoined = localStorage.getItem(STORAGE_KEYS.IS_JOINED) === 'true';
-        const savedPin = localStorage.getItem(STORAGE_KEYS.TEACHER_PIN_PREFIX + roomId) || undefined;
+      let savedName = userNameRef.current;
+      let savedJoined = isJoinedRef.current;
+      let savedPin: string | undefined;
 
-        if (savedName && savedName.trim() && savedJoined) {
-          newSocket.emit('join-room', {
-            roomId,
-            userId,
-            name: savedName.trim(),
-            color: userColor,
-            teacherPin: savedPin,
-          });
-        }
+      try {
+        savedName = localStorage.getItem(STORAGE_KEYS.USER_NAME) || savedName;
+        savedJoined = localStorage.getItem(STORAGE_KEYS.IS_JOINED) === 'true' || savedJoined;
+        savedPin = localStorage.getItem(STORAGE_KEYS.TEACHER_PIN_PREFIX + roomId) || undefined;
       } catch {
         // Ignore storage errors
+      }
+
+      if (savedName && savedName.trim() && savedJoined) {
+        newSocket.emit('join-room', {
+          roomId,
+          userId,
+          name: savedName.trim(),
+          color: userColor,
+          teacherPin: savedPin,
+        });
       }
     });
 
