@@ -37,7 +37,7 @@ function loadImage(src: string): Promise<HTMLImageElement | null> {
   });
 }
 
-function computeBoardWorldBounds(
+export function computeBoardWorldBounds(
   elements: CanvasElement[],
   background: RoomBackground | null
 ): { minX: number; minY: number; maxX: number; maxY: number } {
@@ -437,7 +437,7 @@ async function renderBoardPageJpeg(
 /**
  * Assemble a standard PDF 1.4 document with one landscape page (842 x 595 pt) per board JPEG.
  */
-function buildMultiPagePdfFromJpegs(
+export function buildMultiPagePdfFromJpegs(
   pages: Array<{ jpegBytes: Uint8Array; widthPx: number; heightPx: number }>
 ): Blob {
   const pageWidthPt = 842;
@@ -516,17 +516,16 @@ function buildMultiPagePdfFromJpegs(
   return new Blob(chunks, { type: 'application/pdf' });
 }
 
-export async function exportAllBoardsToPdf(params: {
-  roomId: string;
-  mainElements: CanvasElement[];
-  mainBackground: RoomBackground | null;
-  subBoards: SubBoardData[];
-  users: User[];
-  onProgress?: (current: number, total: number) => void;
-  fileLabel?: string;
-}): Promise<void> {
-  const { roomId, mainElements, mainBackground, subBoards, users, onProgress, fileLabel } = params;
-
+/**
+ * Decide which boards go into the export and build their header text.
+ * The main board is included when it has content, or when there are no sub-boards at all.
+ */
+export function buildExportEntries(
+  mainElements: CanvasElement[],
+  mainBackground: RoomBackground | null,
+  subBoards: SubBoardData[],
+  users: User[]
+): BoardExportEntry[] {
   const entries: BoardExportEntry[] = [];
 
   // Include Main Class Board if it has a worksheet or drawings, or if there are no subBoards
@@ -552,6 +551,22 @@ export async function exportAllBoardsToPdf(params: {
       background: sb.background,
     });
   }
+
+  return entries;
+}
+
+export async function exportAllBoardsToPdf(params: {
+  roomId: string;
+  mainElements: CanvasElement[];
+  mainBackground: RoomBackground | null;
+  subBoards: SubBoardData[];
+  users: User[];
+  onProgress?: (current: number, total: number) => void;
+  fileLabel?: string;
+}): Promise<void> {
+  const { roomId, mainElements, mainBackground, subBoards, users, onProgress, fileLabel } = params;
+
+  const entries = buildExportEntries(mainElements, mainBackground, subBoards, users);
 
   const renderedPages: Array<{ jpegBytes: Uint8Array; widthPx: number; heightPx: number }> = [];
   for (let i = 0; i < entries.length; i++) {
