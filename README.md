@@ -54,6 +54,20 @@ npm run dev
 
 Open `http://localhost:3000` in your browser. Share the room URL or in-app **Invite QR Code** with students to join.
 
+## Testing
+
+```bash
+# Unit + server integration tests (Node test runner, no browser needed)
+npm test
+
+# Browser end-to-end tests (Playwright + Chromium; boots its own server on port 3100)
+npx playwright install chromium   # first time only
+npm run test:e2e
+```
+
+- `tests/` — Node tests for pure logic (`inkCore`, `breakoutRounds`, `batchPdfExport`) and Socket.IO server behavior.
+- `e2e/` — Playwright specs: multi-user classroom flows (chat, live ink sync, undo, lock, Clear Ink, Teacher PIN) and the canvas/PDF.js code in `worksheetLoader` and `batchPdfExport`, which needs a real browser.
+
 ---
 
 ## Tech Stack

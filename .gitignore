@@ -8,3 +8,5 @@ coverage/
 !.env.example
 .data/
 human_tests/
+test-results/
+playwright-report/
