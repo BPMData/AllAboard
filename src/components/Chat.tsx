@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
-import { ChatMessage, User, CanvasElement } from '../types';
+import { ChatMessage, User, CanvasElement, BannedUserRecord } from '../types';
 import {
   Send,
   MessageSquare,
@@ -12,6 +12,10 @@ import {
   Copy,
   KeyRound,
   X,
+  Trash2,
+  UserX,
+  Lock,
+  RotateCcw,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '../lib/utils';
@@ -27,12 +31,18 @@ interface ChatProps {
   userName: string;
   userColor: string;
   isTeacher: boolean;
+  isNameLocked?: boolean;
+  bannedUsers?: BannedUserRecord[];
   onAuthenticateTeacher: (pin: string) => Promise<{ ok: boolean; error?: string; mode?: string }>;
   onStepDownTeacher: () => void;
   onCreateNewRoom: () => void;
   onSwitchRoom: (newRoomId: string) => void;
   onUpdateName: (newName: string) => void;
   onClearUserDrawings: (targetUserId: string) => void;
+  onTeacherRenameUser?: (targetUserId: string, newName: string) => void;
+  onTeacherDeleteMessage?: (messageId: string) => void;
+  onTeacherKickUser?: (targetUserId: string, mode: 'kick' | 'ban', targetName?: string) => void;
+  onTeacherUnbanUser?: (targetUserId: string) => void;
 }
 
 const USER_COLORS = [
@@ -59,18 +69,29 @@ export default function Chat({
   userName,
   userColor,
   isTeacher,
+  isNameLocked = false,
+  bannedUsers = [],
   onAuthenticateTeacher,
   onStepDownTeacher,
   onCreateNewRoom,
   onSwitchRoom,
   onUpdateName,
   onClearUserDrawings,
+  onTeacherRenameUser,
+  onTeacherDeleteMessage,
+  onTeacherKickUser,
+  onTeacherUnbanUser,
 }: ChatProps) {
   const [activeTab, setActiveTab] = useState<'chat' | 'roster'>('chat');
   const [inputText, setInputText] = useState('');
   const [isEditingName, setIsEditingName] = useState(false);
   const [nameDraft, setNameDraft] = useState(userName);
   const [confirmEraseUserId, setConfirmEraseUserId] = useState<string | null>(null);
+
+  // Teacher Moderation States (Force Rename & Kick/Ban Confirmation)
+  const [renamingUserId, setRenamingUserId] = useState<string | null>(null);
+  const [teacherRenameDraft, setTeacherRenameDraft] = useState<string>('');
+  const [confirmRemoveUserId, setConfirmRemoveUserId] = useState<string | null>(null);
 
   // Room & Teacher PIN Popover states
   const [showPinPrompt, setShowPinPrompt] = useState(false);
@@ -86,6 +107,12 @@ export default function Chat({
   useEffect(() => {
     setNameDraft(userName);
   }, [userName]);
+
+  useEffect(() => {
+    if (isNameLocked && !isTeacher) {
+      setIsEditingName(false);
+    }
+  }, [isNameLocked, isTeacher]);
 
   useEffect(() => {
     setRoomDraft(roomId);
@@ -108,7 +135,14 @@ export default function Chat({
   const fullParticipantList = useMemo(() => {
     const map = new Map<
       string,
-      { userId: string; name: string; color: string; isTeacher: boolean; isOnline: boolean }
+      {
+        userId: string;
+        name: string;
+        color: string;
+        isTeacher: boolean;
+        isNameLocked?: boolean;
+        isOnline: boolean;
+      }
     >();
     for (const u of users) {
       map.set(u.userId, { ...u, isOnline: true });
@@ -142,10 +176,24 @@ export default function Chat({
 
   const handleSaveName = (e: React.FormEvent) => {
     e.preventDefault();
+    if (isNameLocked && !isTeacher) {
+      setIsEditingName(false);
+      return;
+    }
     if (nameDraft.trim()) {
       onUpdateName(nameDraft.trim());
       setIsEditingName(false);
     }
+  };
+
+  const handleTeacherRenameSubmit = (e: React.FormEvent, targetUserId: string) => {
+    e.preventDefault();
+    const cleaned = teacherRenameDraft.trim();
+    if (cleaned && onTeacherRenameUser) {
+      onTeacherRenameUser(targetUserId, cleaned);
+    }
+    setRenamingUserId(null);
+    setTeacherRenameDraft('');
   };
 
   const handleCopyRoomLink = () => {
@@ -419,16 +467,16 @@ export default function Chat({
                       initial={{ opacity: 0, y: 6 }}
                       animate={{ opacity: 1, y: 0 }}
                       transition={{ duration: 0.14 }}
-                      className="flex flex-col items-start"
+                      className="group flex flex-col items-start"
                     >
-                      <div className="flex items-center gap-1.5 mb-1 px-0.5 text-xs">
+                      <div className="flex items-center gap-1.5 mb-1 px-0.5 text-xs w-full">
                         <span
                           className="w-2 h-2 rounded-xs shrink-0"
                           style={{ backgroundColor: resolvedColor }}
                           aria-hidden="true"
                         />
                         <span
-                          className="font-display font-semibold text-xs truncate max-w-[165px]"
+                          className="font-display font-semibold text-xs truncate max-w-[140px]"
                           style={{ color: resolvedColor }}
                         >
                           {msg.userName}
@@ -449,6 +497,17 @@ export default function Chat({
                             minute: '2-digit',
                           })}
                         </span>
+                        {isTeacher && onTeacherDeleteMessage && (
+                          <button
+                            type="button"
+                            onClick={() => onTeacherDeleteMessage(msg.id)}
+                            className="p-0.5 text-slate-400 hover:text-red-600 rounded transition-colors cursor-pointer"
+                            title="Delete chat message"
+                            aria-label={`Delete message from ${msg.userName}`}
+                          >
+                            <Trash2 size={12} />
+                          </button>
+                        )}
                       </div>
                       <div
                         className={cn(
@@ -491,93 +550,255 @@ export default function Chat({
         <div className="flex-1 overflow-y-auto p-3.5 space-y-2">
           <div className="flex items-center justify-between text-xs text-slate-500 pb-1 border-b border-slate-200/80">
             <span>Student / Role</span>
-            <span>Board Items</span>
+            <span>Actions / Items</span>
           </div>
 
           {fullParticipantList.map((participant) => {
             const count = strokeCountsByUser[participant.userId] || 0;
             const isMe = participant.userId === userId;
-            const isConfirming = confirmEraseUserId === participant.userId;
+            const isConfirmingErase = confirmEraseUserId === participant.userId;
+            const isRenamingThis = renamingUserId === participant.userId;
+            const isConfirmingRemove = confirmRemoveUserId === participant.userId;
 
             return (
               <div
                 key={participant.userId}
-                className="flex items-center justify-between gap-2 p-2.5 rounded-lg bg-white border border-slate-200/80"
+                className="flex flex-col gap-2 p-2.5 rounded-lg bg-white border border-slate-200/80"
               >
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-1.5">
-                    <span
-                      className="w-2.5 h-2.5 rounded-xs shrink-0"
-                      style={{ backgroundColor: participant.color }}
-                    />
-                    <span className="font-medium text-sm text-slate-900 truncate">
-                      {participant.name}
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-1.5 text-[11px] text-slate-500 mt-0.5">
-                    <span>{participant.isOnline ? 'Online' : 'Offline'}</span>
-                    {participant.isTeacher && (
-                      <>
-                        <span aria-hidden="true">·</span>
-                        <span className="text-amber-700 font-medium">Teacher</span>
-                      </>
-                    )}
-                    {isMe && (
-                      <>
-                        <span aria-hidden="true">·</span>
-                        <span>You</span>
-                      </>
-                    )}
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-2 shrink-0">
-                  <span className="font-mono tabular-nums text-xs text-slate-600">
-                    {count} {count === 1 ? 'item' : 'items'}
-                  </span>
-
-                  {(isTeacher || isMe) && count > 0 && (
-                    isConfirming ? (
-                      <div className="flex items-center gap-1">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="min-w-0 flex-1">
+                    {isRenamingThis ? (
+                      <form
+                        onSubmit={(e) => handleTeacherRenameSubmit(e, participant.userId)}
+                        className="flex items-center gap-1"
+                      >
+                        <input
+                          type="text"
+                          value={teacherRenameDraft}
+                          onChange={(e) => setTeacherRenameDraft(e.target.value)}
+                          placeholder="New name..."
+                          autoFocus
+                          maxLength={28}
+                          className="w-full px-2 py-0.5 bg-slate-50 border border-slate-300 rounded text-xs text-slate-900 focus:outline-none focus:border-blue-500"
+                        />
+                        <button
+                          type="submit"
+                          className="p-1 bg-blue-600 text-white rounded hover:bg-blue-700 cursor-pointer shrink-0"
+                          title="Save & lock student name"
+                        >
+                          <Check size={12} />
+                        </button>
                         <button
                           type="button"
                           onClick={() => {
-                            onClearUserDrawings(participant.userId);
-                            setConfirmEraseUserId(null);
+                            setRenamingUserId(null);
+                            setTeacherRenameDraft('');
                           }}
-                          className="px-2 py-1 text-xs font-medium bg-red-600 text-white rounded hover:bg-red-700 transition-colors whitespace-nowrap cursor-pointer"
+                          className="p-1 text-slate-400 hover:text-slate-700 cursor-pointer shrink-0"
+                          title="Cancel"
                         >
-                          Confirm
+                          <X size={12} />
                         </button>
-                        <button
-                          type="button"
-                          onClick={() => setConfirmEraseUserId(null)}
-                          className="px-1.5 py-1 text-xs text-slate-500 hover:text-slate-800 cursor-pointer"
-                        >
-                          Cancel
-                        </button>
-                      </div>
+                      </form>
                     ) : (
+                      <div className="flex items-center gap-1.5">
+                        <span
+                          className="w-2.5 h-2.5 rounded-xs shrink-0"
+                          style={{ backgroundColor: participant.color }}
+                        />
+                        <span className="font-medium text-sm text-slate-900 truncate">
+                          {participant.name}
+                        </span>
+                        {participant.isNameLocked && (
+                          <span
+                            className="inline-flex items-center gap-0.5 px-1 py-0.5 rounded bg-slate-100 text-[10px] text-slate-500 font-medium shrink-0"
+                            title="Name locked by teacher"
+                          >
+                            <Lock size={9} />
+                          </span>
+                        )}
+                      </div>
+                    )}
+                    <div className="flex items-center gap-1.5 text-[11px] text-slate-500 mt-0.5">
+                      <span>{participant.isOnline ? 'Online' : 'Offline'}</span>
+                      {participant.isTeacher && (
+                        <>
+                          <span aria-hidden="true">·</span>
+                          <span className="text-amber-700 font-medium">Teacher</span>
+                        </>
+                      )}
+                      {isMe && (
+                        <>
+                          <span aria-hidden="true">·</span>
+                          <span>You</span>
+                        </>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-1 shrink-0">
+                    <span className="font-mono tabular-nums text-xs text-slate-600 mr-1">
+                      {count} {count === 1 ? 'item' : 'items'}
+                    </span>
+
+                    {isTeacher && !isRenamingThis && (
                       <button
                         type="button"
-                        onClick={() => setConfirmEraseUserId(participant.userId)}
-                        className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-md transition-colors cursor-pointer"
-                        title={`Erase all drawings by ${participant.name}`}
+                        onClick={() => {
+                          setRenamingUserId(participant.userId);
+                          setTeacherRenameDraft(participant.name);
+                          setConfirmRemoveUserId(null);
+                          setConfirmEraseUserId(null);
+                        }}
+                        className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-md transition-colors cursor-pointer"
+                        title={`Rename ${participant.name} (locks student from changing it back)`}
                       >
-                        <Eraser size={14} />
+                        <Edit2 size={13} />
                       </button>
-                    )
-                  )}
+                    )}
+
+                    {(isTeacher || isMe) && count > 0 && (
+                      isConfirmingErase ? (
+                        <div className="flex items-center gap-1">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              onClearUserDrawings(participant.userId);
+                              setConfirmEraseUserId(null);
+                            }}
+                            className="px-2 py-1 text-xs font-medium bg-red-600 text-white rounded hover:bg-red-700 transition-colors whitespace-nowrap cursor-pointer"
+                          >
+                            Erase
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setConfirmEraseUserId(null)}
+                            className="px-1.5 py-1 text-xs text-slate-500 hover:text-slate-800 cursor-pointer"
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setConfirmEraseUserId(participant.userId);
+                            setConfirmRemoveUserId(null);
+                          }}
+                          className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-md transition-colors cursor-pointer"
+                          title={`Erase all drawings by ${participant.name}`}
+                        >
+                          <Eraser size={14} />
+                        </button>
+                      )
+                    )}
+
+                    {isTeacher && !isMe && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setConfirmRemoveUserId(
+                            isConfirmingRemove ? null : participant.userId
+                          );
+                          setConfirmEraseUserId(null);
+                          setRenamingUserId(null);
+                        }}
+                        className={cn(
+                          "p-1.5 rounded-md transition-colors cursor-pointer",
+                          isConfirmingRemove
+                            ? "text-red-600 bg-red-50"
+                            : "text-slate-400 hover:text-red-600 hover:bg-red-50"
+                        )}
+                        title={`Kick or Ban ${participant.name}`}
+                      >
+                        <UserX size={14} />
+                      </button>
+                    )}
+                  </div>
                 </div>
+
+                {/* Inline Kick / Ban Confirmation Warning */}
+                {isTeacher && !isMe && isConfirmingRemove && (
+                  <div className="p-2.5 rounded-lg bg-red-50/90 border border-red-200 text-xs space-y-2">
+                    <p className="text-red-900 font-medium leading-snug">
+                      Remove <span className="font-semibold">{participant.name}</span> from this classroom?
+                      <span className="block text-[11px] text-red-700 font-normal mt-0.5">
+                        Their existing drawings and chat messages will be kept unless you erase them.
+                      </span>
+                    </p>
+                    <div className="flex items-center gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          onTeacherKickUser?.(participant.userId, 'kick', participant.name);
+                          setConfirmRemoveUserId(null);
+                        }}
+                        className="px-2.5 py-1 rounded bg-amber-600 hover:bg-amber-700 text-white font-semibold text-xs transition-colors cursor-pointer"
+                        title="Boot student to the lobby (they can rejoin)"
+                      >
+                        Kick
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          onTeacherKickUser?.(participant.userId, 'ban', participant.name);
+                          setConfirmRemoveUserId(null);
+                        }}
+                        className="px-2.5 py-1 rounded bg-red-600 hover:bg-red-700 text-white font-semibold text-xs transition-colors cursor-pointer"
+                        title="Boot student and block them from rejoining until unbanned"
+                      >
+                        Ban
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setConfirmRemoveUserId(null)}
+                        className="ml-auto px-2 py-1 text-xs text-slate-600 hover:text-slate-900 cursor-pointer"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
             );
           })}
+
+          {/* Banned Students Management Section (Teacher Only) */}
+          {isTeacher && bannedUsers.length > 0 && (
+            <div className="pt-3 mt-3 border-t border-slate-200 space-y-2">
+              <div className="flex items-center justify-between text-xs font-semibold text-red-700">
+                <span>Banned Students ({bannedUsers.length})</span>
+              </div>
+              {bannedUsers.map((banned) => (
+                <div
+                  key={banned.userId}
+                  className="flex items-center justify-between gap-2 p-2 rounded-lg bg-red-50/60 border border-red-200/80 text-xs"
+                >
+                  <div className="min-w-0">
+                    <span className="font-medium text-slate-900 truncate block">
+                      {banned.name}
+                    </span>
+                    <span className="text-[10px] text-red-600">Blocked from rejoining</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => onTeacherUnbanUser?.(banned.userId)}
+                    className="flex items-center gap-1 px-2 py-1 rounded bg-white border border-slate-300 hover:bg-slate-100 text-slate-700 font-medium text-xs cursor-pointer shrink-0"
+                    title={`Unban ${banned.name}`}
+                  >
+                    <RotateCcw size={11} />
+                    <span>Unban</span>
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
 
       {/* Persistent Student Identity Footer */}
       <div className="p-3 bg-slate-100/80 border-t border-slate-200 text-xs">
-        {isEditingName ? (
+        {isEditingName && (!isNameLocked || isTeacher) ? (
           <form onSubmit={handleSaveName} className="flex items-center gap-1.5">
             <input
               type="text"
@@ -608,15 +829,25 @@ export default function Chat({
                 {strokeCountsByUser[userId] || 0} drawn
               </span>
             </div>
-            <button
-              type="button"
-              onClick={() => setIsEditingName(true)}
-              className="flex items-center gap-1 text-slate-500 hover:text-slate-900 transition-colors whitespace-nowrap shrink-0 cursor-pointer"
-              title="Change display name"
-            >
-              <Edit2 size={12} />
-              <span>Rename</span>
-            </button>
+            {isNameLocked && !isTeacher ? (
+              <span
+                className="flex items-center gap-1 text-[11px] text-slate-400 whitespace-nowrap shrink-0"
+                title="Your display name was set by the teacher and cannot be changed"
+              >
+                <Lock size={11} />
+                <span>Name Locked</span>
+              </span>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setIsEditingName(true)}
+                className="flex items-center gap-1 text-slate-500 hover:text-slate-900 transition-colors whitespace-nowrap shrink-0 cursor-pointer"
+                title="Change display name"
+              >
+                <Edit2 size={12} />
+                <span>Rename</span>
+              </button>
+            )}
           </div>
         )}
       </div>

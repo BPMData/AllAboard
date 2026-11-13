@@ -73,12 +73,21 @@ export interface ChatMessage {
   timestamp: number;
 }
 
+export type GridMode = 'blank' | 'dots' | 'graph' | 'isometric';
+
 export interface User {
   userId: string;
   name: string;
   color: string;
   isTeacher: boolean;
+  isNameLocked?: boolean;
   onlineCount?: number;
+}
+
+export interface BannedUserRecord {
+  userId: string;
+  name: string;
+  bannedAt: number;
 }
 
 export type BreakoutMode = 'main' | 'individual' | 'groups';
@@ -119,6 +128,7 @@ export interface RoomSettings {
   lastSavedAt?: number;
   breakoutConfig?: BreakoutConfig;
   timer?: ClassroomTimerState;
+  bannedUsers?: BannedUserRecord[];
 }
 
 export interface RemoteCursor {

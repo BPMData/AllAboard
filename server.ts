@@ -23,7 +23,14 @@ interface ServerUserRecord {
   name: string;
   color: string;
   isTeacher: boolean;
+  isNameLocked?: boolean;
   sockets: Set<string>;
+}
+
+interface BannedUserRecord {
+  userId: string;
+  name: string;
+  bannedAt: number;
 }
 
 interface SubBoardState {
@@ -58,6 +65,8 @@ interface RoomState {
   breakoutConfig: BreakoutConfigState;
   timer: TimerState;
   usersByUserId: Map<string, ServerUserRecord>;
+  lockedNames: Record<string, string>;
+  bannedUsers: Record<string, BannedUserRecord>;
   isCanvasLocked: boolean;
   teacherPin: string | null;
   lastActiveAt: number;
@@ -71,6 +80,8 @@ interface SerializedRoom {
   subBoards?: Record<string, SubBoardState>;
   breakoutConfig?: BreakoutConfigState;
   timer?: TimerState;
+  lockedNames?: Record<string, string>;
+  bannedUsers?: Record<string, BannedUserRecord>;
   isCanvasLocked: boolean;
   teacherPin: string | null;
   lastActiveAt: number;
@@ -161,6 +172,8 @@ export async function startServer(options: StartServerOptions = {}) {
             autoLockOnExpire: false,
           },
           usersByUserId: new Map(),
+          lockedNames: item.lockedNames && typeof item.lockedNames === 'object' ? item.lockedNames : {},
+          bannedUsers: item.bannedUsers && typeof item.bannedUsers === 'object' ? item.bannedUsers : {},
           isCanvasLocked: Boolean(item.isCanvasLocked),
           teacherPin: item.teacherPin || null,
           lastActiveAt: lastActive,
@@ -199,7 +212,9 @@ export async function startServer(options: StartServerOptions = {}) {
         room.messages.length > 0 ||
         room.background !== null ||
         room.subBoards.size > 0 ||
-        room.teacherPin !== null
+        room.teacherPin !== null ||
+        Object.keys(room.lockedNames).length > 0 ||
+        Object.keys(room.bannedUsers).length > 0
       ) {
         serialized.push({
           id: room.id,
@@ -209,6 +224,8 @@ export async function startServer(options: StartServerOptions = {}) {
           subBoards: serializeSubBoards(room.subBoards),
           breakoutConfig: room.breakoutConfig,
           timer: room.timer,
+          lockedNames: room.lockedNames,
+          bannedUsers: room.bannedUsers,
           isCanvasLocked: room.isCanvasLocked,
           teacherPin: room.teacherPin,
           lastActiveAt: room.lastActiveAt,
@@ -319,6 +336,8 @@ export async function startServer(options: StartServerOptions = {}) {
           autoLockOnExpire: false,
         },
         usersByUserId: new Map(),
+        lockedNames: {},
+        bannedUsers: {},
         isCanvasLocked: false,
         teacherPin: null,
         lastActiveAt: Date.now(),
@@ -329,7 +348,13 @@ export async function startServer(options: StartServerOptions = {}) {
   }
 
   function getRosterPayload(room: RoomState) {
-    const list: Array<{ userId: string; name: string; color: string; isTeacher: boolean }> = [];
+    const list: Array<{
+      userId: string;
+      name: string;
+      color: string;
+      isTeacher: boolean;
+      isNameLocked?: boolean;
+    }> = [];
     for (const record of room.usersByUserId.values()) {
       if (record.sockets.size > 0) {
         list.push({
@@ -337,6 +362,7 @@ export async function startServer(options: StartServerOptions = {}) {
           name: record.name,
           color: record.color,
           isTeacher: record.isTeacher,
+          isNameLocked: Boolean(record.isNameLocked || room.lockedNames[record.userId]),
         });
       }
     }
@@ -351,6 +377,7 @@ export async function startServer(options: StartServerOptions = {}) {
       lastSavedAt: room.lastActiveAt,
       breakoutConfig: room.breakoutConfig,
       timer: room.timer,
+      bannedUsers: Object.values(room.bannedUsers),
     };
   }
 
@@ -433,10 +460,8 @@ export async function startServer(options: StartServerOptions = {}) {
       }
 
       const room = getOrCreateRoom(rawRoomId);
-      room.lastActiveAt = Date.now();
-      socket.join(room.id);
-      socketMeta.set(socket.id, { roomId: room.id, userId });
 
+      // Block banned students from joining the room
       const existing = room.usersByUserId.get(userId);
       let isVerifiedTeacher = false;
       if (room.teacherPin && teacherPin && String(teacherPin).trim() === room.teacherPin) {
@@ -445,24 +470,38 @@ export async function startServer(options: StartServerOptions = {}) {
         isVerifiedTeacher = true;
       }
 
+      if (room.bannedUsers[userId] && !isVerifiedTeacher) {
+        socket.emit('room-kicked', { reason: 'banned', roomId: room.id });
+        return;
+      }
+
+      room.lastActiveAt = Date.now();
+      socket.join(room.id);
+      socketMeta.set(socket.id, { roomId: room.id, userId });
+
+      const lockedName = room.lockedNames[userId];
+      const isNameLocked = Boolean(lockedName);
+      const effectiveName = lockedName || (name && String(name).trim() ? String(name).trim() : '');
+
       let createdSubBoard = false;
-      if (name && String(name).trim()) {
-        const trimmedName = String(name).trim();
+      if (effectiveName) {
         if (existing) {
-          existing.name = trimmedName;
+          existing.name = effectiveName;
           existing.color = color || existing.color;
           existing.isTeacher = isVerifiedTeacher;
+          existing.isNameLocked = isNameLocked;
           existing.sockets.add(socket.id);
         } else {
           room.usersByUserId.set(userId, {
             userId,
-            name: trimmedName,
+            name: effectiveName,
             color: color || '#2563eb',
             isTeacher: isVerifiedTeacher,
+            isNameLocked,
             sockets: new Set([socket.id]),
           });
         }
-        createdSubBoard = ensureIndividualBoardForUser(room, userId, trimmedName, isVerifiedTeacher);
+        createdSubBoard = ensureIndividualBoardForUser(room, userId, effectiveName, isVerifiedTeacher);
       }
 
       socket.emit('init', {
@@ -473,6 +512,8 @@ export async function startServer(options: StartServerOptions = {}) {
         users: getRosterPayload(room),
         roomSettings: getRoomSettingsPayload(room),
         isTeacher: isVerifiedTeacher,
+        assignedName: effectiveName || undefined,
+        isNameLocked,
       });
 
       broadcastRoster(room);
@@ -853,7 +894,8 @@ export async function startServer(options: StartServerOptions = {}) {
       if (!room) return;
       const existing = room.usersByUserId.get(userId);
       if (existing) {
-        if (name) {
+        const isLockedByTeacher = Boolean(room.lockedNames[userId] || existing.isNameLocked);
+        if (name && (!isLockedByTeacher || existing.isTeacher)) {
           existing.name = String(name).trim();
           const indBoard = room.subBoards.get(`ind_${userId}`);
           if (indBoard) {
@@ -864,6 +906,211 @@ export async function startServer(options: StartServerOptions = {}) {
         if (color) existing.color = color;
         broadcastRoster(room);
       }
+    });
+
+    // Teacher-only Force Rename User + Permanent Name Lock + Retroactive Scrubbing
+    socket.on('teacher:rename-user', ({ targetUserId, newName }, callback) => {
+      const meta = socketMeta.get(socket.id);
+      if (!meta) {
+        callback?.({ ok: false, error: 'Not in a room.' });
+        return;
+      }
+      const room = rooms.get(meta.roomId);
+      if (!room) {
+        callback?.({ ok: false, error: 'Room not found.' });
+        return;
+      }
+      const callerRecord = room.usersByUserId.get(meta.userId);
+      if (!callerRecord?.isTeacher) {
+        callback?.({ ok: false, error: 'Only a verified Teacher can rename users.' });
+        return;
+      }
+
+      const cleanName = String(newName || '').trim().slice(0, 28);
+      if (!targetUserId || !cleanName) {
+        callback?.({ ok: false, error: 'A valid target user and name are required.' });
+        return;
+      }
+
+      room.lockedNames[targetUserId] = cleanName;
+      const targetRecord = room.usersByUserId.get(targetUserId);
+      if (targetRecord) {
+        targetRecord.name = cleanName;
+        targetRecord.isNameLocked = true;
+      }
+      if (room.bannedUsers[targetUserId]) {
+        room.bannedUsers[targetUserId].name = cleanName;
+      }
+
+      // Retroactively scrub userName on all messages and canvas elements in main + sub-boards
+      for (const msg of room.messages) {
+        if (msg && msg.userId === targetUserId) {
+          msg.userName = cleanName;
+        }
+      }
+      for (const el of room.elements) {
+        if (el && el.userId === targetUserId) {
+          el.userName = cleanName;
+        }
+      }
+      for (const sb of room.subBoards.values()) {
+        if (sb.id === `ind_${targetUserId}`) {
+          sb.title = `${cleanName}'s Board`;
+        }
+        for (const msg of sb.messages) {
+          if (msg && msg.userId === targetUserId) {
+            msg.userName = cleanName;
+          }
+        }
+        for (const el of sb.elements) {
+          if (el && el.userId === targetUserId) {
+            el.userName = cleanName;
+          }
+        }
+      }
+
+      room.lastActiveAt = Date.now();
+      scheduleSaveToDisk(true);
+
+      io.to(room.id).emit('user-renamed', {
+        userId: targetUserId,
+        newName: cleanName,
+        isNameLocked: true,
+      });
+      broadcastRoster(room);
+      broadcastBreakoutSync(room);
+      callback?.({ ok: true, newName: cleanName });
+    });
+
+    // Teacher-only Delete Individual Chat Message
+    socket.on('teacher:delete-message', ({ messageId, boardId = 'main' }, callback) => {
+      const meta = socketMeta.get(socket.id);
+      if (!meta || !messageId) {
+        callback?.({ ok: false, error: 'Invalid request.' });
+        return;
+      }
+      const room = rooms.get(meta.roomId);
+      if (!room) {
+        callback?.({ ok: false, error: 'Room not found.' });
+        return;
+      }
+      const callerRecord = room.usersByUserId.get(meta.userId);
+      if (!callerRecord?.isTeacher) {
+        callback?.({ ok: false, error: 'Only a verified Teacher can delete chat messages.' });
+        return;
+      }
+
+      room.messages = room.messages.filter((m) => m.id !== messageId);
+      for (const sb of room.subBoards.values()) {
+        sb.messages = sb.messages.filter((m) => m.id !== messageId);
+      }
+
+      room.lastActiveAt = Date.now();
+      scheduleSaveToDisk();
+      io.to(room.id).emit('message-deleted', { messageId, boardId });
+      callback?.({ ok: true });
+    });
+
+    // Teacher-only Kick or Ban Student (preserves student's drawings and messages unless cleared separately)
+    socket.on(
+      'teacher:kick-user',
+      (
+        {
+          targetUserId,
+          mode = 'kick',
+          targetName,
+        }: { targetUserId: string; mode?: 'kick' | 'ban'; targetName?: string },
+        callback
+      ) => {
+        const meta = socketMeta.get(socket.id);
+        if (!meta || !targetUserId) {
+          callback?.({ ok: false, error: 'Invalid request.' });
+          return;
+        }
+        const room = rooms.get(meta.roomId);
+        if (!room) {
+          callback?.({ ok: false, error: 'Room not found.' });
+          return;
+        }
+        const callerRecord = room.usersByUserId.get(meta.userId);
+        if (!callerRecord?.isTeacher) {
+          callback?.({ ok: false, error: 'Only a verified Teacher can remove users.' });
+          return;
+        }
+        if (targetUserId === meta.userId) {
+          callback?.({ ok: false, error: 'Cannot kick yourself.' });
+          return;
+        }
+
+        const targetRecord = room.usersByUserId.get(targetUserId);
+        const resolvedName =
+          targetRecord?.name || room.lockedNames[targetUserId] || targetName || 'Student';
+
+        if (mode === 'ban') {
+          room.bannedUsers[targetUserId] = {
+            userId: targetUserId,
+            name: resolvedName,
+            bannedAt: Date.now(),
+          };
+        }
+
+        // Collect all sockets belonging to targetUserId in this room
+        const targetSocketIds = new Set<string>(targetRecord ? Array.from(targetRecord.sockets) : []);
+        for (const [sockId, sMeta] of socketMeta.entries()) {
+          if (sMeta.roomId === room.id && sMeta.userId === targetUserId) {
+            targetSocketIds.add(sockId);
+          }
+        }
+
+        for (const sockId of targetSocketIds) {
+          const targetSock = io.sockets.sockets.get(sockId);
+          if (targetSock) {
+            targetSock.emit('room-kicked', {
+              reason: mode === 'ban' ? 'banned' : 'kicked',
+              roomId: room.id,
+            });
+            targetSock.leave(room.id);
+          }
+          socketMeta.delete(sockId);
+        }
+
+        if (targetRecord) {
+          targetRecord.sockets.clear();
+          room.usersByUserId.delete(targetUserId);
+        }
+
+        io.to(room.id).emit('cursor-leave', { userId: targetUserId });
+        room.lastActiveAt = Date.now();
+        scheduleSaveToDisk(true);
+        broadcastRoster(room);
+        broadcastRoomSettings(room);
+        callback?.({ ok: true });
+      }
+    );
+
+    // Teacher-only Unban Student
+    socket.on('teacher:unban-user', ({ targetUserId }, callback) => {
+      const meta = socketMeta.get(socket.id);
+      if (!meta || !targetUserId) {
+        callback?.({ ok: false, error: 'Invalid request.' });
+        return;
+      }
+      const room = rooms.get(meta.roomId);
+      if (!room) {
+        callback?.({ ok: false, error: 'Room not found.' });
+        return;
+      }
+      const callerRecord = room.usersByUserId.get(meta.userId);
+      if (!callerRecord?.isTeacher) {
+        callback?.({ ok: false, error: 'Only a verified Teacher can unban users.' });
+        return;
+      }
+
+      delete room.bannedUsers[targetUserId];
+      room.lastActiveAt = Date.now();
+      scheduleSaveToDisk(true);
+      broadcastRoomSettings(room);
+      callback?.({ ok: true });
     });
 
     socket.on('chat-message', (msg) => {

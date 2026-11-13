@@ -6,6 +6,7 @@ import {
   ToolType,
   StampKind,
   HollowShapeKind,
+  GridMode,
   RoomBackground,
   RemoteCursor,
   ImportRestoreMode,
@@ -248,6 +249,103 @@ function HollowShapeIcon({ kind, size = 17 }: { kind: HollowShapeKind; size?: nu
   return <CircleIcon size={size} />;
 }
 
+const GRID_MODE_OPTIONS: Array<{
+  mode: GridMode;
+  label: string;
+  dx: number;
+  dy: number;
+}> = [
+  { mode: 'blank', label: 'Blank', dx: -54, dy: -26 },
+  { mode: 'dots', label: 'Dot Grid', dx: -20, dy: -54 },
+  { mode: 'graph', label: 'Graph Paper (90°)', dx: 20, dy: -54 },
+  { mode: 'isometric', label: 'Isometric (3D)', dx: 54, dy: -26 },
+];
+
+function readLocalGridMode(key: string, fallback: GridMode): GridMode {
+  try {
+    const raw = localStorage.getItem(key);
+    if (raw === 'blank' || raw === 'dots' || raw === 'graph' || raw === 'isometric') {
+      return raw;
+    }
+    return fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function GridModeIcon({ mode, size = 15 }: { mode: GridMode; size?: number }) {
+  if (mode === 'blank') {
+    return (
+      <svg width={size} height={size} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
+        <rect x="2.25" y="2.25" width="11.5" height="11.5" rx="2" strokeDasharray="2.5 2" />
+      </svg>
+    );
+  }
+  if (mode === 'dots') {
+    return (
+      <svg width={size} height={size} viewBox="0 0 16 16" fill="currentColor">
+        <circle cx="3.5" cy="3.5" r="1.3" />
+        <circle cx="8" cy="3.5" r="1.3" />
+        <circle cx="12.5" cy="3.5" r="1.3" />
+        <circle cx="3.5" cy="8" r="1.3" />
+        <circle cx="8" cy="8" r="1.3" />
+        <circle cx="12.5" cy="8" r="1.3" />
+        <circle cx="3.5" cy="12.5" r="1.3" />
+        <circle cx="8" cy="12.5" r="1.3" />
+        <circle cx="12.5" cy="12.5" r="1.3" />
+      </svg>
+    );
+  }
+  if (mode === 'graph') {
+    return <Grid size={size} />;
+  }
+  // Isometric 3D lattice icon
+  return (
+    <svg width={size} height={size} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.35" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M8 1.75L13.75 5V11L8 14.25L2.25 11V5L8 1.75Z" />
+      <path d="M2.25 5L8 8.25L13.75 5" />
+      <path d="M8 8.25V14.25" />
+    </svg>
+  );
+}
+
+function getCanvasGridStyle(
+  gridMode: GridMode,
+  gridSpacing: number,
+  stagePos: { x: number; y: number }
+): React.CSSProperties {
+  if (gridMode === 'blank') {
+    return { backgroundColor: '#ffffff' };
+  }
+  if (gridMode === 'dots') {
+    return {
+      backgroundColor: '#ffffff',
+      backgroundImage: `radial-gradient(#cbd5e1 1.25px, transparent 1.25px)`,
+      backgroundSize: `${gridSpacing}px ${gridSpacing}px`,
+      backgroundPosition: `${stagePos.x}px ${stagePos.y}px`,
+    };
+  }
+  if (gridMode === 'graph') {
+    return {
+      backgroundColor: '#ffffff',
+      backgroundImage: `linear-gradient(to right, #e2e8f0 1px, transparent 1px), linear-gradient(to bottom, #e2e8f0 1px, transparent 1px)`,
+      backgroundSize: `${gridSpacing}px ${gridSpacing}px`,
+      backgroundPosition: `${stagePos.x}px ${stagePos.y}px`,
+    };
+  }
+  // Isometric 3D lattice (vertical lines + ±30° isometric axes meeting at every vertex)
+  const isoH = Math.max(24, gridSpacing);
+  const isoW = Math.round(isoH * Math.sqrt(3) * 100) / 100;
+  const halfW = Math.round((isoW / 2) * 100) / 100;
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${isoW}" height="${isoH}" viewBox="0 0 ${isoW} ${isoH}"><path d="M 0 0 L ${isoW} ${isoH} M 0 ${isoH} L ${isoW} 0 M 0 0 L 0 ${isoH} M ${halfW} 0 L ${halfW} ${isoH}" stroke="#dbe4f0" stroke-width="1" fill="none"/></svg>`;
+  return {
+    backgroundColor: '#ffffff',
+    backgroundImage: `url("data:image/svg+xml;utf8,${encodeURIComponent(svg)}")`,
+    backgroundSize: `${isoW}px ${isoH}px`,
+    backgroundPosition: `${stagePos.x}px ${stagePos.y}px`,
+  };
+}
+
 /**
  * OverBoard-style Midpoint Quadratic Curve + Single-Tap Dot Shape for Konva.
  */
@@ -481,7 +579,11 @@ export default function Canvas({
 
   const [tool, setTool] = useState<ToolType>('solid');
   const [stampKind, setStampKind] = useState<StampKind>('check');
-  const [showGrid, setShowGrid] = useState(true);
+  const [gridMode, setGridMode] = useState<GridMode>(() =>
+    readLocalGridMode('allaboard-grid-mode', 'dots')
+  );
+  const [showGridMenu, setShowGridMenu] = useState<boolean>(false);
+  const gridMenuRef = useRef<HTMLDivElement>(null);
 
   // Derived active color & width based on whether Highlighter (See-Through or Cover), Eraser, Hollow, or Pen is active
   const paletteMode: 'pen' | 'hl' | 'cover' =
@@ -752,9 +854,9 @@ export default function Canvas({
     return () => window.removeEventListener('resize', updateSize);
   }, []);
 
-  // Close Highlighter/Cover or Hollow radial popout menu when clicking outside or pressing Escape
+  // Close Highlighter/Cover, Hollow, or Grid radial popout menu when clicking outside or pressing Escape
   useEffect(() => {
-    if (!showHlMenu && !showHollowMenu) return;
+    if (!showHlMenu && !showHollowMenu && !showGridMenu) return;
     const handlePointerDownOutside = (e: PointerEvent) => {
       if (showHlMenu && hlMenuRef.current && !hlMenuRef.current.contains(e.target as Node)) {
         setShowHlMenu(false);
@@ -762,11 +864,15 @@ export default function Canvas({
       if (showHollowMenu && hollowMenuRef.current && !hollowMenuRef.current.contains(e.target as Node)) {
         setShowHollowMenu(false);
       }
+      if (showGridMenu && gridMenuRef.current && !gridMenuRef.current.contains(e.target as Node)) {
+        setShowGridMenu(false);
+      }
     };
     const handleEsc = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         setShowHlMenu(false);
         setShowHollowMenu(false);
+        setShowGridMenu(false);
       }
     };
     document.addEventListener('pointerdown', handlePointerDownOutside, true);
@@ -775,7 +881,7 @@ export default function Canvas({
       document.removeEventListener('pointerdown', handlePointerDownOutside, true);
       document.removeEventListener('keydown', handleEsc);
     };
-  }, [showHlMenu, showHollowMenu]);
+  }, [showHlMenu, showHollowMenu, showGridMenu]);
 
   // Auto-focus and auto-size the multiline note textarea (OverBoard `makeTyping.place` + `open`)
   const resizeNoteTextarea = useCallback(() => {
@@ -1875,6 +1981,9 @@ export default function Canvas({
     }
     if (showHlMenu) {
       setShowHlMenu(false);
+    }
+    if (showGridMenu) {
+      setShowGridMenu(false);
     }
 
     const pos = getLocalPosFromEvent(e.clientX, e.clientY);
@@ -4222,15 +4331,7 @@ export default function Canvas({
               : "cursor-text"
             : "cursor-none"
         )}
-        style={
-          showGrid
-            ? {
-                backgroundImage: `radial-gradient(#cbd5e1 1.25px, transparent 1.25px)`,
-                backgroundSize: `${gridSpacing}px ${gridSpacing}px`,
-                backgroundPosition: `${stagePos.x}px ${stagePos.y}px`,
-              }
-            : { backgroundColor: '#ffffff' }
-        }
+        style={getCanvasGridStyle(gridMode, gridSpacing, stagePos)}
       >
         <Stage
           width={dimensions.width}
@@ -4751,17 +4852,82 @@ export default function Canvas({
           onDoubleClick={(e) => e.stopPropagation()}
           className="absolute bottom-4 right-4 z-20 flex items-center gap-1 bg-white/95 backdrop-blur-xs px-2 py-1.5 rounded-lg border border-slate-200 shadow-sm text-xs text-slate-700"
         >
-          <button
-            type="button"
-            onClick={() => setShowGrid(!showGrid)}
-            className={cn(
-              "p-1.5 rounded hover:bg-slate-100 transition-colors cursor-pointer",
-              showGrid ? "text-blue-600 bg-blue-50/70" : "text-slate-400"
+          {/* Upward Curved Radial Background Grid Selector (Blank, Dots, Graph Paper, Isometric 3D) */}
+          <div ref={gridMenuRef} className="relative flex items-center">
+            <button
+              type="button"
+              onClick={() => setShowGridMenu((prev) => !prev)}
+              aria-haspopup="true"
+              aria-expanded={showGridMenu}
+              className={cn(
+                "p-1.5 rounded hover:bg-slate-100 transition-colors cursor-pointer",
+                gridMode !== 'blank' || showGridMenu
+                  ? "text-blue-600 bg-blue-50/70"
+                  : "text-slate-400"
+              )}
+              title={`Background Grid: ${GRID_MODE_OPTIONS.find((o) => o.mode === gridMode)?.label || gridMode} (click to choose Blank, Dots, Graph Paper, or Isometric 3D)`}
+            >
+              <GridModeIcon mode={gridMode} size={14} />
+            </button>
+
+            {showGridMenu && (
+              <div
+                role="menu"
+                aria-label="Canvas background grid options"
+                className="absolute left-1/2 bottom-full z-50 pointer-events-none"
+                style={{ width: 0, height: 0 }}
+              >
+                {/* Subtle SVG radial guide arc curving upward */}
+                <svg
+                  width="156"
+                  height="88"
+                  viewBox="-78 -80 156 88"
+                  className="overflow-visible pointer-events-none"
+                >
+                  <path
+                    d="M -54 -26 Q 0 -76 54 -26"
+                    fill="none"
+                    stroke="rgba(15, 23, 42, 0.25)"
+                    strokeWidth="2"
+                    strokeDasharray="3 3"
+                  />
+                </svg>
+
+                {GRID_MODE_OPTIONS.map((opt) => {
+                  const isSelected = gridMode === opt.mode;
+                  return (
+                    <button
+                      key={opt.mode}
+                      type="button"
+                      role="menuitemradio"
+                      aria-checked={isSelected}
+                      aria-label={opt.label}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setGridMode(opt.mode);
+                        saveLocal('allaboard-grid-mode', opt.mode);
+                        setShowGridMenu(false);
+                      }}
+                      style={{
+                        left: `${opt.dx}px`,
+                        top: `${opt.dy}px`,
+                        transform: 'translate(-50%, -50%)',
+                      }}
+                      className={cn(
+                        "pointer-events-auto absolute w-8 h-8 rounded-full flex items-center justify-center shadow-lg border transition-transform hover:scale-110 cursor-pointer",
+                        isSelected
+                          ? "bg-blue-600 text-white border-white ring-2 ring-blue-500/50"
+                          : "bg-slate-900/95 text-slate-200 border-slate-700 hover:bg-slate-800 hover:text-white"
+                      )}
+                      title={opt.label}
+                    >
+                      <GridModeIcon mode={opt.mode} size={15} />
+                    </button>
+                  );
+                })}
+              </div>
             )}
-            title={showGrid ? "Hide background dot grid" : "Show background dot grid"}
-          >
-            <Grid size={14} />
-          </button>
+          </div>
 
           <div className="h-4 w-px bg-slate-200 mx-0.5" />
 

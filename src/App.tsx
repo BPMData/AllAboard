@@ -70,6 +70,8 @@ export default function App() {
   });
 
   const [isTeacher, setIsTeacher] = useState<boolean>(false);
+  const [isNameLocked, setIsNameLocked] = useState<boolean>(false);
+  const [kickNotice, setKickNotice] = useState<string | null>(null);
   const [showTeacherSetupOnJoin, setShowTeacherSetupOnJoin] = useState<boolean>(false);
   const [initialTeacherPin, setInitialTeacherPin] = useState<string>('');
 
@@ -222,6 +224,8 @@ export default function App() {
         users: initUsers,
         roomSettings: initRoom,
         isTeacher: verifiedTeacher,
+        assignedName,
+        isNameLocked: initNameLocked,
       }) => {
         if (Array.isArray(initMsgs)) setMessages(initMsgs);
         if (Array.isArray(initEls)) setElements(initEls);
@@ -234,6 +238,16 @@ export default function App() {
         if (Array.isArray(initUsers)) setUsers(initUsers);
         if (initRoom) setRoomSettings(initRoom);
         if (typeof verifiedTeacher === 'boolean') setIsTeacher(verifiedTeacher);
+        if (typeof initNameLocked === 'boolean') setIsNameLocked(initNameLocked);
+        if (assignedName && typeof assignedName === 'string') {
+          setUserName(assignedName);
+          try {
+            localStorage.setItem(STORAGE_KEYS.USER_NAME, assignedName);
+          } catch {
+            // Ignore
+          }
+        }
+        setKickNotice(null);
       }
     );
 
@@ -299,12 +313,101 @@ export default function App() {
       const myRecord = rosterList.find((u) => u.userId === userId);
       if (myRecord) {
         setIsTeacher(Boolean(myRecord.isTeacher));
+        setIsNameLocked(Boolean(myRecord.isNameLocked));
+        if (myRecord.name && myRecord.name !== userNameRef.current) {
+          setUserName(myRecord.name);
+          try {
+            localStorage.setItem(STORAGE_KEYS.USER_NAME, myRecord.name);
+          } catch {
+            // Ignore
+          }
+        }
       }
     });
 
     newSocket.on('room-settings', (settings: RoomSettings) => {
       setRoomSettings(settings);
     });
+
+    newSocket.on(
+      'user-renamed',
+      ({
+        userId: renamedUserId,
+        newName,
+        isNameLocked: lockedFlag,
+      }: {
+        userId: string;
+        newName: string;
+        isNameLocked?: boolean;
+      }) => {
+        if (!renamedUserId || !newName) return;
+        setMessages((prev) =>
+          prev.map((m) => (m.userId === renamedUserId ? { ...m, userName: newName } : m))
+        );
+        setElements((prev) =>
+          prev.map((el) => (el.userId === renamedUserId ? { ...el, userName: newName } : el))
+        );
+        setSubBoards((prev) => {
+          const next: Record<string, SubBoardData> = {};
+          for (const [k, sb] of Object.entries(prev) as Array<[string, SubBoardData]>) {
+            next[k] = {
+              ...sb,
+              title: k === `ind_${renamedUserId}` ? `${newName}'s Board` : sb.title,
+              messages: sb.messages.map((m) =>
+                m.userId === renamedUserId ? { ...m, userName: newName } : m
+              ),
+              elements: sb.elements.map((el) =>
+                el.userId === renamedUserId ? { ...el, userName: newName } : el
+              ),
+            };
+          }
+          return next;
+        });
+        if (renamedUserId === userId) {
+          setUserName(newName);
+          if (typeof lockedFlag === 'boolean') setIsNameLocked(lockedFlag);
+          try {
+            localStorage.setItem(STORAGE_KEYS.USER_NAME, newName);
+          } catch {
+            // Ignore
+          }
+        }
+      }
+    );
+
+    newSocket.on('message-deleted', ({ messageId }: { messageId: string; boardId?: string }) => {
+      if (!messageId) return;
+      setMessages((prev) => prev.filter((m) => m.id !== messageId));
+      setSubBoards((prev) => {
+        const next: Record<string, SubBoardData> = {};
+        for (const [k, sb] of Object.entries(prev) as Array<[string, SubBoardData]>) {
+          next[k] = {
+            ...sb,
+            messages: sb.messages.filter((m) => m.id !== messageId),
+          };
+        }
+        return next;
+      });
+    });
+
+    newSocket.on(
+      'room-kicked',
+      ({ reason, roomId: kickedRoom }: { reason: 'kicked' | 'banned'; roomId?: string }) => {
+        setIsJoined(false);
+        setIsTeacher(false);
+        try {
+          localStorage.removeItem(STORAGE_KEYS.IS_JOINED);
+        } catch {
+          // Ignore
+        }
+        const targetRoom = kickedRoom || roomId;
+        setKickNotice(
+          reason === 'banned'
+            ? `You have been banned from room #${targetRoom} by the teacher.`
+            : `You were removed from room #${targetRoom} by the teacher.`
+        );
+      }
+    );
 
     newSocket.on('chat-message', (msg: ChatMessage) => {
       const targetBoardId = msg.boardId || 'main';
@@ -687,6 +790,8 @@ export default function App() {
         .replace(/^-|-$/g, '') || 'main';
     setRemoteCursors({});
     setIsTeacher(false);
+    setIsNameLocked(false);
+    setKickNotice(null);
     setTeacherSelectedBoardId('main');
     setRoomId(cleaned);
   }, []);
@@ -695,6 +800,8 @@ export default function App() {
     const freshRoom = generateFreshRoomCode();
     setRemoteCursors({});
     setIsTeacher(false);
+    setIsNameLocked(false);
+    setKickNotice(null);
     setTeacherSelectedBoardId('main');
     setRoomId(freshRoom);
   }, []);
@@ -703,6 +810,7 @@ export default function App() {
     e.preventDefault();
     const trimmed = userName.trim();
     if (trimmed && socket) {
+      setKickNotice(null);
       const cleanPin = initialTeacherPin.trim();
       try {
         localStorage.setItem(STORAGE_KEYS.USER_NAME, trimmed);
@@ -734,6 +842,7 @@ export default function App() {
 
   const handleUpdateName = useCallback(
     (newName: string) => {
+      if (isNameLocked && !isTeacher) return;
       setUserName(newName);
       try {
         localStorage.setItem(STORAGE_KEYS.USER_NAME, newName);
@@ -748,7 +857,42 @@ export default function App() {
         });
       }
     },
-    [socket, userId, userColor]
+    [socket, userId, userColor, isNameLocked, isTeacher]
+  );
+
+  const handleTeacherRenameUser = useCallback(
+    (targetUserId: string, newName: string) => {
+      const cleanName = newName.trim();
+      if (!socket || !targetUserId || !cleanName) return;
+      socket.emit('teacher:rename-user', { targetUserId, newName: cleanName });
+    },
+    [socket]
+  );
+
+  const handleTeacherDeleteMessage = useCallback(
+    (messageId: string) => {
+      if (!socket || !messageId) return;
+      const targetBoardId =
+        breakoutConfig.chatScope === 'board' ? activeBoardId : 'main';
+      socket.emit('teacher:delete-message', { messageId, boardId: targetBoardId });
+    },
+    [socket, breakoutConfig.chatScope, activeBoardId]
+  );
+
+  const handleTeacherKickUser = useCallback(
+    (targetUserId: string, mode: 'kick' | 'ban', targetName?: string) => {
+      if (!socket || !targetUserId) return;
+      socket.emit('teacher:kick-user', { targetUserId, mode, targetName });
+    },
+    [socket]
+  );
+
+  const handleTeacherUnbanUser = useCallback(
+    (targetUserId: string) => {
+      if (!socket || !targetUserId) return;
+      socket.emit('teacher:unban-user', { targetUserId });
+    },
+    [socket]
   );
 
   const sendMessage = useCallback(
@@ -1048,6 +1192,12 @@ export default function App() {
             Enter your name to join room <span className="font-mono text-slate-200">#{roomId}</span>
           </p>
 
+          {kickNotice && (
+            <div className="mb-4 p-3 rounded-xl bg-red-950/70 border border-red-800/80 text-xs text-red-200 leading-relaxed text-center">
+              {kickNotice}
+            </div>
+          )}
+
           <form onSubmit={handleJoin} className="space-y-4">
             <div>
               <label
@@ -1074,11 +1224,12 @@ export default function App() {
                 <input
                   type="text"
                   value={roomId}
-                  onChange={(e) =>
+                  onChange={(e) => {
+                    setKickNotice(null);
                     setRoomId(
                       e.target.value.toLowerCase().replace(/[^a-z0-9-_]/g, '-') || 'main'
-                    )
-                  }
+                    );
+                  }}
                   maxLength={24}
                   className="bg-slate-900 border border-slate-700 px-2 py-1 rounded font-mono text-xs text-white w-28 focus:outline-none focus:border-blue-500"
                 />
@@ -1168,12 +1319,18 @@ export default function App() {
         userName={userName}
         userColor={userColor}
         isTeacher={isTeacher}
+        isNameLocked={isNameLocked}
+        bannedUsers={roomSettings.bannedUsers || []}
         onAuthenticateTeacher={handleAuthenticateTeacher}
         onStepDownTeacher={handleStepDownTeacher}
         onCreateNewRoom={handleCreateNewRoom}
         onSwitchRoom={handleSwitchRoom}
         onUpdateName={handleUpdateName}
         onClearUserDrawings={handleClearUserDrawings}
+        onTeacherRenameUser={handleTeacherRenameUser}
+        onTeacherDeleteMessage={handleTeacherDeleteMessage}
+        onTeacherKickUser={handleTeacherKickUser}
+        onTeacherUnbanUser={handleTeacherUnbanUser}
       />
 
       <div className="flex-1 flex flex-col min-w-0">

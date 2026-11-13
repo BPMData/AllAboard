@@ -439,4 +439,113 @@ describe('AllAboard server & Socket.IO integration tests', () => {
     assert.equal(init.messages.length, 1);
     assert.equal(init.messages[0].text, 'Saved message');
   });
+
+  it('supports teacher force-rename with permanent name lock, message deletion, and kick/ban/unban', async () => {
+    const { socket: teacher } = await joinTracked({
+      roomId: 'mod-room',
+      userId: 't-mod',
+      name: 'Ms. Frizzle',
+    });
+    await emitAck(teacher, 'teacher:auth', { pin: '2468' });
+
+    const { socket: student } = await joinTracked({
+      roomId: 'mod-room',
+      userId: 's-trouble',
+      name: 'Prankster',
+    });
+
+    // Student sends a message and draws a stroke
+    const msgPromise = waitForEvent<any>(teacher, 'chat-message');
+    student.emit('chat-message', { text: 'First message', boardId: 'main' });
+    const firstMsg = await msgPromise;
+    assert.equal(firstMsg.userName, 'Prankster');
+
+    const strokePromise = waitForEvent<any>(teacher, 'element-start');
+    student.emit('element-start', {
+      id: 'stu-stroke-1',
+      tool: 'solid',
+      points: [0, 0, 10, 10],
+      color: '#111111',
+      strokeWidth: 4,
+      userId: 's-trouble',
+      userName: 'Prankster',
+      boardId: 'main',
+      timestamp: Date.now(),
+    });
+    await strokePromise;
+
+    // Teacher renames student -> retroactively updates messages & strokes and locks name
+    const renamedEventPromise = waitForEvent<any>(student, 'user-renamed');
+    const renameRes = await emitAck(teacher, 'teacher:rename-user', {
+      targetUserId: 's-trouble',
+      newName: 'Arnold',
+    });
+    assert.equal(renameRes.ok, true);
+    const renamedEvent = await renamedEventPromise;
+    assert.equal(renamedEvent.userId, 's-trouble');
+    assert.equal(renamedEvent.newName, 'Arnold');
+    assert.equal(renamedEvent.isNameLocked, true);
+
+    // Student tries to change their name back via update-profile -> ignored by server
+    const rosterAfterAttempt = waitForEvent<any[]>(teacher, 'roster-sync');
+    student.emit('update-profile', {
+      userId: 's-trouble',
+      name: 'Prankster Again',
+      color: '#dc2626',
+    });
+    const rosterList = await rosterAfterAttempt;
+    const stuRecord = rosterList.find((u) => u.userId === 's-trouble');
+    assert.equal(stuRecord?.name, 'Arnold');
+    assert.equal(stuRecord?.isNameLocked, true);
+
+    // Teacher deletes the chat message
+    const delEventPromise = waitForEvent<any>(student, 'message-deleted');
+    const delRes = await emitAck(teacher, 'teacher:delete-message', {
+      messageId: firstMsg.id,
+      boardId: 'main',
+    });
+    assert.equal(delRes.ok, true);
+    const delEvent = await delEventPromise;
+    assert.equal(delEvent.messageId, firstMsg.id);
+
+    // Teacher bans student -> student receives room-kicked (reason: 'banned'), work is preserved
+    const kickedPromise = waitForEvent<any>(student, 'room-kicked');
+    const banRes = await emitAck(teacher, 'teacher:kick-user', {
+      targetUserId: 's-trouble',
+      mode: 'ban',
+      targetName: 'Arnold',
+    });
+    assert.equal(banRes.ok, true);
+    const kickedPayload = await kickedPromise;
+    assert.equal(kickedPayload.reason, 'banned');
+
+    // Banned student attempts to rejoin -> blocked with room-kicked
+    const blockedPromise = waitForEvent<any>(student, 'room-kicked');
+    student.emit('join-room', {
+      roomId: 'mod-room',
+      userId: 's-trouble',
+      name: 'Sneaky',
+    });
+    const blockedPayload = await blockedPromise;
+    assert.equal(blockedPayload.reason, 'banned');
+
+    // Teacher unbans student -> student can rejoin, but locked name 'Arnold' is still enforced!
+    const unbanRes = await emitAck(teacher, 'teacher:unban-user', {
+      targetUserId: 's-trouble',
+    });
+    assert.equal(unbanRes.ok, true);
+
+    const rejoinInitPromise = waitForEvent<any>(student, 'init');
+    student.emit('join-room', {
+      roomId: 'mod-room',
+      userId: 's-trouble',
+      name: 'TryOverrideName',
+    });
+    const rejoinInit = await rejoinInitPromise;
+    assert.equal(rejoinInit.assignedName, 'Arnold');
+    assert.equal(rejoinInit.isNameLocked, true);
+    assert.equal(rejoinInit.elements.length, 1);
+    assert.equal(rejoinInit.elements[0].userName, 'Arnold');
+    assert.equal(rejoinInit.messages.length, 0);
+  });
 });
