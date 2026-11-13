@@ -9,9 +9,14 @@ import { fileURLToPath } from 'url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-const DATA_DIR = process.env.DATA_DIR || path.join(process.cwd(), '.data');
-const STORE_FILE = path.join(DATA_DIR, 'rooms-store.json');
 const ROOM_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 days inactivity cleanup
+
+export interface StartServerOptions {
+  port?: number;
+  host?: string;
+  dataDir?: string;
+  skipVite?: boolean;
+}
 
 interface ServerUserRecord {
   userId: string;
@@ -71,7 +76,12 @@ interface SerializedRoom {
   lastActiveAt: number;
 }
 
-async function startServer() {
+export async function startServer(options: StartServerOptions = {}) {
+  const dataDir = options.dataDir || process.env.DATA_DIR || path.join(process.cwd(), '.data');
+  const storeFile = path.join(dataDir, 'rooms-store.json');
+  const portToBind = options.port !== undefined ? options.port : Number(process.env.PORT) || 3000;
+  const hostToBind = options.host || '0.0.0.0';
+
   const app = express();
   const httpServer = createServer(app);
   const io = new Server(httpServer, {
@@ -80,8 +90,6 @@ async function startServer() {
     },
     maxHttpBufferSize: 3e7, // 30 MB for PDF worksheets, subBoards, and JSON snapshots
   });
-
-  const PORT = Number(process.env.PORT) || 3000;
 
   app.get('/healthz', (_req, res) => {
     res.status(200).json({ status: 'ok' });
@@ -120,9 +128,9 @@ async function startServer() {
 
   function loadRoomsFromDisk() {
     try {
-      fs.mkdirSync(DATA_DIR, { recursive: true });
-      if (!fs.existsSync(STORE_FILE)) return;
-      const raw = fs.readFileSync(STORE_FILE, 'utf-8');
+      fs.mkdirSync(dataDir, { recursive: true });
+      if (!fs.existsSync(storeFile)) return;
+      const raw = fs.readFileSync(storeFile, 'utf-8');
       const parsed = JSON.parse(raw);
       if (!parsed || !Array.isArray(parsed.rooms)) return;
 
@@ -169,6 +177,7 @@ async function startServer() {
 
   let isSavingAsync = false;
   let saveQueuedAsync = false;
+  let activeSavePromise: Promise<void> | null = null;
 
   function buildSerializedRoomsPayload(): { updatedAt: number; rooms: SerializedRoom[] } {
     const now = Date.now();
@@ -215,42 +224,49 @@ async function startServer() {
       saveTimeout = null;
     }
     try {
-      fs.mkdirSync(DATA_DIR, { recursive: true });
+      fs.mkdirSync(dataDir, { recursive: true });
       const payload = buildSerializedRoomsPayload();
-      const tmpFile = `${STORE_FILE}.tmp`;
+      const tmpFile = `${storeFile}.tmp`;
       fs.writeFileSync(tmpFile, JSON.stringify(payload), 'utf-8');
-      fs.renameSync(tmpFile, STORE_FILE);
+      fs.renameSync(tmpFile, storeFile);
     } catch (err) {
       console.error('Failed to save rooms to disk:', err);
     }
   }
 
-  async function flushRoomsToDiskAsync() {
+  async function flushRoomsToDiskAsync(): Promise<void> {
     if (saveTimeout) {
       clearTimeout(saveTimeout);
       saveTimeout = null;
     }
     if (isSavingAsync) {
       saveQueuedAsync = true;
+      if (activeSavePromise) {
+        await activeSavePromise;
+      }
       return;
     }
     isSavingAsync = true;
-    try {
-      await fs.promises.mkdir(DATA_DIR, { recursive: true });
-      const payload = buildSerializedRoomsPayload();
-      const json = JSON.stringify(payload);
-      const tmpFile = `${STORE_FILE}.tmp`;
-      await fs.promises.writeFile(tmpFile, json, 'utf-8');
-      await fs.promises.rename(tmpFile, STORE_FILE);
-    } catch (err) {
-      console.error('Failed to save rooms to disk:', err);
-    } finally {
-      isSavingAsync = false;
-      if (saveQueuedAsync) {
-        saveQueuedAsync = false;
-        void flushRoomsToDiskAsync();
+    activeSavePromise = (async () => {
+      try {
+        await fs.promises.mkdir(dataDir, { recursive: true });
+        const payload = buildSerializedRoomsPayload();
+        const json = JSON.stringify(payload);
+        const tmpFile = `${storeFile}.tmp`;
+        await fs.promises.writeFile(tmpFile, json, 'utf-8');
+        await fs.promises.rename(tmpFile, storeFile);
+      } catch (err) {
+        console.error('Failed to save rooms to disk:', err);
+      } finally {
+        isSavingAsync = false;
+        activeSavePromise = null;
+        if (saveQueuedAsync) {
+          saveQueuedAsync = false;
+          await flushRoomsToDiskAsync();
+        }
       }
-    }
+    })();
+    await activeSavePromise;
   }
 
   function scheduleSaveToDisk(immediate = false) {
@@ -265,9 +281,10 @@ async function startServer() {
   }
 
   loadRoomsFromDisk();
-  setInterval(() => {
+  const hourlyFlushInterval = setInterval(() => {
     void flushRoomsToDiskAsync();
   }, 60 * 60 * 1000);
+  hourlyFlushInterval.unref();
 
   function normalizeRoomId(raw?: string): string {
     const cleaned = String(raw || 'main')
@@ -346,7 +363,7 @@ async function startServer() {
   }
 
   // 1-second check for running classroom countdown timers
-  setInterval(() => {
+  const timerTickInterval = setInterval(() => {
     const now = Date.now();
     for (const room of rooms.values()) {
       if (room.timer?.isRunning && room.timer.endsAt !== null && now >= room.timer.endsAt) {
@@ -362,6 +379,7 @@ async function startServer() {
       }
     }
   }, 1000);
+  timerTickInterval.unref();
 
   function broadcastBreakoutSync(room: RoomState) {
     io.to(room.id).emit('breakout-sync', {
@@ -1337,13 +1355,13 @@ async function startServer() {
     });
   });
 
-  if (process.env.NODE_ENV !== 'production') {
+  if (!options.skipVite && process.env.NODE_ENV !== 'production') {
     const vite = await createViteServer({
       server: { middlewareMode: true },
       appType: 'spa',
     });
     app.use(vite.middlewares);
-  } else {
+  } else if (!options.skipVite) {
     const distPath = path.join(process.cwd(), 'dist');
     app.use(express.static(distPath));
     app.get('*', (req, res) => {
@@ -1351,9 +1369,19 @@ async function startServer() {
     });
   }
 
-  httpServer.listen(PORT, '0.0.0.0', () => {
-    console.log(`Server running on http://localhost:${PORT}`);
+  await new Promise<void>((resolve) => {
+    httpServer.listen(portToBind, hostToBind, () => {
+      const addr = httpServer.address();
+      const listeningPort = typeof addr === 'object' && addr ? addr.port : portToBind;
+      if (!options.skipVite) {
+        console.log(`Server running on http://localhost:${listeningPort}`);
+      }
+      resolve();
+    });
   });
+
+  const addr = httpServer.address();
+  const actualPort = typeof addr === 'object' && addr ? addr.port : portToBind;
 
   let isShuttingDown = false;
   function handleShutdown(signal: string) {
@@ -1374,8 +1402,49 @@ async function startServer() {
     });
   }
 
-  process.on('SIGTERM', () => handleShutdown('SIGTERM'));
-  process.on('SIGINT', () => handleShutdown('SIGINT'));
+  if (!options.skipVite) {
+    process.on('SIGTERM', () => handleShutdown('SIGTERM'));
+    process.on('SIGINT', () => handleShutdown('SIGINT'));
+  }
+
+  async function close() {
+    clearInterval(hourlyFlushInterval);
+    clearInterval(timerTickInterval);
+    if (saveTimeout) {
+      clearTimeout(saveTimeout);
+      saveTimeout = null;
+    }
+    await new Promise<void>((resolve) => {
+      io.close(() => {
+        resolve();
+      });
+    });
+    if (httpServer.listening) {
+      await new Promise<void>((resolve) => {
+        httpServer.close(() => {
+          resolve();
+        });
+      });
+    }
+    if (activeSavePromise) {
+      await activeSavePromise;
+    }
+  }
+
+  return {
+    app,
+    httpServer,
+    io,
+    port: actualPort,
+    flushRoomsToDisk,
+    flushRoomsToDiskAsync,
+    close,
+  };
 }
 
-startServer();
+const isMainModule =
+  Boolean(process.argv[1]) &&
+  path.resolve(process.argv[1]) === path.resolve(__filename);
+if (isMainModule) {
+  void startServer();
+}
