@@ -36,6 +36,14 @@ interface BreakoutConfigState {
   chatScope: 'unified' | 'board';
 }
 
+interface TimerState {
+  isRunning: boolean;
+  durationMs: number;
+  remainingMs: number;
+  endsAt: number | null;
+  autoLockOnExpire: boolean;
+}
+
 interface RoomState {
   id: string;
   messages: any[];
@@ -43,6 +51,7 @@ interface RoomState {
   background: any | null;
   subBoards: Map<string, SubBoardState>;
   breakoutConfig: BreakoutConfigState;
+  timer: TimerState;
   usersByUserId: Map<string, ServerUserRecord>;
   isCanvasLocked: boolean;
   teacherPin: string | null;
@@ -56,6 +65,7 @@ interface SerializedRoom {
   background?: any | null;
   subBoards?: Record<string, SubBoardState>;
   breakoutConfig?: BreakoutConfigState;
+  timer?: TimerState;
   isCanvasLocked: boolean;
   teacherPin: string | null;
   lastActiveAt: number;
@@ -135,6 +145,13 @@ async function startServer() {
             allowSelfSelect: false,
             chatScope: 'unified',
           },
+          timer: item.timer || {
+            isRunning: false,
+            durationMs: 5 * 60 * 1000,
+            remainingMs: 0,
+            endsAt: null,
+            autoLockOnExpire: false,
+          },
           usersByUserId: new Map(),
           isCanvasLocked: Boolean(item.isCanvasLocked),
           teacherPin: item.teacherPin || null,
@@ -185,6 +202,7 @@ async function startServer() {
             background: room.background,
             subBoards: serializeSubBoards(room.subBoards),
             breakoutConfig: room.breakoutConfig,
+            timer: room.timer,
             isCanvasLocked: room.isCanvasLocked,
             teacherPin: room.teacherPin,
             lastActiveAt: room.lastActiveAt,
@@ -244,6 +262,13 @@ async function startServer() {
           allowSelfSelect: false,
           chatScope: 'unified',
         },
+        timer: {
+          isRunning: false,
+          durationMs: 5 * 60 * 1000,
+          remainingMs: 0,
+          endsAt: null,
+          autoLockOnExpire: false,
+        },
         usersByUserId: new Map(),
         isCanvasLocked: false,
         teacherPin: null,
@@ -276,6 +301,7 @@ async function startServer() {
       hasTeacherPin: room.teacherPin !== null,
       lastSavedAt: room.lastActiveAt,
       breakoutConfig: room.breakoutConfig,
+      timer: room.timer,
     };
   }
 
@@ -286,6 +312,24 @@ async function startServer() {
   function broadcastRoomSettings(room: RoomState) {
     io.to(room.id).emit('room-settings', getRoomSettingsPayload(room));
   }
+
+  // 1-second check for running classroom countdown timers
+  setInterval(() => {
+    const now = Date.now();
+    for (const room of rooms.values()) {
+      if (room.timer?.isRunning && room.timer.endsAt !== null && now >= room.timer.endsAt) {
+        room.timer.isRunning = false;
+        room.timer.remainingMs = 0;
+        room.timer.endsAt = null;
+        if (room.timer.autoLockOnExpire) {
+          room.isCanvasLocked = true;
+        }
+        room.lastActiveAt = now;
+        broadcastRoomSettings(room);
+        scheduleSaveToDisk();
+      }
+    }
+  }, 1000);
 
   function broadcastBreakoutSync(room: RoomState) {
     io.to(room.id).emit('breakout-sync', {
@@ -979,6 +1023,85 @@ async function startServer() {
       scheduleSaveToDisk(true);
       broadcastRoomSettings(room);
     });
+
+    socket.on(
+      'teacher:timer-control',
+      (
+        payload: {
+          action: 'start' | 'pause' | 'resume' | 'stop' | 'add-minute' | 'set-autolock';
+          durationSeconds?: number;
+          autoLockOnExpire?: boolean;
+        },
+        callback
+      ) => {
+        const meta = socketMeta.get(socket.id);
+        if (!meta) {
+          callback?.({ ok: false, error: 'Not in a room.' });
+          return;
+        }
+        const room = rooms.get(meta.roomId);
+        if (!room) {
+          callback?.({ ok: false, error: 'Room not found.' });
+          return;
+        }
+        const callerRecord = room.usersByUserId.get(meta.userId);
+        if (!callerRecord?.isTeacher) {
+          callback?.({ ok: false, error: 'Only a verified Teacher can control the classroom timer.' });
+          return;
+        }
+
+        const now = Date.now();
+        const action = payload?.action;
+
+        if (typeof payload?.autoLockOnExpire === 'boolean') {
+          room.timer.autoLockOnExpire = payload.autoLockOnExpire;
+        }
+
+        if (action === 'start') {
+          const secs = Math.max(5, Math.min(7200, Math.round(Number(payload.durationSeconds) || 300)));
+          const durationMs = secs * 1000;
+          room.timer = {
+            isRunning: true,
+            durationMs,
+            remainingMs: durationMs,
+            endsAt: now + durationMs,
+            autoLockOnExpire:
+              typeof payload.autoLockOnExpire === 'boolean'
+                ? payload.autoLockOnExpire
+                : room.timer.autoLockOnExpire,
+          };
+        } else if (action === 'pause') {
+          if (room.timer.isRunning && room.timer.endsAt !== null) {
+            room.timer.remainingMs = Math.max(0, room.timer.endsAt - now);
+          }
+          room.timer.isRunning = false;
+          room.timer.endsAt = null;
+        } else if (action === 'resume') {
+          const rem = room.timer.remainingMs > 0 ? room.timer.remainingMs : room.timer.durationMs || 300000;
+          room.timer.remainingMs = rem;
+          room.timer.isRunning = true;
+          room.timer.endsAt = now + rem;
+        } else if (action === 'add-minute') {
+          const addMs = 60 * 1000;
+          room.timer.durationMs += addMs;
+          if (room.timer.isRunning && room.timer.endsAt !== null) {
+            room.timer.endsAt += addMs;
+            room.timer.remainingMs = Math.max(0, room.timer.endsAt - now);
+          } else {
+            room.timer.remainingMs += addMs;
+          }
+        } else if (action === 'stop') {
+          room.timer.isRunning = false;
+          room.timer.remainingMs = 0;
+          room.timer.endsAt = null;
+        }
+
+        room.lastActiveAt = now;
+        scheduleSaveToDisk();
+        broadcastRoomSettings(room);
+        callback?.({ ok: true, timer: room.timer });
+      }
+    );
 
     socket.on('teacher:clear-all', (payload) => {
       const meta = socketMeta.get(socket.id);

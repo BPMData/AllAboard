@@ -10,6 +10,7 @@ import {
   ImportRestoreMode,
   SubBoardData,
   BreakoutConfig,
+  TimerControlPayload,
 } from './types';
 import Chat, { getUserColor } from './components/Chat';
 import Canvas from './components/Canvas';
@@ -849,6 +850,15 @@ export default function App() {
     }
   }, [socket, activeBoardId]);
 
+  const handleTeacherTimerControl = useCallback(
+    (payload: TimerControlPayload) => {
+      if (socket) {
+        socket.emit('teacher:timer-control', payload);
+      }
+    },
+    [socket]
+  );
+
   if (!isJoined) {
     return (
       <div className="min-h-screen bg-slate-950 flex items-center justify-center p-4">
@@ -1031,6 +1041,8 @@ export default function App() {
           onTeacherSetBackground={handleTeacherSetBackground}
           onTeacherUpdateBackground={handleTeacherUpdateBackground}
           onTeacherImportRoom={handleTeacherImportRoom}
+          timer={roomSettings.timer}
+          onTeacherTimerControl={handleTeacherTimerControl}
           fullMainElements={elements}
           fullMainMessages={messages}
           fullMainBackground={background}

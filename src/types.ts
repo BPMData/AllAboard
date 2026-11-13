@@ -93,12 +93,27 @@ export interface BreakoutConfig {
   chatScope: 'unified' | 'board';
 }
 
+export interface ClassroomTimerState {
+  isRunning: boolean;
+  durationMs: number;
+  remainingMs: number;
+  endsAt: number | null;
+  autoLockOnExpire: boolean;
+}
+
+export interface TimerControlPayload {
+  action: 'start' | 'pause' | 'resume' | 'stop' | 'add-minute' | 'set-autolock';
+  durationSeconds?: number;
+  autoLockOnExpire?: boolean;
+}
+
 export interface RoomSettings {
   roomId: string;
   isCanvasLocked: boolean;
   hasTeacherPin: boolean;
   lastSavedAt?: number;
   breakoutConfig?: BreakoutConfig;
+  timer?: ClassroomTimerState;
 }
 
 export interface RemoteCursor {

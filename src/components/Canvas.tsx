@@ -12,6 +12,8 @@ import {
   BreakoutConfig,
   SubBoardData,
   User,
+  ClassroomTimerState,
+  TimerControlPayload,
 } from '../types';
 import {
   processWorksheetFile,
@@ -19,6 +21,7 @@ import {
   BuiltInTemplateId,
   generateTemplateBackground,
 } from '../lib/worksheetLoader';
+import { exportAllBoardsToPdf } from '../lib/batchPdfExport';
 import {
   NOTE_FONT,
   NOTE_LH,
@@ -71,7 +74,11 @@ import {
   LayoutGrid,
   Shuffle,
   ChevronDown,
-  EyeOff,
+  Timer,
+  Play,
+  Pause,
+  RotateCcw,
+  FileSpreadsheet,
 } from 'lucide-react';
 import { cn } from '../lib/utils';
 
@@ -122,6 +129,8 @@ interface CanvasProps {
     },
     mode: ImportRestoreMode
   ) => Promise<{ ok: boolean; error?: string }>;
+  timer?: ClassroomTimerState;
+  onTeacherTimerControl: (payload: TimerControlPayload) => void;
   fullMainElements: CanvasElement[];
   fullMainMessages: ChatMessage[];
   fullMainBackground: RoomBackground | null;
@@ -328,6 +337,8 @@ export default function Canvas({
   onTeacherSetBackground,
   onTeacherUpdateBackground,
   onTeacherImportRoom,
+  timer,
+  onTeacherTimerControl,
   fullMainElements,
   fullMainMessages,
   fullMainBackground,
@@ -338,14 +349,6 @@ export default function Canvas({
   const [hlColor, setHlColor] = useState<string>(() => readLocalColor('allaboard-hl-color', '#fdd835'));
   const [hlWidth, setHlWidth] = useState<number>(() => readLocalNum('allaboard-hl-width', 22, 4, 60));
   const [hlStrength, setHlStrength] = useState<number>(() => readLocalNum('allaboard-hl-strength', 45, 10, 100));
-  const [isCovering, setIsCovering] = useState<boolean>(() => {
-    try {
-      return localStorage.getItem('allaboard-hl-cover') === '1';
-    } catch {
-      return false;
-    }
-  });
-  const [coverColor, setCoverColor] = useState<string>(() => readLocalColor('allaboard-cover-color', '#111111'));
   const [smoothLevel, setSmoothLevel] = useState<number>(() => readLocalNum('allaboard-smooth-v2', 0, 0, 8));
   const [fingerScrolls, setFingerScrolls] = useState<boolean>(() => {
     try {
@@ -362,11 +365,9 @@ export default function Canvas({
   const [stampKind, setStampKind] = useState<StampKind>('check');
   const [showGrid, setShowGrid] = useState(true);
 
-  // Derived active color & width based on whether Highlighter/Cover or Pen is active
-  const paletteMode: 'pen' | 'hl' | 'cover' =
-    tool === 'highlighter' ? (isCovering ? 'cover' : 'hl') : 'pen';
-  const color =
-    tool === 'highlighter' ? (isCovering ? coverColor : hlColor) : penColor;
+  // Derived active color & width based on whether Highlighter or Pen is active
+  const paletteMode: 'pen' | 'hl' = tool === 'highlighter' ? 'hl' : 'pen';
+  const color = tool === 'highlighter' ? hlColor : penColor;
   const strokeWidth = tool === 'highlighter' ? hlWidth : penWidth;
 
   // Infinite Canvas Viewport Transform
@@ -451,6 +452,93 @@ export default function Canvas({
     "Today's Core Concept: Photosynthesis"
   );
   const [showLiveGridOverview, setShowLiveGridOverview] = useState<boolean>(false);
+
+  // Classroom Countdown Timer & Batch Multi-Page PDF Export States
+  const [showTimerMenu, setShowTimerMenu] = useState<boolean>(false);
+  const [customTimeInput, setCustomTimeInput] = useState<string>('7:00');
+  const [displayRemainingMs, setDisplayRemainingMs] = useState<number>(0);
+  const timerMenuRef = useRef<HTMLDivElement>(null);
+  const [pdfExportProgress, setPdfExportProgress] = useState<{ current: number; total: number } | null>(
+    null
+  );
+
+  useEffect(() => {
+    const updateRemaining = () => {
+      if (!timer) {
+        setDisplayRemainingMs(0);
+        return;
+      }
+      if (timer.isRunning && timer.endsAt !== null) {
+        setDisplayRemainingMs(Math.max(0, timer.endsAt - Date.now()));
+      } else {
+        setDisplayRemainingMs(Math.max(0, timer.remainingMs || 0));
+      }
+    };
+    updateRemaining();
+    if (timer?.isRunning && timer?.endsAt !== null) {
+      const interval = setInterval(updateRemaining, 250);
+      return () => clearInterval(interval);
+    }
+  }, [timer]);
+
+  useEffect(() => {
+    if (!showTimerMenu) return;
+    const onDocDown = (e: MouseEvent) => {
+      if (timerMenuRef.current && !timerMenuRef.current.contains(e.target as Node)) {
+        setShowTimerMenu(false);
+      }
+    };
+    document.addEventListener('mousedown', onDocDown);
+    return () => document.removeEventListener('mousedown', onDocDown);
+  }, [showTimerMenu]);
+
+  const formatTimerMs = (ms: number): string => {
+    const totalSecs = Math.max(0, Math.ceil(ms / 1000));
+    const hrs = Math.floor(totalSecs / 3600);
+    const mins = Math.floor((totalSecs % 3600) / 60);
+    const secs = totalSecs % 60;
+    if (hrs > 0) {
+      return `${hrs}:${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+    }
+    return `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+  };
+
+  const parseCustomTimeSeconds = (raw: string): number | null => {
+    const trimmed = raw.trim();
+    if (!trimmed) return null;
+    if (trimmed.includes(':')) {
+      const parts = trimmed.split(':').map((p) => Number(p.trim()));
+      if (parts.some((n) => !Number.isFinite(n) || n < 0)) return null;
+      if (parts.length === 2) {
+        return Math.round(parts[0] * 60 + parts[1]);
+      }
+      if (parts.length === 3) {
+        return Math.round(parts[0] * 3600 + parts[1] * 60 + parts[2]);
+      }
+      return null;
+    }
+    const mins = Number(trimmed);
+    if (!Number.isFinite(mins) || mins <= 0) return null;
+    return Math.round(mins * 60);
+  };
+
+  const handleBatchExportAllPdf = async () => {
+    if (pdfExportProgress) return;
+    const allSubBoards = Object.values(subBoards) as SubBoardData[];
+    try {
+      setPdfExportProgress({ current: 1, total: Math.max(1, allSubBoards.length + 1) });
+      await exportAllBoardsToPdf({
+        roomId,
+        mainElements: fullMainElements,
+        mainBackground: fullMainBackground,
+        subBoards: allSubBoards,
+        users,
+        onProgress: (current, total) => setPdfExportProgress({ current, total }),
+      });
+    } finally {
+      setPdfExportProgress(null);
+    }
+  };
 
   // JSON Import Modal States (Teacher Only)
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -553,13 +641,8 @@ export default function Canvas({
   const handleSelectColor = useCallback(
     (nextColor: string) => {
       if (tool === 'highlighter') {
-        if (isCovering) {
-          setCoverColor(nextColor);
-          saveLocal('allaboard-cover-color', nextColor);
-        } else {
-          setHlColor(nextColor);
-          saveLocal('allaboard-hl-color', nextColor);
-        }
+        setHlColor(nextColor);
+        saveLocal('allaboard-hl-color', nextColor);
       } else {
         setPenColor(nextColor);
         saveLocal('allaboard-pen-color', nextColor);
@@ -576,7 +659,7 @@ export default function Canvas({
       });
       requestAnimationFrame(() => noteTextareaRef.current?.focus());
     },
-    [tool, isCovering]
+    [tool]
   );
 
   // Helper to update brush/note size and restyle an open note live
@@ -1219,6 +1302,10 @@ export default function Canvas({
 
   // OverBoard-powered PointerDown handler (supports SMART Board palm eraser, finger-scrolls mode, and click-to-edit notes)
   const handleViewportPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    const targetEl = e.target as HTMLElement | null;
+    if (targetEl && targetEl.closest && targetEl.closest('[data-hud="true"], button, input, textarea, select')) {
+      return;
+    }
     if (activePointerIdRef.current !== null) return;
     if (e.pointerType === 'mouse' && e.button !== 0 && e.button !== 1) return;
 
@@ -1353,11 +1440,7 @@ export default function Canvas({
           : strokeWidth;
 
       const strokeColor =
-        strokeTool === 'highlighter'
-          ? isCovering
-            ? coverColor
-            : hlInk(hlColor, hlStrength)
-          : color;
+        strokeTool === 'highlighter' ? hlInk(hlColor, hlStrength) : color;
 
       activeStrokePointsRef.current = [world.x, world.y];
       liveSmoothRef.current = liveStart(world.x, world.y);
@@ -1370,8 +1453,7 @@ export default function Canvas({
         tool: strokeTool,
         color: strokeColor,
         strokeWidth: effectiveStrokeWidth,
-        isCover: strokeTool === 'highlighter' ? isCovering : undefined,
-        hlStrength: strokeTool === 'highlighter' && !isCovering ? hlStrength : undefined,
+        hlStrength: strokeTool === 'highlighter' ? hlStrength : undefined,
         points: [world.x, world.y],
         timestamp: Date.now(),
       };
@@ -1893,7 +1975,7 @@ export default function Canvas({
             <SprayCan size={17} />
           </button>
 
-          {/* OverBoard Split Highlighter & Cover Menu Button */}
+          {/* OverBoard Split See-Through Highlighter & Strength Menu Button */}
           <div ref={hlMenuRef} className="relative flex items-center">
             <button
               type="button"
@@ -1902,19 +1984,13 @@ export default function Canvas({
               className={cn(
                 "px-2 py-1.5 rounded-l-md transition-colors cursor-pointer disabled:opacity-40 flex items-center gap-1 text-xs font-semibold",
                 tool === 'highlighter' && effectiveTool !== 'pan'
-                  ? isCovering
-                    ? "bg-slate-900 text-amber-300 shadow-xs"
-                    : "bg-amber-200 text-slate-900 shadow-xs"
+                  ? "bg-amber-200 text-slate-900 shadow-xs"
                   : "text-slate-600 hover:text-slate-900"
               )}
-              title={
-                isCovering
-                  ? "Cover Mode: draws an opaque bar that hides answers (erase to reveal)"
-                  : "Highlighter Mode: see-through multiply highlight under pen ink (never dulls black worksheet text)"
-              }
+              title="Highlighter Mode: see-through multiply highlight under pen ink (never dulls black worksheet text)"
             >
-              {isCovering ? <EyeOff size={15} /> : <Highlighter size={16} />}
-              <span className="hidden sm:inline">{isCovering ? 'Cover' : 'Highlight'}</span>
+              <Highlighter size={16} />
+              <span className="hidden sm:inline">Highlight</span>
             </button>
             <button
               type="button"
@@ -1928,49 +2004,33 @@ export default function Canvas({
               className={cn(
                 "px-1 py-1.5 rounded-r-md border-l border-slate-300/70 transition-colors cursor-pointer disabled:opacity-40",
                 showHlMenu || (tool === 'highlighter' && effectiveTool !== 'pan')
-                  ? isCovering
-                    ? "bg-slate-800 text-white"
-                    : "bg-amber-300/80 text-slate-900"
+                  ? "bg-amber-300/80 text-slate-900"
                   : "text-slate-500 hover:text-slate-900"
               )}
-              title="Highlight strength or Cover (black out answers)"
+              title="Adjust highlight intensity / strength"
             >
               <ChevronDown size={13} />
             </button>
 
-            {/* OverBoard Highlighter / Cover Popout Menu */}
+            {/* OverBoard Highlighter Strength Popout Menu */}
             {showHlMenu && (
               <div
                 role="menu"
-                aria-label="Highlighter and Cover options"
-                className="absolute left-0 top-full mt-1.5 z-50 w-64 p-2.5 rounded-xl bg-slate-900 text-white shadow-xl border border-slate-700 space-y-2"
+                aria-label="Highlighter options"
+                className="absolute left-0 top-full mt-1.5 z-50 w-60 p-3 rounded-xl bg-slate-900 text-white shadow-xl border border-slate-700 space-y-2.5"
               >
-                <button
-                  type="button"
-                  onClick={() => {
-                    setIsCovering(false);
-                    saveLocal('allaboard-hl-cover', '0');
-                    setTool('highlighter');
-                    setShowHlMenu(false);
-                  }}
-                  className={cn(
-                    "w-full flex items-center gap-2.5 p-2 rounded-lg text-left transition-colors cursor-pointer border-2",
-                    !isCovering
-                      ? "bg-slate-800 border-amber-400"
-                      : "bg-slate-800/60 border-transparent hover:bg-slate-800"
-                  )}
-                >
+                <div className="flex items-center gap-2.5">
                   <span
                     className="w-6 h-6 rounded border-2 border-white shrink-0"
                     style={{ backgroundColor: hlInk(hlColor, hlStrength) }}
                   />
                   <div>
-                    <div className="text-xs font-bold text-white">Highlight</div>
-                    <div className="text-[11px] text-slate-300">See-through (multiplies under ink)</div>
+                    <div className="text-xs font-bold text-white">See-Through Highlight</div>
+                    <div className="text-[11px] text-slate-300">Multiplies cleanly under dark ink</div>
                   </div>
-                </button>
+                </div>
 
-                <label className="block px-1.5 py-1 space-y-1">
+                <label className="block space-y-1.5 pt-1 border-t border-slate-800">
                   <div className="flex items-center justify-between text-xs font-semibold text-slate-200">
                     <span>Highlight strength</span>
                     <span className="font-mono text-amber-400">{hlStrength}%</span>
@@ -1985,8 +2045,6 @@ export default function Canvas({
                       const next = parseInt(e.target.value, 10);
                       setHlStrength(next);
                       saveLocal('allaboard-hl-strength', String(next));
-                      setIsCovering(false);
-                      saveLocal('allaboard-hl-cover', '0');
                       setTool('highlighter');
                     }}
                     className="w-full h-2 rounded-lg appearance-none cursor-pointer accent-amber-400"
@@ -1995,68 +2053,6 @@ export default function Canvas({
                     }}
                   />
                 </label>
-
-                <div className="border-t border-slate-700/80 pt-1.5 space-y-1">
-                  <div className="px-1 text-[10px] font-bold uppercase tracking-wider text-slate-400">
-                    Cover Mode (Hides Answers — Erase to Reveal)
-                  </div>
-                  {[
-                    { c: '#111111', label: 'Cover: Black' },
-                    { c: '#a6a6a6', label: 'Cover: Light gray' },
-                    { c: '#ffffff', label: 'Cover: White' },
-                  ].map((item) => (
-                    <button
-                      key={item.c}
-                      type="button"
-                      onClick={() => {
-                        setIsCovering(true);
-                        saveLocal('allaboard-hl-cover', '1');
-                        setCoverColor(item.c);
-                        saveLocal('allaboard-cover-color', item.c);
-                        setTool('highlighter');
-                        setShowHlMenu(false);
-                      }}
-                      className={cn(
-                        "w-full flex items-center gap-2.5 p-1.5 rounded-lg text-left transition-colors cursor-pointer border-2",
-                        isCovering && coverColor.toLowerCase() === item.c
-                          ? "bg-slate-800 border-amber-400"
-                          : "bg-slate-800/50 border-transparent hover:bg-slate-800"
-                      )}
-                    >
-                      <span
-                        className="w-5 h-5 rounded border border-white shrink-0"
-                        style={{ backgroundColor: item.c }}
-                      />
-                      <div>
-                        <div className="text-xs font-bold text-white">{item.label}</div>
-                        <div className="text-[10px] text-slate-400">Hides answers</div>
-                      </div>
-                    </button>
-                  ))}
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setIsCovering(true);
-                      saveLocal('allaboard-hl-cover', '1');
-                      setTool('highlighter');
-                      setShowHlMenu(false);
-                      setTimeout(() => customColorInputRef.current?.click(), 20);
-                    }}
-                    className="w-full flex items-center gap-2.5 p-1.5 rounded-lg text-left bg-slate-800/50 hover:bg-slate-800 transition-colors cursor-pointer border-2 border-transparent"
-                  >
-                    <span
-                      className="w-5 h-5 rounded border border-white shrink-0"
-                      style={{
-                        background:
-                          'conic-gradient(#f44336,#ffeb3b,#4caf50,#00bcd4,#3f51b5,#e91e63,#f44336)',
-                      }}
-                    />
-                    <div>
-                      <div className="text-xs font-bold text-white">Cover: Any color…</div>
-                      <div className="text-[10px] text-slate-400">Pick custom cover color</div>
-                    </div>
-                  </button>
-                </div>
               </div>
             )}
           </div>
@@ -2071,7 +2067,7 @@ export default function Canvas({
                 ? "bg-white text-blue-600 shadow-xs"
                 : "text-slate-600 hover:text-slate-900"
             )}
-            title="Personal Eraser (Erases your own ink, highlights, covers, and whole text notes — SMART Board palm always erases)"
+            title="Personal Eraser (Erases your own ink, highlights, and whole text notes — SMART Board palm always erases)"
           >
             <Eraser size={17} />
           </button>
@@ -2230,7 +2226,7 @@ export default function Canvas({
         {/* Labeled Brush / Font Size Slider */}
         <div className="flex items-center gap-1.5">
           <label htmlFor="brush-size-slider" className="text-xs font-medium text-slate-600 whitespace-nowrap">
-            {tool === 'highlighter' ? (isCovering ? 'Cover:' : 'Highlight:') : 'Size:'}
+            {tool === 'highlighter' ? 'Highlight:' : 'Size:'}
           </label>
           <input
             id="brush-size-slider"
@@ -2441,8 +2437,190 @@ export default function Canvas({
                   <LayoutGrid size={12} />
                   <span>{showLiveGridOverview ? 'Close Grid' : 'Live Grid View'}</span>
                 </button>
+
+                <span className="text-slate-300" aria-hidden="true">|</span>
+
+                <button
+                  type="button"
+                  disabled={Boolean(pdfExportProgress)}
+                  onClick={handleBatchExportAllPdf}
+                  className="flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-semibold text-emerald-700 hover:bg-emerald-50 disabled:opacity-50 transition-colors cursor-pointer whitespace-nowrap"
+                  title="Download a multi-page PDF containing every student or group board in one file"
+                >
+                  <FileSpreadsheet size={12} />
+                  <span>
+                    {pdfExportProgress
+                      ? `PDF ${pdfExportProgress.current}/${pdfExportProgress.total}...`
+                      : 'Export All (.PDF)'}
+                  </span>
+                </button>
               </div>
             )}
+
+            <span aria-hidden="true">·</span>
+
+            {/* Teacher Classroom Countdown Timer Button & Popover */}
+            <div ref={timerMenuRef} className="relative">
+              <button
+                type="button"
+                onClick={() => setShowTimerMenu((prev) => !prev)}
+                className={cn(
+                  "flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-semibold transition-colors whitespace-nowrap shrink-0 cursor-pointer border",
+                  timer?.isRunning
+                    ? displayRemainingMs <= 60000
+                      ? "bg-red-600 text-white border-red-700 animate-pulse"
+                      : "bg-slate-900 text-amber-300 border-slate-800"
+                    : displayRemainingMs > 0
+                    ? "bg-amber-200 text-slate-900 border-amber-400"
+                    : "bg-white text-slate-800 border-amber-300 hover:bg-amber-100/60"
+                )}
+                title="Start, pause, or configure the synchronized classroom countdown timer"
+              >
+                <Timer size={13} className={timer?.isRunning ? "text-amber-300" : "text-amber-600"} />
+                <span className="font-mono tabular-nums">
+                  {timer?.isRunning || displayRemainingMs > 0
+                    ? `${formatTimerMs(displayRemainingMs)}${!timer?.isRunning ? ' (Paused)' : ''}`
+                    : 'Timer'}
+                </span>
+              </button>
+
+              {showTimerMenu && (
+                <div className="absolute left-0 top-full mt-1.5 z-50 w-72 p-3.5 rounded-xl bg-white border border-slate-200 shadow-xl space-y-3 text-slate-800 select-text">
+                  <div className="flex items-center justify-between">
+                    <span className="font-display font-bold text-xs text-slate-900">
+                      Classroom Countdown Timer
+                    </span>
+                    {(timer?.isRunning || displayRemainingMs > 0) && (
+                      <span className="font-mono tabular-nums text-xs font-bold text-blue-600">
+                        {formatTimerMs(displayRemainingMs)}
+                      </span>
+                    )}
+                  </div>
+
+                  {/* Default Preset Buttons: 5, 10, 20, 30 minutes */}
+                  <div>
+                    <span className="block text-[11px] font-medium text-slate-500 mb-1.5">
+                      Quick Start Presets:
+                    </span>
+                    <div className="grid grid-cols-4 gap-1.5">
+                      {[5, 10, 20, 30].map((mins) => (
+                        <button
+                          key={mins}
+                          type="button"
+                          onClick={() => {
+                            onTeacherTimerControl({
+                              action: 'start',
+                              durationSeconds: mins * 60,
+                            });
+                            setShowTimerMenu(false);
+                          }}
+                          className="py-1.5 px-2 rounded-lg text-xs font-mono font-semibold bg-slate-100 hover:bg-blue-600 hover:text-white text-slate-800 transition-colors cursor-pointer"
+                        >
+                          {mins}m
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Custom Exact Time Input */}
+                  <form
+                    onSubmit={(e) => {
+                      e.preventDefault();
+                      const secs = parseCustomTimeSeconds(customTimeInput);
+                      if (secs && secs >= 5) {
+                        onTeacherTimerControl({
+                          action: 'start',
+                          durationSeconds: secs,
+                        });
+                        setShowTimerMenu(false);
+                      }
+                    }}
+                    className="space-y-1"
+                  >
+                    <label className="block text-[11px] font-medium text-slate-500">
+                      Exact Time (e.g. <span className="font-mono">7:30</span> or minutes like <span className="font-mono">12</span>):
+                    </label>
+                    <div className="flex items-center gap-1.5">
+                      <input
+                        type="text"
+                        value={customTimeInput}
+                        onChange={(e) => setCustomTimeInput(e.target.value)}
+                        placeholder="e.g. 7:30 or 15"
+                        className="flex-1 px-2.5 py-1.5 text-xs font-mono border border-slate-300 rounded-lg focus:outline-none focus:border-blue-600"
+                      />
+                      <button
+                        type="submit"
+                        disabled={!parseCustomTimeSeconds(customTimeInput)}
+                        className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-40 cursor-pointer whitespace-nowrap"
+                      >
+                        Start
+                      </button>
+                    </div>
+                  </form>
+
+                  {/* Active Timer Controls (Pause/Resume, +1m, Stop) */}
+                  {(timer?.isRunning || displayRemainingMs > 0) && (
+                    <div className="flex items-center gap-1.5 pt-1 border-t border-slate-100">
+                      {timer?.isRunning ? (
+                        <button
+                          type="button"
+                          onClick={() => onTeacherTimerControl({ action: 'pause' })}
+                          className="flex-1 flex items-center justify-center gap-1 py-1.5 px-2 rounded-lg text-xs font-semibold bg-amber-100 text-amber-900 hover:bg-amber-200 cursor-pointer"
+                        >
+                          <Pause size={12} />
+                          <span>Pause</span>
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => onTeacherTimerControl({ action: 'resume' })}
+                          className="flex-1 flex items-center justify-center gap-1 py-1.5 px-2 rounded-lg text-xs font-semibold bg-emerald-600 text-white hover:bg-emerald-700 cursor-pointer"
+                        >
+                          <Play size={12} />
+                          <span>Resume</span>
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => onTeacherTimerControl({ action: 'add-minute' })}
+                        className="py-1.5 px-2.5 rounded-lg text-xs font-mono font-semibold bg-slate-100 text-slate-700 hover:bg-slate-200 cursor-pointer"
+                        title="Add 1 minute"
+                      >
+                        +1m
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          onTeacherTimerControl({ action: 'stop' });
+                          setShowTimerMenu(false);
+                        }}
+                        className="flex items-center justify-center gap-1 py-1.5 px-2.5 rounded-lg text-xs font-semibold bg-red-50 text-red-600 hover:bg-red-100 cursor-pointer"
+                        title="Stop and clear timer"
+                      >
+                        <RotateCcw size={12} />
+                        <span>Stop</span>
+                      </button>
+                    </div>
+                  )}
+
+                  {/* Auto-Lock on Expire Option */}
+                  <label className="flex items-center gap-2 pt-1 border-t border-slate-100 text-xs text-slate-700 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={Boolean(timer?.autoLockOnExpire)}
+                      onChange={(e) =>
+                        onTeacherTimerControl({
+                          action: 'set-autolock',
+                          autoLockOnExpire: e.target.checked,
+                        })
+                      }
+                      className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                    />
+                    <span>Auto-lock board when time expires</span>
+                  </label>
+                </div>
+              )}
+            </div>
 
             <span aria-hidden="true">·</span>
 
@@ -2623,8 +2801,11 @@ export default function Canvas({
           </div>
         </div>
       ) : (
-        /* Student Status Banner (Breakout / Individual Board Indicator or Lock Banner) */
-        (breakoutConfig.mode !== 'main' || isCanvasLocked) && (
+        /* Student Status Banner (Breakout / Individual Board Indicator, Active Timer, or Lock Banner) */
+        (breakoutConfig.mode !== 'main' ||
+          isCanvasLocked ||
+          timer?.isRunning ||
+          displayRemainingMs > 0) && (
           <div className="px-4 py-1.5 bg-blue-50/90 border-b border-blue-200/80 flex flex-wrap items-center justify-between gap-2 text-xs text-slate-800 z-10">
             <div className="flex items-center gap-2">
               <span className="font-display font-semibold text-blue-900">
@@ -2639,6 +2820,25 @@ export default function Canvas({
             </div>
 
             <div className="flex items-center gap-3">
+              {(timer?.isRunning || displayRemainingMs > 0) && (
+                <span
+                  className={cn(
+                    "flex items-center gap-1.5 px-2.5 py-0.5 rounded-md font-mono tabular-nums font-bold text-xs",
+                    timer?.isRunning
+                      ? displayRemainingMs <= 60000
+                        ? "bg-red-600 text-white animate-pulse"
+                        : "bg-slate-900 text-amber-300"
+                      : "bg-amber-200 text-slate-900"
+                  )}
+                >
+                  <Timer size={12} />
+                  <span>
+                    {formatTimerMs(displayRemainingMs)}
+                    {!timer?.isRunning ? ' (Paused)' : ''}
+                  </span>
+                </span>
+              )}
+
               {breakoutConfig.mode === 'groups' && breakoutConfig.allowSelfSelect && (
                 <div className="flex items-center gap-1.5">
                   <span className="text-slate-600">Switch Group:</span>
@@ -2680,7 +2880,21 @@ export default function Canvas({
                   Click any student or group board below to jump onto their canvas, give feedback, or project it to the class.
                 </p>
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  disabled={Boolean(pdfExportProgress)}
+                  onClick={handleBatchExportAllPdf}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-50 cursor-pointer"
+                  title="Download a single multi-page PDF with every student and group board for grading or portfolios"
+                >
+                  <Download size={14} />
+                  <span>
+                    {pdfExportProgress
+                      ? `Building PDF (${pdfExportProgress.current}/${pdfExportProgress.total})...`
+                      : `Export All Boards (.PDF)`}
+                  </span>
+                </button>
                 <button
                   type="button"
                   onClick={handleOpenBreakoutModal}
@@ -3615,15 +3829,22 @@ export default function Canvas({
         )}
 
         {/* Floating Bottom-Right Infinite Canvas Zoom & Navigation HUD */}
-        <div className="absolute bottom-4 right-4 z-20 flex items-center gap-1 bg-white/95 backdrop-blur-xs px-2 py-1.5 rounded-lg border border-slate-200 shadow-sm text-xs text-slate-700">
+        <div
+          data-hud="true"
+          onPointerDown={(e) => e.stopPropagation()}
+          onPointerMove={(e) => e.stopPropagation()}
+          onPointerUp={(e) => e.stopPropagation()}
+          onDoubleClick={(e) => e.stopPropagation()}
+          className="absolute bottom-4 right-4 z-20 flex items-center gap-1 bg-white/95 backdrop-blur-xs px-2 py-1.5 rounded-lg border border-slate-200 shadow-sm text-xs text-slate-700"
+        >
           <button
             type="button"
             onClick={() => setShowGrid(!showGrid)}
             className={cn(
               "p-1.5 rounded hover:bg-slate-100 transition-colors cursor-pointer",
-              showGrid ? "text-blue-600" : "text-slate-400"
+              showGrid ? "text-blue-600 bg-blue-50/70" : "text-slate-400"
             )}
-            title="Toggle background dot grid"
+            title={showGrid ? "Hide background dot grid" : "Show background dot grid"}
           >
             <Grid size={14} />
           </button>
