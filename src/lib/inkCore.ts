@@ -8,6 +8,13 @@ import { CanvasElement } from '../types';
 export const NOTE_FONT = '"Plus Jakarta Sans", Arial, Helvetica, sans-serif';
 export const NOTE_LH = 1.25;
 
+export const TEXT_SIZE_PRESETS = [
+  { label: 'S', size: 18, title: 'Small text (18px)' },
+  { label: 'M', size: 26, title: 'Medium text (26px)' },
+  { label: 'L', size: 38, title: 'Large text (38px)' },
+  { label: 'XL', size: 54, title: 'Extra-large title text (54px)' },
+] as const;
+
 export interface LiveSmoothState {
   fx: number;
   fy: number;
@@ -297,4 +304,441 @@ export function hitEditableNote(
     }
   }
   return null;
+}
+
+/* ---- OverBoard Geometry, Hit-Testing, Lasso Selection & Element Transform Helpers ---- */
+
+/**
+ * Compute bounding box [minX - pad, minY - pad, maxX + pad, maxY + pad] for a 2D point list.
+ */
+export function inkBox(pts: number[], pad: number): [number, number, number, number] {
+  if (!pts || pts.length < 2) return [0, 0, 0, 0];
+  let x0 = Infinity;
+  let y0 = Infinity;
+  let x1 = -Infinity;
+  let y1 = -Infinity;
+  for (let i = 0; i < pts.length; i += 2) {
+    const x = pts[i];
+    const y = pts[i + 1];
+    if (x < x0) x0 = x;
+    if (x > x1) x1 = x;
+    if (y < y0) y0 = y;
+    if (y > y1) y1 = y;
+  }
+  return [x0 - pad, y0 - pad, x1 + pad, y1 + pad];
+}
+
+/**
+ * True if two axis-aligned bounding boxes [x0, y0, x1, y1] overlap.
+ */
+export function boxesMeet(
+  a: [number, number, number, number],
+  b: [number, number, number, number]
+): boolean {
+  return a[0] <= b[2] && b[0] <= a[2] && a[1] <= b[3] && b[1] <= a[3];
+}
+
+/**
+ * Minimum Euclidean distance from (x, y) to a polyline [x0, y0, x1, y1, ...].
+ */
+export function distToPath(x: number, y: number, pts: number[]): number {
+  if (!pts || pts.length < 2) return Infinity;
+  if (pts.length < 4) return Math.hypot(x - pts[0], y - pts[1]);
+  let best = Infinity;
+  for (let i = 0; i + 3 < pts.length; i += 2) {
+    const ax = pts[i];
+    const ay = pts[i + 1];
+    const dx = pts[i + 2] - ax;
+    const dy = pts[i + 3] - ay;
+    const lenSq = dx * dx + dy * dy;
+    const t = lenSq ? Math.max(0, Math.min(1, ((x - ax) * dx + (y - ay) * dy) / lenSq)) : 0;
+    best = Math.min(best, Math.hypot(x - ax - t * dx, y - ay - t * dy));
+  }
+  return best;
+}
+
+/**
+ * Ray-casting point-in-polygon test for a closed lasso loop [x0, y0, x1, y1, ...].
+ */
+export function pointInLoop(x: number, y: number, loop: number[]): boolean {
+  if (!loop || loop.length < 6) return false;
+  let inside = false;
+  for (let i = 0, j = loop.length - 2; i < loop.length; j = i, i += 2) {
+    if (
+      (loop[i + 1] > y) !== (loop[j + 1] > y) &&
+      x < ((loop[j] - loop[i]) * (y - loop[i + 1])) / (loop[j + 1] - loop[i + 1]) + loop[i]
+    ) {
+      inside = !inside;
+    }
+  }
+  return inside;
+}
+
+/**
+ * Return the world-space bounding box [x0, y0, x1, y1] of any CanvasElement.
+ */
+export function getElementBounds(el: CanvasElement): [number, number, number, number] {
+  if (el.tool === 'text') {
+    return getNoteBox(el);
+  }
+  const pad = (el.strokeWidth || 4) / 2;
+  if (el.tool === 'rect') {
+    const x0 = Math.min(el.x || 0, (el.x || 0) + (el.width || 0));
+    const y0 = Math.min(el.y || 0, (el.y || 0) + (el.height || 0));
+    const x1 = Math.max(el.x || 0, (el.x || 0) + (el.width || 0));
+    const y1 = Math.max(el.y || 0, (el.y || 0) + (el.height || 0));
+    return [x0 - pad, y0 - pad, x1 + pad, y1 + pad];
+  }
+  if (el.tool === 'circle') {
+    const radius = Math.max(Math.abs(el.width || 0) / 2, Math.abs(el.height || 0) / 2);
+    const cx = (el.x || 0) + (el.width || 0) / 2;
+    const cy = (el.y || 0) + (el.height || 0) / 2;
+    return [cx - radius - pad, cy - radius - pad, cx + radius + pad, cy + radius + pad];
+  }
+  if (el.tool === 'stamp') {
+    const cx = el.x || 0;
+    const cy = el.y || 0;
+    if (el.stamp === 'username') {
+      const label = el.userName || 'Student';
+      const fontSize = Math.max(13, Math.round((el.strokeWidth || 6) * 1.1 + 10));
+      const padX = Math.round(fontSize * 0.85);
+      const badgeW = Math.max(64, Math.round(label.length * (fontSize * 0.62) + padX * 2));
+      const badgeH = Math.round(fontSize * 1.85);
+      return [cx - badgeW / 2, cy - badgeH / 2, cx + badgeW / 2, cy + badgeH / 2];
+    }
+    const radius = Math.max(16, (el.strokeWidth || 6) * 1.8 + 10);
+    return [cx - radius, cy - radius, cx + radius, cy + radius];
+  }
+  return inkBox(el.points || [], pad);
+}
+
+/**
+ * Compute the union bounding box [x0, y0, x1, y1] of a set of elements, or null if empty.
+ */
+export function getSelectionBounds(
+  elements: CanvasElement[]
+): [number, number, number, number] | null {
+  if (!elements || elements.length === 0) return null;
+  let x0 = Infinity;
+  let y0 = Infinity;
+  let x1 = -Infinity;
+  let y1 = -Infinity;
+  for (const el of elements) {
+    const b = getElementBounds(el);
+    if (b[0] < x0) x0 = b[0];
+    if (b[1] < y0) y0 = b[1];
+    if (b[2] > x1) x1 = b[2];
+    if (b[3] > y1) y1 = b[3];
+  }
+  return Number.isFinite(x0) ? [x0, y0, x1, y1] : null;
+}
+
+/**
+ * True if the user owns the element or is a verified teacher.
+ */
+export function canUserModifyElement(
+  el: CanvasElement,
+  currentUserId: string,
+  isTeacher: boolean
+): boolean {
+  return isTeacher || el.userId === currentUserId;
+}
+
+/**
+ * True if `el` is a freehand stroke whose `points` can be split/trimmed by subsequent eraser strokes.
+ */
+export function isFreehandStroke(el: CanvasElement): boolean {
+  return (
+    el.tool === 'solid' ||
+    el.tool === 'hollow' ||
+    el.tool === 'spray' ||
+    el.tool === 'highlighter'
+  );
+}
+
+/**
+ * Compute the remaining visible polyline runs of `el` after applying subsequent eraser strokes
+ * from the same user (mirrors OverBoard's `seenNow` / `applyErasers`).
+ */
+export function getVisibleStrokeRuns(
+  el: CanvasElement,
+  allElements: CanvasElement[]
+): number[][] {
+  if (!isFreehandStroke(el)) {
+    return el.points && el.points.length >= 2 ? [el.points] : [];
+  }
+  const pts = el.points || [];
+  if (pts.length < 2) return [];
+  const idx = allElements.findIndex((item) => item.id === el.id);
+  if (idx === -1) return [pts];
+
+  let runs: number[][] = [pts];
+  const pad = (el.strokeWidth || 4) / 2;
+
+  const flushRun = (out: number[][], origLen: number, run: number[]) => {
+    if (run.length >= 4 || (run.length === 2 && origLen === 2)) {
+      out.push(run);
+    }
+  };
+
+  for (let j = idx + 1; j < allElements.length; j++) {
+    const er = allElements[j];
+    if (
+      er.tool !== 'eraser' ||
+      er.userId !== el.userId ||
+      !er.points ||
+      er.points.length < 2
+    ) {
+      continue;
+    }
+    const r = Math.max(8, (er.strokeWidth || 6) * 1.5) / 2;
+    const eBox = inkBox(er.points, r);
+    const nextRuns: number[][] = [];
+
+    for (const run of runs) {
+      if (!boxesMeet(eBox, inkBox(run, pad))) {
+        nextRuns.push(run);
+        continue;
+      }
+      let cur: number[] = [];
+      for (let n = 0; n < run.length; n += 2) {
+        if (distToPath(run[n], run[n + 1], er.points) <= r + pad * 0.5) {
+          flushRun(nextRuns, run.length, cur);
+          cur = [];
+        } else {
+          cur.push(run[n], run[n + 1]);
+        }
+      }
+      flushRun(nextRuns, run.length, cur);
+    }
+
+    runs = nextRuns;
+    if (runs.length === 0) break;
+  }
+
+  return runs;
+}
+
+/**
+ * Expand `el` into its remaining visible pieces after subsequent erasers from the same user.
+ * Returns `[el]` unchanged when no points were erased, `[]` if fully erased, or split copies otherwise.
+ */
+export function expandElementVisiblePieces(
+  el: CanvasElement,
+  allElements: CanvasElement[]
+): CanvasElement[] {
+  if (!isFreehandStroke(el)) return [el];
+  const runs = getVisibleStrokeRuns(el, allElements);
+  if (runs.length === 0) return [];
+  if (runs.length === 1 && runs[0].length === (el.points?.length || 0)) {
+    return [el];
+  }
+  return runs.map((pts, idx) => ({
+    ...el,
+    id:
+      idx === 0
+        ? el.id
+        : `${el.id}_p${idx}_${Math.random().toString(36).substring(2, 6)}`,
+    points: [...pts],
+  }));
+}
+
+/**
+ * True if a subsequent eraser stroke from the same user overlaps `el`'s bounding box.
+ */
+export function hasSubsequentOverlappingEraser(
+  el: CanvasElement,
+  allElements: CanvasElement[]
+): boolean {
+  if (el.tool === 'text' || el.tool === 'eraser') return false;
+  const idx = allElements.findIndex((item) => item.id === el.id);
+  if (idx === -1) return false;
+  const elBounds = getElementBounds(el);
+  for (let j = idx + 1; j < allElements.length; j++) {
+    const er = allElements[j];
+    if (
+      er.tool === 'eraser' &&
+      er.userId === el.userId &&
+      er.points &&
+      er.points.length >= 2
+    ) {
+      const r = Math.max(8, (er.strokeWidth || 6) * 1.5) / 2;
+      if (boxesMeet(elBounds, inkBox(er.points, r))) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+/**
+ * Find the topmost modifiable, non-erased element at world coordinates (x, y) within `tol`.
+ */
+export function hitElementAtPoint(
+  elements: CanvasElement[],
+  goneNoteIds: Set<string>,
+  x: number,
+  y: number,
+  tol: number,
+  currentUserId: string,
+  isTeacher: boolean
+): CanvasElement | null {
+  for (let i = elements.length - 1; i >= 0; i--) {
+    const el = elements[i];
+    if (el.tool === 'eraser' || goneNoteIds.has(el.id)) continue;
+    if (!canUserModifyElement(el, currentUserId, isTeacher)) continue;
+
+    const pad = (el.strokeWidth || 4) / 2;
+    if (el.tool === 'text' || el.tool === 'stamp') {
+      const b = getElementBounds(el);
+      if (x >= b[0] - tol && x <= b[2] + tol && y >= b[1] - tol && y <= b[3] + tol) {
+        return el;
+      }
+      continue;
+    }
+
+    if (el.tool === 'rect') {
+      const rx0 = Math.min(el.x || 0, (el.x || 0) + (el.width || 0));
+      const ry0 = Math.min(el.y || 0, (el.y || 0) + (el.height || 0));
+      const rx1 = Math.max(el.x || 0, (el.x || 0) + (el.width || 0));
+      const ry1 = Math.max(el.y || 0, (el.y || 0) + (el.height || 0));
+      const reach = pad + tol;
+      if (
+        x >= rx0 - reach &&
+        x <= rx1 + reach &&
+        y >= ry0 - reach &&
+        y <= ry1 + reach
+      ) {
+        if (rx1 - rx0 < 24 || ry1 - ry0 < 24) return el;
+        const inHollowInterior =
+          x > rx0 + reach && x < rx1 - reach && y > ry0 + reach && y < ry1 - reach;
+        if (!inHollowInterior) return el;
+      }
+      continue;
+    }
+
+    if (el.tool === 'circle') {
+      const radius = Math.max(Math.abs(el.width || 0) / 2, Math.abs(el.height || 0) / 2);
+      const cx = (el.x || 0) + (el.width || 0) / 2;
+      const cy = (el.y || 0) + (el.height || 0) / 2;
+      const dist = Math.hypot(x - cx, y - cy);
+      const reach = pad + tol;
+      if (radius < 16 ? dist <= radius + reach : Math.abs(dist - radius) <= reach) {
+        return el;
+      }
+      continue;
+    }
+
+    if (isFreehandStroke(el)) {
+      const runs = getVisibleStrokeRuns(el, elements);
+      if (runs.length === 0) continue;
+      if (runs.some((run) => distToPath(x, y, run) <= pad + tol)) {
+        return el;
+      }
+      continue;
+    }
+
+    const pts = el.points || [];
+    if (pts.length >= 2 && distToPath(x, y, pts) <= pad + tol) {
+      return el;
+    }
+  }
+  return null;
+}
+
+/**
+ * Select all modifiable, non-erased elements enclosed by a lasso loop [x0, y0, x1, y1, ...].
+ * Returned in drawing order (bottom to top).
+ */
+export function lassoSelectElements(
+  elements: CanvasElement[],
+  goneNoteIds: Set<string>,
+  loop: number[],
+  currentUserId: string,
+  isTeacher: boolean
+): CanvasElement[] {
+  if (!loop || loop.length < 6) return [];
+  const lb = inkBox(loop, 0);
+  const out: CanvasElement[] = [];
+
+  for (let i = 0; i < elements.length; i++) {
+    const el = elements[i];
+    if (el.tool === 'eraser' || goneNoteIds.has(el.id)) continue;
+    if (!canUserModifyElement(el, currentUserId, isTeacher)) continue;
+
+    const b = getElementBounds(el);
+    if (!boxesMeet(lb, b)) continue;
+
+    if (
+      el.tool === 'text' ||
+      el.tool === 'stamp' ||
+      el.tool === 'rect' ||
+      el.tool === 'circle'
+    ) {
+      const cx = (b[0] + b[2]) / 2;
+      const cy = (b[1] + b[3]) / 2;
+      if (pointInLoop(cx, cy, loop)) {
+        out.push(el);
+        continue;
+      }
+      let cornersInside = 0;
+      if (pointInLoop(b[0], b[1], loop)) cornersInside++;
+      if (pointInLoop(b[2], b[1], loop)) cornersInside++;
+      if (pointInLoop(b[0], b[3], loop)) cornersInside++;
+      if (pointInLoop(b[2], b[3], loop)) cornersInside++;
+      if (cornersInside >= 2) {
+        out.push(el);
+      }
+      continue;
+    }
+
+    if (isFreehandStroke(el)) {
+      const runs = getVisibleStrokeRuns(el, elements);
+      if (runs.length === 0) continue;
+      let total = 0;
+      let inside = 0;
+      for (const run of runs) {
+        total += run.length / 2;
+        for (let k = 0; k < run.length; k += 2) {
+          if (pointInLoop(run[k], run[k + 1], loop)) inside++;
+        }
+      }
+      if (total > 0 && inside * 2 >= total) {
+        out.push(el);
+      }
+      continue;
+    }
+
+    const pts = el.points || [];
+    if (pts.length < 2) continue;
+    const total = pts.length / 2;
+    let inside = 0;
+    for (let k = 0; k < pts.length; k += 2) {
+      if (pointInLoop(pts[k], pts[k + 1], loop)) inside++;
+    }
+    if (inside * 2 >= total) {
+      out.push(el);
+    }
+  }
+
+  return out;
+}
+
+/**
+ * Return a copy of `el` translated by `(dx, dy)` in world coordinates (rounded to 0.1).
+ */
+export function translateElement(el: CanvasElement, dx: number, dy: number): CanvasElement {
+  const r = (v: number) => Math.round(v * 10) / 10;
+  const copy: CanvasElement = { ...el };
+  if (typeof el.x === 'number') copy.x = r(el.x + dx);
+  if (typeof el.y === 'number') copy.y = r(el.y + dy);
+  if (Array.isArray(el.points)) {
+    const nextPts: number[] = new Array(el.points.length);
+    for (let i = 0; i < el.points.length; i += 2) {
+      nextPts[i] = r(el.points[i] + dx);
+      nextPts[i + 1] = r(el.points[i + 1] + dy);
+    }
+    copy.points = nextPts;
+  }
+  return copy;
 }

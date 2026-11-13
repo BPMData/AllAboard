@@ -376,26 +376,96 @@ export default function App() {
       }
     );
 
-    newSocket.on('element-update', (patch: Partial<CanvasElement> & { id: string; boardId?: string }) => {
-      const bId = patch.boardId || 'main';
-      if (bId === 'main') {
-        setElements((prev) =>
-          prev.map((el) => (el.id === patch.id ? { ...el, ...patch } : el))
-        );
+    const applyBoardElementsTransform = (
+      boardId: string,
+      transform: (list: CanvasElement[]) => CanvasElement[]
+    ) => {
+      if (boardId === 'main') {
+        setElements(transform);
       } else {
         setSubBoards((prev) => {
-          const sb = prev[bId];
+          const sb = prev[boardId];
           if (!sb) return prev;
           return {
             ...prev,
-            [bId]: {
-              ...sb,
-              elements: sb.elements.map((el) => (el.id === patch.id ? { ...el, ...patch } : el)),
-            },
+            [boardId]: { ...sb, elements: transform(sb.elements) },
           };
         });
       }
-    });
+    };
+
+    newSocket.on(
+      'element-update',
+      (patch: Partial<CanvasElement> & { id: string; boardId?: string; bringToFront?: boolean }) => {
+        const bId = patch.boardId || 'main';
+        const { bringToFront, ...cleanPatch } = patch;
+        applyBoardElementsTransform(bId, (list) => {
+          if (!bringToFront) {
+            return list.map((el) => (el.id === cleanPatch.id ? { ...el, ...cleanPatch } : el));
+          }
+          const idx = list.findIndex((el) => el.id === cleanPatch.id);
+          if (idx === -1) return list;
+          const updated = { ...list[idx], ...cleanPatch };
+          return [...list.slice(0, idx), ...list.slice(idx + 1), updated];
+        });
+      }
+    );
+
+    newSocket.on(
+      'elements-batch-updated',
+      ({
+        boardId = 'main',
+        updates,
+        bringToFront = false,
+      }: {
+        boardId?: string;
+        updates: Array<Partial<CanvasElement> & { id: string }>;
+        bringToFront?: boolean;
+      }) => {
+        if (!Array.isArray(updates) || updates.length === 0) return;
+        const map = new Map(updates.map((u) => [u.id, u]));
+        applyBoardElementsTransform(boardId, (list) => {
+          if (!bringToFront) {
+            return list.map((el) => {
+              const patch = map.get(el.id);
+              return patch ? { ...el, ...patch } : el;
+            });
+          }
+          const remaining: CanvasElement[] = [];
+          const front: CanvasElement[] = [];
+          for (const el of list) {
+            const patch = map.get(el.id);
+            if (patch) {
+              front.push({ ...el, ...patch });
+            } else {
+              remaining.push(el);
+            }
+          }
+          return [...remaining, ...front];
+        });
+      }
+    );
+
+    newSocket.on(
+      'elements-batch-added',
+      ({ boardId = 'main', elements: added }: { boardId?: string; elements: CanvasElement[] }) => {
+        if (!Array.isArray(added) || added.length === 0) return;
+        applyBoardElementsTransform(boardId, (list) => {
+          const existingIds = new Set(list.map((e) => e.id));
+          const toAppend = added.filter((e) => e && e.id && !existingIds.has(e.id));
+          return toAppend.length > 0 ? [...list, ...toAppend] : list;
+        });
+      }
+    );
+
+    newSocket.on(
+      'elements-batch-removed',
+      ({ boardId = 'main', ids }: { boardId?: string; ids: string[] }) => {
+        if (!Array.isArray(ids) || ids.length === 0) return;
+        const idSet = new Set(ids);
+        applyBoardElementsTransform(boardId, (list) => list.filter((el) => !idSet.has(el.id)));
+      }
+    );
 
     newSocket.on('element-removed', ({ id, boardId = 'main' }: { id: string; boardId?: string }) => {
       if (boardId === 'main') {
@@ -755,30 +825,127 @@ export default function App() {
     [socket, activeBoardId]
   );
 
-  const handleElementUpdate = useCallback(
-    (patch: Partial<CanvasElement> & { id: string }) => {
+  const updateActiveBoardElements = useCallback(
+    (transform: (list: CanvasElement[]) => CanvasElement[]) => {
       if (activeBoardId === 'main') {
-        setElements((prev) =>
-          prev.map((el) => (el.id === patch.id ? { ...el, ...patch } : el))
-        );
+        setElements(transform);
       } else {
         setSubBoards((prev) => {
           const sb = prev[activeBoardId];
           if (!sb) return prev;
           return {
             ...prev,
-            [activeBoardId]: {
-              ...sb,
-              elements: sb.elements.map((el) => (el.id === patch.id ? { ...el, ...patch } : el)),
-            },
+            [activeBoardId]: { ...sb, elements: transform(sb.elements) },
           };
         });
       }
+    },
+    [activeBoardId]
+  );
+
+  const handleElementUpdate = useCallback(
+    (patch: Partial<CanvasElement> & { id: string; bringToFront?: boolean }) => {
+      const { bringToFront, ...cleanPatch } = patch;
+      updateActiveBoardElements((list) => {
+        if (!bringToFront) {
+          return list.map((el) => (el.id === cleanPatch.id ? { ...el, ...cleanPatch } : el));
+        }
+        const idx = list.findIndex((el) => el.id === cleanPatch.id);
+        if (idx === -1) return list;
+        const updated = { ...list[idx], ...cleanPatch };
+        return [...list.slice(0, idx), ...list.slice(idx + 1), updated];
+      });
       if (socket) {
-        socket.emit('element-update', { ...patch, boardId: activeBoardId });
+        socket.emit('element-update', {
+          ...cleanPatch,
+          boardId: activeBoardId,
+          bringToFront: Boolean(bringToFront),
+        });
       }
     },
-    [socket, activeBoardId]
+    [socket, activeBoardId, updateActiveBoardElements]
+  );
+
+  const handleElementsBatchUpdate = useCallback(
+    (updates: Array<Partial<CanvasElement> & { id: string }>, bringToFront = false) => {
+      if (!updates || updates.length === 0) return;
+      const map = new Map(updates.map((u) => [u.id, u]));
+      updateActiveBoardElements((list) => {
+        if (!bringToFront) {
+          return list.map((el) => {
+            const patch = map.get(el.id);
+            return patch ? { ...el, ...patch } : el;
+          });
+        }
+        const remaining: CanvasElement[] = [];
+        const front: CanvasElement[] = [];
+        for (const el of list) {
+          const patch = map.get(el.id);
+          if (patch) {
+            front.push({ ...el, ...patch });
+          } else {
+            remaining.push(el);
+          }
+        }
+        return [...remaining, ...front];
+      });
+      if (socket) {
+        socket.emit('elements-batch-update', { boardId: activeBoardId, updates, bringToFront });
+      }
+    },
+    [socket, activeBoardId, updateActiveBoardElements]
+  );
+
+  const handleElementsBatchAdd = useCallback(
+    (newElements: CanvasElement[], targetBoardId?: string) => {
+      if (!newElements || newElements.length === 0) return;
+      const destBoardId = targetBoardId || activeBoardId;
+      const normalized = newElements.map((el) => ({
+        ...el,
+        boardId: destBoardId === 'ALL_SUBBOARDS' ? el.boardId : destBoardId,
+      }));
+      if (destBoardId === activeBoardId) {
+        updateActiveBoardElements((list) => {
+          const existingIds = new Set(list.map((e) => e.id));
+          const toAppend = normalized.filter((e) => !existingIds.has(e.id));
+          return toAppend.length > 0 ? [...list, ...toAppend] : list;
+        });
+      } else if (destBoardId !== 'ALL_SUBBOARDS') {
+        if (destBoardId === 'main') {
+          setElements((list) => {
+            const existingIds = new Set(list.map((e) => e.id));
+            const toAppend = normalized.filter((e) => !existingIds.has(e.id));
+            return toAppend.length > 0 ? [...list, ...toAppend] : list;
+          });
+        } else {
+          setSubBoards((prev) => {
+            const sb = prev[destBoardId];
+            if (!sb) return prev;
+            const existingIds = new Set(sb.elements.map((e) => e.id));
+            const toAppend = normalized.filter((e) => !existingIds.has(e.id));
+            return toAppend.length > 0
+              ? { ...prev, [destBoardId]: { ...sb, elements: [...sb.elements, ...toAppend] } }
+              : prev;
+          });
+        }
+      }
+      if (socket) {
+        socket.emit('elements-batch-add', { boardId: destBoardId, elements: normalized });
+      }
+    },
+    [socket, activeBoardId, updateActiveBoardElements]
+  );
+
+  const handleElementsBatchRemove = useCallback(
+    (ids: string[]) => {
+      if (!ids || ids.length === 0) return;
+      const idSet = new Set(ids);
+      updateActiveBoardElements((list) => list.filter((el) => !idSet.has(el.id)));
+      if (socket) {
+        socket.emit('elements-batch-remove', { boardId: activeBoardId, ids });
+      }
+    },
+    [socket, activeBoardId, updateActiveBoardElements]
   );
 
   const handleElementRemove = useCallback(
@@ -1033,6 +1200,9 @@ export default function App() {
           onElementAppendPoints={handleElementAppendPoints}
           onElementUpdate={handleElementUpdate}
           onElementRemove={handleElementRemove}
+          onElementsBatchUpdate={handleElementsBatchUpdate}
+          onElementsBatchAdd={handleElementsBatchAdd}
+          onElementsBatchRemove={handleElementsBatchRemove}
           onCursorMove={handleCursorMove}
           onUndo={handleUndo}
           onClearMine={handleClearMine}
