@@ -329,7 +329,7 @@ describe('AllAboard server & Socket.IO integration tests', () => {
     });
     assert.equal(cfgRes.ok, true);
     const syncData = await breakoutReady;
-    assert.ok(syncData.subBoards['ind_stu-1']);
+    assert.ok(syncData.subBoards['r1_ind_stu-1']);
 
     const sentSync = waitForEvent<any>(teacher, 'breakout-sync');
     teacher.emit('elements-batch-add', {
@@ -349,8 +349,8 @@ describe('AllAboard server & Socket.IO integration tests', () => {
       ],
     });
     const afterAllSubs = await sentSync;
-    assert.equal(afterAllSubs.subBoards['ind_stu-1'].elements.length, 1);
-    assert.equal(afterAllSubs.subBoards['ind_stu-1'].elements[0].text, 'Solve #1');
+    assert.equal(afterAllSubs.subBoards['r1_ind_stu-1'].elements.length, 1);
+    assert.equal(afterAllSubs.subBoards['r1_ind_stu-1'].elements[0].text, 'Solve #1');
 
     const startRes = await emitAck(teacher, 'teacher:timer-control', {
       action: 'start',
@@ -547,5 +547,259 @@ describe('AllAboard server & Socket.IO integration tests', () => {
     assert.equal(rejoinInit.elements.length, 1);
     assert.equal(rejoinInit.elements[0].userName, 'Arnold');
     assert.equal(rejoinInit.messages.length, 0);
+  });
+
+  describe('multi-round breakouts', () => {
+    async function setupClass(roomId: string) {
+      const { socket: teacher } = await joinTracked({ roomId, userId: 't1', name: 'Teacher' });
+      await emitAck(teacher, 'teacher:auth', { pin: '1234' });
+      const { socket: s1 } = await joinTracked({ roomId, userId: 's1', name: 'Sam' });
+      const { socket: s2 } = await joinTracked({ roomId, userId: 's2', name: 'Ada' });
+      return { teacher, s1, s2 };
+    }
+
+    function stroke(id: string, boardId: string, userId: string) {
+      return {
+        id,
+        boardId,
+        userId,
+        userName: userId,
+        tool: 'solid',
+        color: '#000',
+        strokeWidth: 4,
+        points: [0, 0, 10, 10],
+        timestamp: Date.now(),
+      };
+    }
+
+    it('T1 – resume preserves strokes', async () => {
+      const { teacher, s1 } = await setupClass('mr-t1');
+
+      const r1SyncPromise = waitForEvent<any>(teacher, 'breakout-sync');
+      const r1Res = await emitAck(teacher, 'teacher:configure-breakout', {
+        action: 'new-round',
+        mode: 'individual',
+        chatScope: 'unified',
+      });
+      assert.equal(r1Res.ok, true);
+      assert.equal(r1Res.activeRoundId, 'r1');
+      await r1SyncPromise;
+
+      s1.emit('element-start', stroke('k1', 'r1_ind_s1', 's1'));
+      await delay(50);
+
+      const mainSyncPromise = waitForEvent<any>(teacher, 'breakout-sync');
+      const mainRes = await emitAck(teacher, 'teacher:configure-breakout', { action: 'return-to-main' });
+      assert.equal(mainRes.ok, true);
+      const mainSync = await mainSyncPromise;
+      assert.equal(mainSync.breakoutConfig.mode, 'main');
+      assert.equal(mainSync.subBoards['r1_ind_s1'].elements.length, 1);
+
+      const resumeSyncPromise = waitForEvent<any>(teacher, 'breakout-sync');
+      const resumeRes = await emitAck(teacher, 'teacher:configure-breakout', { action: 'resume' });
+      assert.equal(resumeRes.ok, true);
+      const resumeSync = await resumeSyncPromise;
+      assert.equal(resumeSync.breakoutConfig.mode, 'individual');
+      assert.equal(resumeSync.breakoutConfig.activeRoundId, 'r1');
+      assert.equal(resumeSync.subBoards['r1_ind_s1'].elements.length, 1);
+    });
+
+    it('T2 – new round archives the old round', async () => {
+      const { teacher, s1 } = await setupClass('mr-t2');
+
+      const r1SyncPromise = waitForEvent<any>(teacher, 'breakout-sync');
+      await emitAck(teacher, 'teacher:configure-breakout', {
+        action: 'new-round',
+        mode: 'individual',
+        chatScope: 'unified',
+      });
+      await r1SyncPromise;
+
+      s1.emit('element-start', stroke('k1', 'r1_ind_s1', 's1'));
+      await delay(50);
+
+      const r2SyncPromise = waitForEvent<any>(teacher, 'breakout-sync');
+      const r2Res = await emitAck(teacher, 'teacher:configure-breakout', {
+        action: 'new-round',
+        mode: 'groups',
+        groups: [
+          { id: 'grp_1', title: 'Red', assignedUserIds: ['s1'] },
+          { id: 'grp_2', title: 'Blue', assignedUserIds: ['s2', 's1'] },
+        ],
+      });
+      assert.equal(r2Res.ok, true);
+      const r2Sync = await r2SyncPromise;
+
+      assert.equal(r2Sync.breakoutConfig.activeRoundId, 'r2');
+      assert.equal(r2Sync.breakoutConfig.rounds.length, 2);
+      assert.equal(r2Sync.subBoards['r2_grp_1'].title, 'Red');
+      assert.deepEqual(r2Sync.subBoards['r2_grp_1'].assignedUserIds, ['s1']);
+      assert.deepEqual(r2Sync.subBoards['r2_grp_2'].assignedUserIds, ['s2']);
+      assert.equal(r2Sync.subBoards['r2_grp_1'].elements.length, 0);
+      assert.equal(r2Sync.subBoards['r1_ind_s1'].elements.length, 1);
+      assert.equal(r2Sync.subBoards['r1_ind_s1'].roundId, 'r1');
+    });
+
+    it('T3 – join-board only moves within the active round', async () => {
+      const { teacher } = await setupClass('mr-t3');
+      const groupDrafts = [
+        { id: 'grp_1', title: 'Group 1', assignedUserIds: ['s1'] },
+        { id: 'grp_2', title: 'Group 2', assignedUserIds: ['s2'] },
+      ];
+
+      const r1SyncPromise = waitForEvent<any>(teacher, 'breakout-sync');
+      await emitAck(teacher, 'teacher:configure-breakout', {
+        action: 'new-round',
+        mode: 'groups',
+        groups: groupDrafts,
+      });
+      await r1SyncPromise;
+
+      const r2SyncPromise = waitForEvent<any>(teacher, 'breakout-sync');
+      await emitAck(teacher, 'teacher:configure-breakout', {
+        action: 'new-round',
+        mode: 'groups',
+        groups: groupDrafts,
+      });
+      await r2SyncPromise;
+
+      const moveSyncPromise = waitForEvent<any>(teacher, 'breakout-sync');
+      teacher.emit('breakout:join-board', { targetBoardId: 'r2_grp_2', targetUserId: 's1' });
+      const moveSync = await moveSyncPromise;
+      assert.equal(moveSync.subBoards['r2_grp_2'].assignedUserIds.includes('s1'), true);
+      assert.equal(moveSync.subBoards['r2_grp_1'].assignedUserIds.includes('s1'), false);
+      assert.equal(moveSync.subBoards['r1_grp_1'].assignedUserIds.includes('s1'), true);
+
+      teacher.emit('breakout:join-board', { targetBoardId: 'r1_grp_2', targetUserId: 's2' });
+      await delay(100);
+
+      const checkSyncPromise = waitForEvent<any>(teacher, 'breakout-sync');
+      await emitAck(teacher, 'teacher:configure-breakout', { action: 'update-current' });
+      const checkSync = await checkSyncPromise;
+      assert.deepEqual(checkSync.subBoards['r1_grp_2'].assignedUserIds, ['s2']);
+      assert.deepEqual(checkSync.subBoards['r1_grp_1'].assignedUserIds, ['s1']);
+    });
+
+    it('T4 – late joiner gets a board in the active round with the round worksheet', async () => {
+      const { teacher } = await setupClass('mr-t4');
+
+      const r1SyncPromise = waitForEvent<any>(teacher, 'breakout-sync');
+      await emitAck(teacher, 'teacher:configure-breakout', {
+        action: 'new-round',
+        mode: 'individual',
+        customBackground: {
+          id: 'bg1',
+          fileName: 'frayer.png',
+          pages: [],
+          x: 0,
+          y: 0,
+          scale: 1,
+          layout: 'row',
+          opacity: 1,
+        },
+      });
+      await r1SyncPromise;
+
+      const lateSyncPromise = waitForEvent<any>(teacher, 'breakout-sync');
+      await joinTracked({ roomId: 'mr-t4', userId: 's3', name: 'Lee' });
+      const lateSync = await lateSyncPromise;
+
+      assert.ok(lateSync.subBoards['r1_ind_s3']);
+      assert.equal(lateSync.subBoards['r1_ind_s3'].roundId, 'r1');
+      assert.equal(lateSync.subBoards['r1_ind_s3'].background.fileName, 'frayer.png');
+    });
+
+    it('T5 – ALL_SUBBOARDS only hits the active round', async () => {
+      const { teacher } = await setupClass('mr-t5');
+
+      const r1SyncPromise = waitForEvent<any>(teacher, 'breakout-sync');
+      await emitAck(teacher, 'teacher:configure-breakout', { action: 'new-round', mode: 'individual' });
+      await r1SyncPromise;
+
+      const r2SyncPromise = waitForEvent<any>(teacher, 'breakout-sync');
+      await emitAck(teacher, 'teacher:configure-breakout', { action: 'new-round', mode: 'individual' });
+      await r2SyncPromise;
+
+      const batchSyncPromise = waitForEvent<any>(teacher, 'breakout-sync');
+      teacher.emit('elements-batch-add', {
+        boardId: 'ALL_SUBBOARDS',
+        elements: [
+          {
+            id: 'prompt-stamp',
+            tool: 'text',
+            text: 'Solve #2',
+            x: 20,
+            y: 20,
+            color: '#111111',
+            strokeWidth: 4,
+            userId: 't1',
+            timestamp: Date.now(),
+          },
+        ],
+      });
+      const batchSync = await batchSyncPromise;
+
+      assert.equal(batchSync.subBoards['r2_ind_s1'].elements.length, 1);
+      assert.equal(batchSync.subBoards['r1_ind_s1'].elements.length, 0);
+    });
+
+    it('T6 – legacy rooms on disk are migrated', async () => {
+      for (const s of openSockets.splice(0, openSockets.length)) {
+        if (s.connected) s.disconnect();
+      }
+      await srv.close();
+
+      fs.writeFileSync(
+        path.join(tmpDir, 'rooms-store.json'),
+        JSON.stringify({
+          rooms: [
+            {
+              id: 'legacy-room',
+              messages: [],
+              elements: [],
+              background: null,
+              subBoards: {
+                ind_s1: {
+                  id: 'ind_s1',
+                  title: "Sam's Board",
+                  assignedUserIds: ['s1'],
+                  elements: [stroke('old', 'ind_s1', 's1')],
+                  background: null,
+                  messages: [],
+                },
+              },
+              breakoutConfig: { mode: 'individual', allowSelfSelect: false, chatScope: 'unified' },
+              isCanvasLocked: false,
+              teacherPin: '1234',
+              lastActiveAt: Date.now(),
+            },
+          ],
+        }),
+        'utf-8'
+      );
+
+      srv = await startServer({
+        port: 0,
+        host: '127.0.0.1',
+        dataDir: tmpDir,
+        skipVite: true,
+      });
+
+      const { init } = await joinTracked({ roomId: 'legacy-room', userId: 's1', name: 'Sam' });
+      assert.equal(init.subBoards['ind_s1'].roundId, 'r1');
+      assert.equal(init.subBoards['ind_s1'].kind, 'individual');
+      assert.equal(init.roomSettings.breakoutConfig.activeRoundId, 'r1');
+      assert.equal(init.subBoards['ind_s1'].elements.length, 1);
+      assert.equal(init.subBoards['r1_ind_s1'], undefined);
+    });
+
+    it('T7 – non-teacher cannot configure', async () => {
+      const { s1 } = await setupClass('mr-t7');
+      const res = await emitAck(s1, 'teacher:configure-breakout', {
+        action: 'new-round',
+        mode: 'individual',
+      });
+      assert.equal(res.ok, false);
+    });
   });
 });
