@@ -5,6 +5,7 @@ import {
   ChatMessage,
   ToolType,
   StampKind,
+  HollowShapeKind,
   RoomBackground,
   RemoteCursor,
   ImportRestoreMode,
@@ -39,6 +40,8 @@ import {
   liveAddPoint,
   liveLiftPoint,
   traceSmoothStrokePath,
+  traceHollowTipShape,
+  drawHollowElementOnCtx,
   getNoteFontSize,
   noteSize,
   computeNotesGone,
@@ -63,6 +66,9 @@ import {
   Circle as CircleIcon,
   Highlighter,
   Square,
+  Triangle,
+  Diamond,
+  Star,
   Minus,
   Type,
   Hand,
@@ -203,6 +209,45 @@ function saveLocal(key: string, value: string) {
   }
 }
 
+const HOLLOW_SHAPE_OPTIONS: Array<{
+  kind: HollowShapeKind;
+  label: string;
+  dx: number;
+  dy: number;
+}> = [
+  { kind: 'circle', label: 'Circle', dx: -62, dy: 26 },
+  { kind: 'square', label: 'Square', dx: -35, dy: 50 },
+  { kind: 'triangle', label: 'Triangle', dx: 0, dy: 60 },
+  { kind: 'diamond', label: 'Diamond', dx: 35, dy: 50 },
+  { kind: 'star', label: 'Star', dx: 62, dy: 26 },
+];
+
+function readLocalHollowShape(key: string, fallback: HollowShapeKind): HollowShapeKind {
+  try {
+    const raw = localStorage.getItem(key);
+    if (
+      raw === 'circle' ||
+      raw === 'square' ||
+      raw === 'triangle' ||
+      raw === 'diamond' ||
+      raw === 'star'
+    ) {
+      return raw;
+    }
+    return fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function HollowShapeIcon({ kind, size = 17 }: { kind: HollowShapeKind; size?: number }) {
+  if (kind === 'square') return <Square size={size} />;
+  if (kind === 'triangle') return <Triangle size={size} />;
+  if (kind === 'diamond') return <Diamond size={size} />;
+  if (kind === 'star') return <Star size={size} />;
+  return <CircleIcon size={size} />;
+}
+
 /**
  * OverBoard-style Midpoint Quadratic Curve + Single-Tap Dot Shape for Konva.
  */
@@ -241,6 +286,35 @@ function SmoothStrokeShape({
           rawCtx.stroke();
         }
         rawCtx.restore();
+      }}
+    />
+  );
+}
+
+/**
+ * Multi-shape Hollow Stamp & Extruded Stroke Shape for Konva (Circle, Square, Triangle, Diamond, Star).
+ */
+function HollowStrokeShape({
+  points,
+  color,
+  strokeWidth,
+  hollowWeight = 2,
+  hollowShape = 'circle',
+}: {
+  points: number[];
+  color: string;
+  strokeWidth: number;
+  hollowWeight?: number;
+  hollowShape?: HollowShapeKind;
+}) {
+  return (
+    <Shape
+      listening={false}
+      perfectDrawEnabled={false}
+      sceneFunc={(ctx) => {
+        const rawCtx = (ctx as any)._context as CanvasRenderingContext2D;
+        if (!rawCtx || !points || points.length < 2) return;
+        drawHollowElementOnCtx(rawCtx, points, strokeWidth, hollowWeight, color, hollowShape);
       }}
     />
   );
@@ -374,9 +448,22 @@ export default function Canvas({
   // OverBoard-style Separate Tool Settings & Memory
   const [penColor, setPenColor] = useState<string>(() => readLocalColor('allaboard-pen-color', '#111111'));
   const [penWidth, setPenWidth] = useState<number>(() => readLocalNum('allaboard-pen-width', 6, 1, 50));
+  const [hollowShape, setHollowShape] = useState<HollowShapeKind>(() =>
+    readLocalHollowShape('allaboard-hollow-shape', 'circle')
+  );
+  const [hollowWidth, setHollowWidth] = useState<number>(() =>
+    readLocalNum('allaboard-hollow-width', 36, 4, 120)
+  );
+  const [hollowWeight, setHollowWeight] = useState<number>(() =>
+    readLocalNum('allaboard-hollow-weight', 3, 1, 25)
+  );
+  const [showHollowMenu, setShowHollowMenu] = useState<boolean>(false);
+  const hollowMenuRef = useRef<HTMLDivElement>(null);
+
   const [hlColor, setHlColor] = useState<string>(() => readLocalColor('allaboard-hl-color', '#fdd835'));
   const [hlWidth, setHlWidth] = useState<number>(() => readLocalNum('allaboard-hl-width', 22, 4, 60));
   const [hlStrength, setHlStrength] = useState<number>(() => readLocalNum('allaboard-hl-strength', 45, 10, 100));
+  const [eraserWidth, setEraserWidth] = useState<number>(() => readLocalNum('allaboard-eraser-width', 60, 8, 400));
   const [isCoverMode, setIsCoverMode] = useState<boolean>(false);
   const [coverColor, setCoverColor] = useState<string>(() => readLocalColor('allaboard-cover-color', '#111111'));
   const [textFontSize, setTextFontSize] = useState<number>(() => readLocalNum('allaboard-text-size', 26, 12, 96));
@@ -396,12 +483,19 @@ export default function Canvas({
   const [stampKind, setStampKind] = useState<StampKind>('check');
   const [showGrid, setShowGrid] = useState(true);
 
-  // Derived active color & width based on whether Highlighter (See-Through or Cover) or Pen is active
+  // Derived active color & width based on whether Highlighter (See-Through or Cover), Eraser, Hollow, or Pen is active
   const paletteMode: 'pen' | 'hl' | 'cover' =
     tool === 'highlighter' ? (isCoverMode ? 'cover' : 'hl') : 'pen';
   const color =
     tool === 'highlighter' ? (isCoverMode ? coverColor : hlColor) : penColor;
-  const strokeWidth = tool === 'highlighter' ? hlWidth : penWidth;
+  const strokeWidth =
+    tool === 'highlighter'
+      ? hlWidth
+      : tool === 'eraser'
+      ? eraserWidth
+      : tool === 'hollow'
+      ? hollowWidth
+      : penWidth;
 
   // Infinite Canvas Viewport Transform
   const [stageScale, setStageScale] = useState(1);
@@ -658,16 +752,22 @@ export default function Canvas({
     return () => window.removeEventListener('resize', updateSize);
   }, []);
 
-  // Close Highlighter/Cover popout menu when clicking outside or pressing Escape
+  // Close Highlighter/Cover or Hollow radial popout menu when clicking outside or pressing Escape
   useEffect(() => {
-    if (!showHlMenu) return;
+    if (!showHlMenu && !showHollowMenu) return;
     const handlePointerDownOutside = (e: PointerEvent) => {
-      if (hlMenuRef.current && !hlMenuRef.current.contains(e.target as Node)) {
+      if (showHlMenu && hlMenuRef.current && !hlMenuRef.current.contains(e.target as Node)) {
         setShowHlMenu(false);
+      }
+      if (showHollowMenu && hollowMenuRef.current && !hollowMenuRef.current.contains(e.target as Node)) {
+        setShowHollowMenu(false);
       }
     };
     const handleEsc = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setShowHlMenu(false);
+      if (e.key === 'Escape') {
+        setShowHlMenu(false);
+        setShowHollowMenu(false);
+      }
     };
     document.addEventListener('pointerdown', handlePointerDownOutside, true);
     document.addEventListener('keydown', handleEsc);
@@ -675,7 +775,7 @@ export default function Canvas({
       document.removeEventListener('pointerdown', handlePointerDownOutside, true);
       document.removeEventListener('keydown', handleEsc);
     };
-  }, [showHlMenu]);
+  }, [showHlMenu, showHollowMenu]);
 
   // Auto-focus and auto-size the multiline note textarea (OverBoard `makeTyping.place` + `open`)
   const resizeNoteTextarea = useCallback(() => {
@@ -878,6 +978,8 @@ export default function Canvas({
       text: el.text,
       color: el.color,
       strokeWidth: el.strokeWidth,
+      hollowShape: el.hollowShape,
+      hollowWeight: el.hollowWeight,
       fontSize,
     };
   }, []);
@@ -1011,14 +1113,23 @@ export default function Canvas({
     ]
   );
 
-  // Brush / highlight stroke width (kept independent of text font size)
+  // Brush / highlight / eraser / hollow stroke width (each persisted independently)
   const handleSelectStrokeWidth = useCallback(
     (nextWidth: number) => {
-      const clamped = Math.max(1, Math.min(60, nextWidth));
-      if (tool === 'highlighter') {
+      if (tool === 'eraser') {
+        const clamped = Math.max(8, Math.min(400, nextWidth));
+        setEraserWidth(clamped);
+        saveLocal('allaboard-eraser-width', String(clamped));
+      } else if (tool === 'highlighter') {
+        const clamped = Math.max(4, Math.min(60, nextWidth));
         setHlWidth(clamped);
         saveLocal('allaboard-hl-width', String(clamped));
+      } else if (tool === 'hollow') {
+        const clamped = Math.max(4, Math.min(120, nextWidth));
+        setHollowWidth(clamped);
+        saveLocal('allaboard-hollow-width', String(clamped));
       } else {
+        const clamped = Math.max(1, Math.min(50, nextWidth));
         setPenWidth(clamped);
         saveLocal('allaboard-pen-width', String(clamped));
       }
@@ -1028,6 +1139,13 @@ export default function Canvas({
     },
     [tool, editingNote]
   );
+
+  // Dedicated Line Weight setter for the Hollow Shape Brush (1..25)
+  const handleSelectHollowWeight = useCallback((nextWeight: number) => {
+    const clamped = Math.max(1, Math.min(25, nextWeight));
+    setHollowWeight(clamped);
+    saveLocal('allaboard-hollow-weight', String(clamped));
+  }, []);
 
   // Dedicated independent Text Size setter (S/M/L/XL presets, +/- buttons, slider, live note, selected notes)
   const handleSelectTextFontSize = useCallback(
@@ -1588,10 +1706,21 @@ export default function Canvas({
     const stage = stageRef.current;
     if (!stage) return;
 
-    const dataUrl = stage.toDataURL({
-      pixelRatio: 2,
-      mimeType: 'image/png',
-    });
+    // Composite the Konva stage onto a solid white (#ffffff) canvas so exported PNGs are never transparent or gray
+    const stageCanvas: HTMLCanvasElement = stage.toCanvas({ pixelRatio: 2 });
+    const outCanvas = document.createElement('canvas');
+    outCanvas.width = stageCanvas.width;
+    outCanvas.height = stageCanvas.height;
+    const outCtx = outCanvas.getContext('2d');
+    if (outCtx) {
+      outCtx.fillStyle = '#ffffff';
+      outCtx.fillRect(0, 0, outCanvas.width, outCanvas.height);
+      outCtx.drawImage(stageCanvas, 0, 0);
+    }
+
+    const dataUrl = outCtx
+      ? outCanvas.toDataURL('image/png')
+      : stage.toDataURL({ pixelRatio: 2, mimeType: 'image/png' });
 
     const link = document.createElement('a');
     link.download = `allaboard-${roomId}-${activeBoardId}-${new Date().toISOString().slice(0, 10)}.png`;
@@ -1740,6 +1869,13 @@ export default function Canvas({
     }
     if (activePointerIdRef.current !== null) return;
     if (e.pointerType === 'mouse' && e.button !== 0 && e.button !== 1) return;
+
+    if (showHollowMenu) {
+      setShowHollowMenu(false);
+    }
+    if (showHlMenu) {
+      setShowHlMenu(false);
+    }
 
     const pos = getLocalPosFromEvent(e.clientX, e.clientY);
     const world = screenToWorld(pos.x, pos.y);
@@ -2032,6 +2168,8 @@ export default function Canvas({
         tool: strokeTool,
         color: strokeColor,
         strokeWidth: effectiveStrokeWidth,
+        hollowShape: strokeTool === 'hollow' ? hollowShape : undefined,
+        hollowWeight: strokeTool === 'hollow' ? hollowWeight : undefined,
         hlStrength: strokeTool === 'highlighter' && !isHlCover ? hlStrength : undefined,
         isCover: isHlCover ? true : undefined,
         points: [world.x, world.y],
@@ -2655,18 +2793,13 @@ export default function Canvas({
 
       if (el.tool === 'hollow') {
         return (
-          <Group>
-            <SmoothStrokeShape
-              points={pts}
-              color={el.color}
-              strokeWidth={Math.max(4, el.strokeWidth)}
-            />
-            <SmoothStrokeShape
-              points={pts}
-              color="#ffffff"
-              strokeWidth={Math.max(1, el.strokeWidth - 4)}
-            />
-          </Group>
+          <HollowStrokeShape
+            points={pts}
+            color={el.color}
+            strokeWidth={el.strokeWidth}
+            hollowWeight={el.hollowWeight || 2}
+            hollowShape={el.hollowShape || 'circle'}
+          />
         );
       }
 
@@ -2786,20 +2919,94 @@ export default function Canvas({
           >
             <Paintbrush size={17} />
           </button>
-          <button
-            type="button"
-            disabled={!canDraw}
-            onClick={() => setTool('hollow')}
-            className={cn(
-              "p-1.5 rounded-md transition-colors cursor-pointer disabled:opacity-40",
-              tool === 'hollow' && effectiveTool !== 'pan'
-                ? "bg-white text-blue-600 shadow-xs"
-                : "text-slate-600 hover:text-slate-900"
+          {/* Hollow Outline Shape Brush with Curved Radial Shape Selector (Circle, Square, Triangle, Diamond, Star) */}
+          <div ref={hollowMenuRef} className="relative flex items-center">
+            <button
+              type="button"
+              disabled={!canDraw}
+              onClick={() => {
+                setTool('hollow');
+                setShowHollowMenu((prev) => (tool === 'hollow' ? !prev : true));
+              }}
+              aria-haspopup="true"
+              aria-expanded={showHollowMenu}
+              className={cn(
+                "p-1.5 rounded-md transition-colors cursor-pointer disabled:opacity-40 flex items-center justify-center",
+                tool === 'hollow' && effectiveTool !== 'pan'
+                  ? "bg-white text-blue-600 shadow-xs"
+                  : "text-slate-600 hover:text-slate-900"
+              )}
+              title={`Hollow ${hollowShape.charAt(0).toUpperCase() + hollowShape.slice(1)} Brush (Click to stamp, drag to draw hollow stroke — click to pick shape)`}
+            >
+              <HollowShapeIcon kind={hollowShape} size={17} />
+            </button>
+
+            {showHollowMenu && (
+              <div
+                role="menu"
+                aria-label="Hollow brush shapes"
+                className="absolute left-1/2 top-full z-50 pointer-events-none"
+                style={{ width: 0, height: 0 }}
+              >
+                {/* Subtle curved guide arc connecting the 5 radial options */}
+                <svg
+                  width="168"
+                  height="88"
+                  viewBox="-84 0 168 88"
+                  className="overflow-visible pointer-events-none drop-shadow-xs"
+                  style={{ position: 'absolute', left: -84, top: 0 }}
+                >
+                  <path
+                    d="M -62 26 Q 0 88 62 26"
+                    fill="none"
+                    stroke="#0f172a"
+                    strokeWidth="26"
+                    strokeLinecap="round"
+                    opacity="0.92"
+                  />
+                  <path
+                    d="M -62 26 Q 0 88 62 26"
+                    fill="none"
+                    stroke="#334155"
+                    strokeWidth="1.5"
+                    strokeDasharray="3 3"
+                  />
+                </svg>
+
+                {HOLLOW_SHAPE_OPTIONS.map((opt) => {
+                  const isActive = hollowShape === opt.kind;
+                  return (
+                    <button
+                      key={opt.kind}
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setHollowShape(opt.kind);
+                        saveLocal('allaboard-hollow-shape', opt.kind);
+                        setTool('hollow');
+                        setShowHollowMenu(false);
+                      }}
+                      style={{
+                        position: 'absolute',
+                        left: opt.dx,
+                        top: opt.dy,
+                        transform: 'translate(-50%, -50%)',
+                      }}
+                      className={cn(
+                        "pointer-events-auto w-8 h-8 rounded-full flex items-center justify-center transition-all cursor-pointer shadow-md border",
+                        isActive
+                          ? "bg-blue-600 text-white border-white scale-110 ring-2 ring-blue-300"
+                          : "bg-slate-900 text-slate-200 border-slate-600 hover:bg-slate-800 hover:text-white hover:scale-110"
+                      )}
+                      title={`Hollow ${opt.label}`}
+                    >
+                      <HollowShapeIcon kind={opt.kind} size={15} />
+                    </button>
+                  );
+                })}
+              </div>
             )}
-            title="Hollow Outline Brush"
-          >
-            <CircleIcon size={17} />
-          </button>
+          </div>
           <button
             type="button"
             disabled={!canDraw}
@@ -3141,24 +3348,63 @@ export default function Canvas({
 
         <div className="h-5 w-px bg-slate-200" />
 
-        {/* Labeled Brush / Highlight Size Slider */}
+        {/* Labeled Brush / Highlight / Eraser / Hollow Size Slider */}
         <div className="flex items-center gap-1.5">
           <label htmlFor="brush-size-slider" className="text-xs font-medium text-slate-600 whitespace-nowrap">
-            {tool === 'highlighter' ? (isCoverMode ? 'Cover:' : 'Highlight:') : 'Size:'}
+            {tool === 'eraser'
+              ? 'Eraser:'
+              : tool === 'highlighter'
+              ? isCoverMode
+                ? 'Cover:'
+                : 'Highlight:'
+              : 'Size:'}
           </label>
           <input
             id="brush-size-slider"
             type="range"
-            min={tool === 'highlighter' ? 4 : 1}
-            max={tool === 'highlighter' ? 60 : 50}
+            min={tool === 'eraser' ? 8 : tool === 'highlighter' || tool === 'hollow' ? 4 : 1}
+            max={
+              tool === 'eraser'
+                ? 400
+                : tool === 'hollow'
+                ? 120
+                : tool === 'highlighter'
+                ? 60
+                : 50
+            }
             value={strokeWidth}
             onChange={(e) => handleSelectStrokeWidth(parseInt(e.target.value, 10))}
-            className="w-20 h-1.5 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-blue-600"
+            className="w-24 h-1.5 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-blue-600"
           />
-          <span className="text-xs font-mono tabular-nums text-slate-600 w-7">
+          <span className="text-xs font-mono tabular-nums text-slate-600 w-8">
             {strokeWidth}
           </span>
         </div>
+
+        {/* Dedicated Line Weight Slider when Hollow Shape Brush is Active */}
+        {tool === 'hollow' && (
+          <div className="flex items-center gap-1.5 bg-blue-50/80 px-2 py-0.5 rounded-lg border border-blue-200/80">
+            <label
+              htmlFor="hollow-weight-slider"
+              className="text-xs font-medium text-blue-900 whitespace-nowrap"
+              title="Border line weight of the hollow shape"
+            >
+              Line Weight:
+            </label>
+            <input
+              id="hollow-weight-slider"
+              type="range"
+              min={1}
+              max={Math.max(2, Math.min(25, Math.floor(hollowWidth / 2) - 1))}
+              value={Math.min(hollowWeight, Math.max(1, Math.floor(hollowWidth / 2) - 1))}
+              onChange={(e) => handleSelectHollowWeight(parseInt(e.target.value, 10))}
+              className="w-20 h-1.5 bg-blue-200 rounded-lg appearance-none cursor-pointer accent-blue-600"
+            />
+            <span className="text-xs font-mono tabular-nums text-blue-900 w-6">
+              {Math.min(hollowWeight, Math.max(1, Math.floor(hollowWidth / 2) - 1))}
+            </span>
+          </div>
+        )}
 
         {/* Dedicated Independent Text Size Controls */}
         <div
@@ -4080,7 +4326,31 @@ export default function Canvas({
             {effectiveTool !== 'pan' &&
               effectiveTool !== 'move-bg' &&
               effectiveTool !== 'select' &&
-              effectiveTool !== 'text' && (
+              effectiveTool !== 'text' &&
+              (effectiveTool === 'hollow' ? (
+                <Shape
+                  listening={false}
+                  perfectDrawEnabled={false}
+                  sceneFunc={(ctx) => {
+                    const rawCtx = (ctx as any)._context as CanvasRenderingContext2D;
+                    if (!rawCtx) return;
+                    rawCtx.save();
+                    rawCtx.beginPath();
+                    traceHollowTipShape(
+                      rawCtx,
+                      worldPos.x,
+                      worldPos.y,
+                      strokeWidth / 2,
+                      hollowShape
+                    );
+                    rawCtx.strokeStyle = color;
+                    rawCtx.lineWidth = 1.4 / stageScale;
+                    rawCtx.setLineDash([3 / stageScale, 3 / stageScale]);
+                    rawCtx.stroke();
+                    rawCtx.restore();
+                  }}
+                />
+              ) : (
                 <Circle
                   x={worldPos.x}
                   y={worldPos.y}
@@ -4095,7 +4365,7 @@ export default function Canvas({
                   strokeWidth={1.2 / stageScale}
                   dash={[3 / stageScale, 3 / stageScale]}
                 />
-              )}
+              ))}
 
             {/* OverBoard Freehand Lasso Loop Preview */}
             {lassoPoints.length >= 4 && (

@@ -3,6 +3,7 @@ import {
   NOTE_FONT,
   NOTE_LH,
   traceSmoothStrokePath,
+  drawHollowElementOnCtx,
   getNoteFontSize,
   getNoteBox,
   computeNotesGone,
@@ -264,22 +265,14 @@ function drawElementOnContext(
   }
 
   if (el.tool === 'hollow') {
-    ctx.strokeStyle = el.color;
-    ctx.fillStyle = el.color;
-    ctx.lineWidth = Math.max(4, el.strokeWidth);
-    ctx.lineCap = 'round';
-    ctx.lineJoin = 'round';
-    const outerKind = traceSmoothStrokePath(ctx, pts, ctx.lineWidth);
-    if (outerKind === 'dot') ctx.fill();
-    else if (outerKind === 'stroke') ctx.stroke();
-
-    ctx.strokeStyle = '#ffffff';
-    ctx.fillStyle = '#ffffff';
-    ctx.lineWidth = Math.max(1, el.strokeWidth - 4);
-    const innerKind = traceSmoothStrokePath(ctx, pts, ctx.lineWidth);
-    if (innerKind === 'dot') ctx.fill();
-    else if (innerKind === 'stroke') ctx.stroke();
-
+    drawHollowElementOnCtx(
+      ctx,
+      pts,
+      el.strokeWidth,
+      el.hollowWeight || 2,
+      el.color,
+      el.hollowShape || 'circle'
+    );
     ctx.restore();
     return;
   }

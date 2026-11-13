@@ -122,9 +122,11 @@ describe('AllAboard server & Socket.IO integration tests', () => {
     const badVerify = await emitAck(intruder, 'teacher:auth', { pin: '9999' });
     assert.equal(badVerify.ok, false);
 
+    const verifyRosterSync = waitForEvent<any[]>(teacher, 'roster-sync');
     const goodVerify = await emitAck(intruder, 'teacher:auth', { pin: '4321' });
     assert.equal(goodVerify.ok, true);
     assert.equal(goodVerify.mode, 'verified');
+    await verifyRosterSync;
 
     const rosterAfterStepDown = waitForEvent<any[]>(teacher, 'roster-sync');
     teacher.emit('teacher:step-down');

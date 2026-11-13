@@ -1,4 +1,4 @@
-import { CanvasElement } from '../types';
+import { CanvasElement, HollowShapeKind } from '../types';
 
 /**
  * OverBoard-derived ink, smoothing, highlighter/cover, and editable text-note core logic
@@ -175,6 +175,153 @@ export function traceSmoothStrokePath(ctx: CanvasRenderingContext2D | any, point
   }
   ctx.lineTo(points[points.length - 2], points[points.length - 1]);
   return 'stroke';
+}
+
+/**
+ * Trace a geometric tip shape (circle, square, triangle, diamond, or 5-point star) centered at (cx, cy) with radius `r`.
+ */
+export function traceHollowTipShape(
+  ctx: CanvasRenderingContext2D | any,
+  cx: number,
+  cy: number,
+  r: number,
+  shapeKind: HollowShapeKind = 'circle'
+): void {
+  const rad = Math.max(0.5, r);
+  if (shapeKind === 'square') {
+    ctx.rect(cx - rad, cy - rad, rad * 2, rad * 2);
+    return;
+  }
+  if (shapeKind === 'triangle') {
+    ctx.moveTo(cx, cy - rad);
+    ctx.lineTo(cx + rad, cy + rad * 0.85);
+    ctx.lineTo(cx - rad, cy + rad * 0.85);
+    ctx.closePath();
+    return;
+  }
+  if (shapeKind === 'diamond') {
+    ctx.moveTo(cx, cy - rad);
+    ctx.lineTo(cx + rad, cy);
+    ctx.lineTo(cx, cy + rad);
+    ctx.lineTo(cx - rad, cy);
+    ctx.closePath();
+    return;
+  }
+  if (shapeKind === 'star') {
+    const inner = rad * 0.44;
+    for (let i = 0; i < 10; i++) {
+      const angle = -Math.PI / 2 + (i * Math.PI) / 5;
+      const d = i % 2 === 0 ? rad : inner;
+      const sx = cx + Math.cos(angle) * d;
+      const sy = cy + Math.sin(angle) * d;
+      if (i === 0) ctx.moveTo(sx, sy);
+      else ctx.lineTo(sx, sy);
+    }
+    ctx.closePath();
+    return;
+  }
+  ctx.moveTo(cx + rad, cy);
+  ctx.arc(cx, cy, rad, 0, Math.PI * 2);
+}
+
+/**
+ * Sample evenly spaced points along a polyline so dragged non-circular hollow shapes sweep smoothly.
+ */
+function samplePolylinePoints(points: number[], stepDist: number): Array<[number, number]> {
+  const out: Array<[number, number]> = [];
+  if (!points || points.length < 2) return out;
+  out.push([points[0], points[1]]);
+  const step = Math.max(1.5, stepDist);
+  for (let i = 2; i < points.length; i += 2) {
+    const x0 = points[i - 2];
+    const y0 = points[i - 1];
+    const x1 = points[i];
+    const y1 = points[i + 1];
+    const segLen = Math.hypot(x1 - x0, y1 - y0);
+    if (segLen <= 0.01) continue;
+    const count = Math.max(1, Math.ceil(segLen / step));
+    for (let s = 1; s <= count; s++) {
+      const t = s / count;
+      out.push([x0 + (x1 - x0) * t, y0 + (y1 - y0) * t]);
+    }
+  }
+  return out;
+}
+
+/**
+ * Render a hollow shape stamp (when points.length < 4) or hollow dragged stroke (when points.length >= 4)
+ * with outer diameter `outerSize`, wall thickness `lineWeight`, and tip shape `shapeKind`.
+ */
+export function drawHollowElementOnCtx(
+  ctx: CanvasRenderingContext2D | any,
+  points: number[],
+  outerSize: number,
+  lineWeight: number,
+  color: string,
+  shapeKind: HollowShapeKind = 'circle'
+): void {
+  if (!points || points.length < 2) return;
+  const outerD = Math.max(4, outerSize || 24);
+  const rOuter = outerD / 2;
+  const weight = Math.max(1, Math.min(rOuter - 0.5, lineWeight || 2));
+  const innerD = Math.max(1, outerD - weight * 2);
+  const rInner = innerD / 2;
+
+  // Single-click stamp: draw crisp hollow geometric shape with exact outer diameter & border line weight
+  if (points.length < 4) {
+    const cx = points[0];
+    const cy = points[1];
+    const rMid = Math.max(1.5, rOuter - weight / 2);
+    ctx.save();
+    ctx.beginPath();
+    traceHollowTipShape(ctx, cx, cy, rMid, shapeKind);
+    ctx.fillStyle = '#ffffff';
+    ctx.fill();
+    ctx.strokeStyle = color;
+    ctx.lineWidth = weight;
+    ctx.lineJoin = shapeKind === 'circle' ? 'round' : 'miter';
+    ctx.lineCap = 'round';
+    ctx.stroke();
+    ctx.restore();
+    return;
+  }
+
+  // Dragged hollow stroke: Circle uses fast dual smooth curves; polygons/stars sweep the outer & inner shapes along the path
+  if (shapeKind === 'circle') {
+    ctx.save();
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    ctx.strokeStyle = color;
+    ctx.lineWidth = outerD;
+    traceSmoothStrokePath(ctx, points, outerD);
+    ctx.stroke();
+
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = innerD;
+    traceSmoothStrokePath(ctx, points, innerD);
+    ctx.stroke();
+    ctx.restore();
+    return;
+  }
+
+  const samples = samplePolylinePoints(points, Math.max(2, rOuter * 0.28));
+  ctx.save();
+  // Pass 1: Outer colored silhouette along the path
+  ctx.fillStyle = color;
+  ctx.beginPath();
+  for (let i = 0; i < samples.length; i++) {
+    traceHollowTipShape(ctx, samples[i][0], samples[i][1], rOuter, shapeKind);
+  }
+  ctx.fill();
+
+  // Pass 2: Inner white cutout along the path
+  ctx.fillStyle = '#ffffff';
+  ctx.beginPath();
+  for (let i = 0; i < samples.length; i++) {
+    traceHollowTipShape(ctx, samples[i][0], samples[i][1], rInner, shapeKind);
+  }
+  ctx.fill();
+  ctx.restore();
 }
 
 /* ---- Editable Multiline Text Notes (OverBoard v45) ---- */

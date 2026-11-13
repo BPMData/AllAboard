@@ -13,6 +13,8 @@ import {
   liveAddPoint,
   liveLiftPoint,
   traceSmoothStrokePath,
+  traceHollowTipShape,
+  drawHollowElementOnCtx,
   getNoteFontSize,
   noteSize,
   getNoteBox,
@@ -338,3 +340,46 @@ describe('cn tailwind class merge utility', () => {
     assert.equal(cn('px-2 py-1', false && 'hidden', 'px-4'), 'py-1 px-4');
   });
 });
+
+describe('hollow shape brush geometry and rendering', () => {
+  it('renders single-click stamps and dragged strokes for circle, square, triangle, diamond, and star', () => {
+    const calls: string[] = [];
+    const mockCtx = {
+      fillStyle: '',
+      strokeStyle: '',
+      lineWidth: 1,
+      lineCap: 'round',
+      lineJoin: 'round',
+      save: () => calls.push('save'),
+      restore: () => calls.push('restore'),
+      beginPath: () => calls.push('beginPath'),
+      closePath: () => calls.push('closePath'),
+      moveTo: () => calls.push('moveTo'),
+      lineTo: () => calls.push('lineTo'),
+      quadraticCurveTo: () => calls.push('quad'),
+      arc: () => calls.push('arc'),
+      rect: () => calls.push('rect'),
+      fill: () => calls.push(`fill:${mockCtx.fillStyle}`),
+      stroke: () => calls.push(`stroke:${mockCtx.strokeStyle}:${mockCtx.lineWidth}`),
+    };
+
+    for (const shape of ['circle', 'square', 'triangle', 'diamond', 'star'] as const) {
+      calls.length = 0;
+      drawHollowElementOnCtx(mockCtx, [20, 30], 40, 5, '#e53935', shape);
+      assert.ok(calls.includes('fill:#ffffff'), `stamp fills hollow white center for ${shape}`);
+      assert.ok(calls.includes('stroke:#e53935:5'), `stamp strokes border weight 5 for ${shape}`);
+
+      calls.length = 0;
+      drawHollowElementOnCtx(mockCtx, [0, 0, 20, 10, 40, 20], 36, 4, '#1e88e5', shape);
+      assert.ok(
+        calls.some((c) => c.includes('#1e88e5')) && calls.some((c) => c.includes('#ffffff')),
+        `dragged stroke renders both outer color and inner white cutout for ${shape}`
+      );
+    }
+
+    calls.length = 0;
+    traceHollowTipShape(mockCtx, 10, 10, 15, 'star');
+    assert.ok(calls.filter((c) => c === 'lineTo').length === 9);
+  });
+});
+

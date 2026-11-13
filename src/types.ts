@@ -1,5 +1,7 @@
 export type StampKind = 'check' | 'question' | 'star' | 'thumbsup' | 'heart' | 'username';
 
+export type HollowShapeKind = 'circle' | 'square' | 'triangle' | 'diamond' | 'star';
+
 export type ToolType =
   | 'pan'
   | 'select'
@@ -28,6 +30,8 @@ export interface CanvasElement {
   tool: Exclude<ToolType, 'pan' | 'select' | 'move-bg'>;
   color: string;
   strokeWidth: number;
+  hollowShape?: HollowShapeKind; // Shape tip for hollow tool: circle, square, triangle, diamond, star
+  hollowWeight?: number;         // Border line weight for hollow tool (1..25)
   points?: number[]; // Used for freehand strokes (solid, hollow, spray, highlighter, eraser) and line
   x?: number;        // Used for rect, circle, text, stamp
   y?: number;        // Used for rect, circle, text, stamp
