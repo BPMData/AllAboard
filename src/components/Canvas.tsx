@@ -12,11 +12,22 @@ import {
   ImportRestoreMode,
   RoomSnapshot,
   BreakoutConfig,
+  BreakoutGroupDraft,
+  BreakoutRoundMeta,
+  ConfigureBreakoutPayload,
   SubBoardData,
   User,
   ClassroomTimerState,
   TimerControlPayload,
 } from '../types';
+import {
+  getActiveRound,
+  getAllBoardsByRound,
+  getBoardsInRound,
+  getNextRoundNumber,
+  getRoundById,
+  getRounds,
+} from '../lib/breakoutRounds';
 import {
   processWorksheetFile,
   BUILT_IN_TEMPLATES,
@@ -128,14 +139,7 @@ interface CanvasProps {
   userName: string;
   userColor: string;
   onSelectBoard: (boardId: string) => void;
-  onConfigureBreakout: (payload: {
-    mode: 'main' | 'individual' | 'groups';
-    allowSelfSelect: boolean;
-    chatScope: 'unified' | 'board';
-    copyWorksheet: boolean;
-    customBackground?: RoomBackground | null;
-    groups?: Array<{ id: string; title: string; assignedUserIds: string[] }>;
-  }) => Promise<{ ok: boolean; error?: string }>;
+  onConfigureBreakout: (payload: ConfigureBreakoutPayload) => Promise<{ ok: boolean; error?: string }>;
   onAssignUserToBoard: (targetBoardId: string, targetUserId?: string) => void;
   onElementStart: (element: CanvasElement) => void;
   onElementAppendPoints: (id: string, newPoints: number[]) => void;
@@ -701,13 +705,14 @@ export default function Canvas({
 
   // Breakout & Individual Assignment Manager Modal State (Teacher Only)
   const [showBreakoutModal, setShowBreakoutModal] = useState(false);
-  const [draftBreakoutMode, setDraftBreakoutMode] = useState<'main' | 'individual' | 'groups'>(
-    breakoutConfig.mode
+  const [draftBreakoutMode, setDraftBreakoutMode] = useState<'individual' | 'groups'>(
+    breakoutConfig.mode === 'groups' ? 'groups' : 'individual'
   );
   const [draftGroupCount, setDraftGroupCount] = useState<number>(4);
-  const [draftGroups, setDraftGroups] = useState<
-    Array<{ id: string; title: string; assignedUserIds: string[] }>
-  >([]);
+  const [draftGroups, setDraftGroups] = useState<BreakoutGroupDraft[]>([]);
+  const [draftRoundAction, setDraftRoundAction] = useState<'update-current' | 'new-round'>('new-round');
+  /** null = follow the live active round; 'all' = every round; otherwise a round id. */
+  const [teacherViewingRoundId, setTeacherViewingRoundId] = useState<string | 'all' | null>(null);
   const [draftAllowSelfSelect, setDraftAllowSelfSelect] = useState<boolean>(
     breakoutConfig.allowSelfSelect
   );
@@ -721,6 +726,39 @@ export default function Canvas({
     "Today's Core Concept: Photosynthesis"
   );
   const [showLiveGridOverview, setShowLiveGridOverview] = useState<boolean>(false);
+
+  const rounds = useMemo(() => getRounds(breakoutConfig), [breakoutConfig]);
+  const activeRound = useMemo(() => getActiveRound(breakoutConfig), [breakoutConfig]);
+
+  // Boards in the live (active) round. Used for students, counts, and broadcast targets.
+  const activeRoundBoards = useMemo(
+    () => getBoardsInRound(subBoards, breakoutConfig.activeRoundId),
+    [subBoards, breakoutConfig.activeRoundId]
+  );
+
+  // Which round the TEACHER is browsing in the switcher / grid / PDF export.
+  const effectiveViewingRoundId: string | 'all' | null =
+    teacherViewingRoundId === 'all' || getRoundById(breakoutConfig, teacherViewingRoundId)
+      ? teacherViewingRoundId
+      : breakoutConfig.activeRoundId ?? null;
+
+  const teacherVisibleBoards = useMemo(
+    () =>
+      effectiveViewingRoundId === 'all'
+        ? getAllBoardsByRound(subBoards, breakoutConfig)
+        : getBoardsInRound(subBoards, effectiveViewingRoundId),
+    [subBoards, breakoutConfig, effectiveViewingRoundId]
+  );
+
+  const viewingRoundLabel =
+    effectiveViewingRoundId === 'all'
+      ? 'All Rounds'
+      : getRoundById(breakoutConfig, effectiveViewingRoundId)?.title || 'Current Round';
+
+  const roundShortLabel = (roundId?: string) => {
+    const r = getRoundById(breakoutConfig, roundId);
+    return r ? `R${r.number}` : '';
+  };
 
   // Classroom Countdown Timer & Batch Multi-Page PDF Export States
   const [showTimerMenu, setShowTimerMenu] = useState<boolean>(false);
@@ -793,7 +831,16 @@ export default function Canvas({
 
   const handleBatchExportAllPdf = async () => {
     if (pdfExportProgress) return;
-    const allSubBoards = Object.values(subBoards) as SubBoardData[];
+    const allSubBoards: SubBoardData[] =
+      effectiveViewingRoundId === 'all'
+        ? teacherVisibleBoards.map((sb) => ({ ...sb, title: `${roundShortLabel(sb.roundId)} · ${sb.title}` }))
+        : teacherVisibleBoards;
+    const fileLabel =
+      effectiveViewingRoundId === 'all'
+        ? 'all-rounds'
+        : effectiveViewingRoundId
+        ? `round-${getRoundById(breakoutConfig, effectiveViewingRoundId)?.number ?? ''}`
+        : 'boards';
     try {
       setPdfExportProgress({ current: 1, total: Math.max(1, allSubBoards.length + 1) });
       await exportAllBoardsToPdf({
@@ -803,6 +850,7 @@ export default function Canvas({
         subBoards: allSubBoards,
         users,
         onProgress: (current, total) => setPdfExportProgress({ current, total }),
+        fileLabel,
       });
     } finally {
       setPdfExportProgress(null);
@@ -926,10 +974,10 @@ export default function Canvas({
         ? [...students].sort(() => Math.random() - 0.5)
         : [...students];
 
-      const nextGroups: Array<{ id: string; title: string; assignedUserIds: string[] }> = [];
+      const nextGroups: BreakoutGroupDraft[] = [];
       for (let i = 0; i < count; i++) {
         nextGroups.push({
-          id: `grp_${i + 1}`,
+          id: `draft-group-${i + 1}`,
           title: `Group ${i + 1}`,
           assignedUserIds: [],
         });
@@ -942,24 +990,32 @@ export default function Canvas({
     [users]
   );
 
-  // Open Breakout Modal and sync current config
+  const loadDraftGroupsFromActiveRound = useCallback((): boolean => {
+    const current = activeRound
+      ? getBoardsInRound(subBoards, activeRound.id).filter((sb) => sb.kind === 'group')
+      : [];
+    if (current.length === 0) return false;
+    setDraftGroupCount(current.length);
+    setDraftGroups(current.map((sb) => ({ id: sb.id, title: sb.title, assignedUserIds: [...sb.assignedUserIds] })));
+    return true;
+  }, [activeRound, subBoards]);
+
+  const handleChangeDraftRoundAction = (next: 'update-current' | 'new-round') => {
+    setDraftRoundAction(next);
+    if (next === 'update-current' && activeRound) {
+      setDraftBreakoutMode(activeRound.mode);
+      if (!loadDraftGroupsFromActiveRound()) initializeDraftGroups(draftGroupCount, true);
+    } else if (next === 'new-round') {
+      initializeDraftGroups(draftGroupCount, true);
+    }
+  };
+
   const handleOpenBreakoutModal = () => {
-    setDraftBreakoutMode(breakoutConfig.mode === 'main' ? 'individual' : breakoutConfig.mode);
+    setDraftRoundAction(activeRound ? 'update-current' : 'new-round');
+    setDraftBreakoutMode(activeRound?.mode ?? 'individual');
     setDraftAllowSelfSelect(breakoutConfig.allowSelfSelect);
     setDraftChatScope(breakoutConfig.chatScope);
-    const existingGroupBoards = (Object.values(subBoards) as SubBoardData[]).filter((sb) =>
-      sb.id.startsWith('grp_')
-    );
-    if (existingGroupBoards.length > 0) {
-      setDraftGroupCount(existingGroupBoards.length);
-      setDraftGroups(
-        existingGroupBoards.map((sb) => ({
-          id: sb.id,
-          title: sb.title,
-          assignedUserIds: [...sb.assignedUserIds],
-        }))
-      );
-    } else {
+    if (!loadDraftGroupsFromActiveRound()) {
       initializeDraftGroups(draftGroupCount, true);
     }
     setShowBreakoutModal(true);
@@ -1363,7 +1419,7 @@ export default function Canvas({
       onElementsBatchAdd(clones, targetBoardId);
       const label =
         targetBoardId === 'ALL_SUBBOARDS'
-          ? 'All Breakout Boards'
+          ? 'All Boards in Current Round'
           : targetBoardId === 'main'
           ? 'Main Class Board'
           : subBoards[targetBoardId]?.title || 'Target Board';
@@ -2942,18 +2998,6 @@ export default function Canvas({
     );
   };
 
-  // List of relevant sub-boards for current mode
-  const activeSubBoardList = useMemo(() => {
-    const all = Object.values(subBoards) as SubBoardData[];
-    if (breakoutConfig.mode === 'individual') {
-      return all.filter((sb) => sb.id.startsWith('ind_'));
-    }
-    if (breakoutConfig.mode === 'groups') {
-      return all.filter((sb) => sb.id.startsWith('grp_'));
-    }
-    return all;
-  }, [subBoards, breakoutConfig.mode]);
-
   const gridSpacing = Math.max(20, Math.round(40 * stageScale));
   const activeSwatches = useMemo(() => getPaletteColors(paletteMode), [paletteMode]);
 
@@ -3750,16 +3794,59 @@ export default function Canvas({
               <Users size={13} />
               <span>
                 {breakoutConfig.mode === 'individual'
-                  ? `Individual Boards (${activeSubBoardList.length})`
+                  ? `Individual Boards (${activeRoundBoards.length})`
                   : breakoutConfig.mode === 'groups'
-                  ? `Breakout Groups (${activeSubBoardList.length})`
+                  ? `Breakout Groups (${activeRoundBoards.length})`
                   : 'Breakouts / Individual'}
               </span>
             </button>
 
+            {breakoutConfig.mode !== 'main' && (
+              <button
+                type="button"
+                onClick={() => onConfigureBreakout({ action: 'return-to-main' })}
+                className="flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium transition-colors whitespace-nowrap shrink-0 cursor-pointer bg-white text-slate-800 border border-amber-300 hover:bg-amber-100/60"
+                title="Pull every student back to the Main Board. Their breakout work is kept."
+              >
+                Bring All to Main
+              </button>
+            )}
+            {breakoutConfig.mode === 'main' && activeRound && (
+              <button
+                type="button"
+                onClick={() => onConfigureBreakout({ action: 'resume', roundId: activeRound.id })}
+                className="flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium transition-colors whitespace-nowrap shrink-0 cursor-pointer bg-white text-blue-800 border border-blue-300 hover:bg-blue-50"
+                title={`Send students back to ${activeRound.title} with their work intact`}
+              >
+                Resume Round {activeRound.number}
+              </button>
+            )}
+
             {/* Teacher Board Switcher Dropdown + Live Grid Overview Button */}
             {Object.keys(subBoards).length > 0 && (
               <div className="flex items-center gap-1.5 bg-white px-2 py-0.5 rounded-md border border-amber-300">
+                {rounds.length > 1 && (
+                  <>
+                    <span className="text-[11px] text-slate-500">Round:</span>
+                    <select
+                      aria-label="Breakout round to view"
+                      value={effectiveViewingRoundId ?? ''}
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        setTeacherViewingRoundId(v === breakoutConfig.activeRoundId ? null : v);
+                      }}
+                      className="text-xs font-semibold text-slate-900 bg-transparent focus:outline-none cursor-pointer pr-1"
+                    >
+                      {rounds.map((r) => (
+                        <option key={r.id} value={r.id}>
+                          {r.title}{r.id === breakoutConfig.activeRoundId ? ' (live)' : ''}
+                        </option>
+                      ))}
+                      <option value="all">All Rounds</option>
+                    </select>
+                    <span className="text-slate-300" aria-hidden="true">|</span>
+                  </>
+                )}
                 <span className="text-[11px] text-slate-500">Board:</span>
                 <select
                   value={activeBoardId}
@@ -3770,8 +3857,12 @@ export default function Canvas({
                   className="text-xs font-semibold text-slate-900 bg-transparent focus:outline-none cursor-pointer pr-1"
                 >
                   <option value="main">Main Class Board ({fullMainElements.length} items)</option>
-                  {(Object.values(subBoards) as SubBoardData[]).map((sb) => (
+                  {activeBoardId !== 'main' && !teacherVisibleBoards.some((sb) => sb.id === activeBoardId) && (
+                    <option value={activeBoardId}>{roundShortLabel(subBoards[activeBoardId]?.roundId)} · {activeBoardTitle}</option>
+                  )}
+                  {teacherVisibleBoards.map((sb) => (
                     <option key={sb.id} value={sb.id}>
+                      {effectiveViewingRoundId === 'all' ? `${roundShortLabel(sb.roundId)} · ` : ''}
                       {sb.title} ({sb.elements.length} items)
                     </option>
                   ))}
@@ -4203,7 +4294,7 @@ export default function Canvas({
                     onChange={(e) => onAssignUserToBoard(e.target.value)}
                     className="bg-white border border-blue-300 rounded px-2 py-0.5 text-xs font-semibold text-blue-900 cursor-pointer"
                   >
-                    {activeSubBoardList.map((sb) => (
+                    {activeRoundBoards.filter((sb) => sb.kind === 'group').map((sb) => (
                       <option key={sb.id} value={sb.id}>
                         {sb.title} ({sb.assignedUserIds.length} students)
                       </option>
@@ -4227,8 +4318,13 @@ export default function Canvas({
       {isTeacher && showLiveGridOverview && (
         <LiveGridOverview
           activeBoardId={activeBoardId}
-          activeSubBoardList={activeSubBoardList}
-          subBoards={subBoards}
+          boards={teacherVisibleBoards}
+          roundLabel={viewingRoundLabel}
+          showRoundPrefix={effectiveViewingRoundId === 'all'}
+          roundShortLabel={roundShortLabel}
+          activeRoundId={breakoutConfig.activeRoundId}
+          activeRoundGroupBoards={activeRoundBoards.filter((sb) => sb.kind === 'group')}
+          onAssignUserToBoard={onAssignUserToBoard}
           users={users}
           fullMainElements={fullMainElements}
           fullMainBackground={fullMainBackground}
@@ -4245,6 +4341,11 @@ export default function Canvas({
         <BreakoutManagerModal
           users={users}
           fullMainBackground={fullMainBackground}
+          activeRound={activeRound}
+          nextRoundNumber={getNextRoundNumber(breakoutConfig)}
+          currentMode={breakoutConfig.mode}
+          draftRoundAction={draftRoundAction}
+          onChangeDraftRoundAction={handleChangeDraftRoundAction}
           draftBreakoutMode={draftBreakoutMode}
           setDraftBreakoutMode={setDraftBreakoutMode}
           draftGroupCount={draftGroupCount}
@@ -4601,9 +4702,9 @@ export default function Canvas({
                   onChange={(e) => setSendToBoardTarget(e.target.value)}
                   className="bg-slate-800 border border-slate-600 rounded px-1.5 py-0.5 text-[11px] text-white"
                 >
-                  <option value="ALL_SUBBOARDS">All Breakout Boards</option>
+                  <option value="ALL_SUBBOARDS">All Boards in Current Round</option>
                   <option value="main">Main Class Board</option>
-                  {activeSubBoardList.map((sb) => (
+                  {activeRoundBoards.map((sb) => (
                     <option key={sb.id} value={sb.id}>
                       {sb.title}
                     </option>

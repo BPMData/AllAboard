@@ -92,8 +92,41 @@ export interface BannedUserRecord {
 
 export type BreakoutMode = 'main' | 'individual' | 'groups';
 
+export type SubBoardKind = 'individual' | 'group';
+
+export interface BreakoutRoundMeta {
+  id: string;                       // 'r1', 'r2', ...
+  number: number;                   // 1, 2, ...
+  title: string;                    // 'Round 2 · Groups · Frayer Model'
+  mode: 'individual' | 'groups';
+  createdAt: number;
+}
+
+export type BreakoutAction = 'new-round' | 'resume' | 'update-current' | 'return-to-main';
+
+export interface BreakoutGroupDraft {
+  id: string;
+  title: string;
+  assignedUserIds: string[];
+}
+
+/** Payload of the `teacher:configure-breakout` socket event. Every field is optional. */
+export interface ConfigureBreakoutPayload {
+  action?: BreakoutAction;
+  mode?: BreakoutMode;                       // used by 'new-round' (and legacy callers)
+  roundId?: string;                          // used by 'resume' (defaults to active round)
+  allowSelfSelect?: boolean;
+  chatScope?: 'unified' | 'board';
+  copyWorksheet?: boolean;                   // 'new-round' only
+  customBackground?: RoomBackground | null;  // 'new-round' only
+  groups?: BreakoutGroupDraft[];             // 'new-round': ids ignored. 'resume'/'update-current': ids must be real board ids
+  templateLabel?: string;                    // 'new-round' only, used in the round title
+}
+
 export interface SubBoardData {
   id: string;
+  roundId?: string;        // 'r1', 'r2', ... (always set by the server after migration)
+  kind?: SubBoardKind;     // 'individual' | 'group' (always set by the server after migration)
   title: string;
   assignedUserIds: string[];
   elements: CanvasElement[];
@@ -103,6 +136,8 @@ export interface SubBoardData {
 
 export interface BreakoutConfig {
   mode: BreakoutMode;
+  activeRoundId?: string;
+  rounds?: BreakoutRoundMeta[];
   allowSelfSelect: boolean;
   chatScope: 'unified' | 'board';
 }

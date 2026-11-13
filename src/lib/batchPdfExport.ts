@@ -523,8 +523,9 @@ export async function exportAllBoardsToPdf(params: {
   subBoards: SubBoardData[];
   users: User[];
   onProgress?: (current: number, total: number) => void;
+  fileLabel?: string;
 }): Promise<void> {
-  const { roomId, mainElements, mainBackground, subBoards, users, onProgress } = params;
+  const { roomId, mainElements, mainBackground, subBoards, users, onProgress, fileLabel } = params;
 
   const entries: BoardExportEntry[] = [];
 
@@ -562,7 +563,7 @@ export async function exportAllBoardsToPdf(params: {
   const pdfBlob = buildMultiPagePdfFromJpegs(renderedPages);
   const url = URL.createObjectURL(pdfBlob);
   const link = document.createElement('a');
-  link.download = `allaboard-${roomId}-boards-${new Date().toISOString().slice(0, 10)}.pdf`;
+  link.download = `allaboard-${roomId}-${fileLabel || 'boards'}-${new Date().toISOString().slice(0, 10)}.pdf`;
   link.href = url;
   document.body.appendChild(link);
   link.click();
