@@ -1,8 +1,12 @@
 import React from 'react';
 import {
   BreakoutConfig,
+  BreakoutGroupDraft,
+  BreakoutMode,
+  BreakoutRoundMeta,
   CanvasElement,
   ChatMessage,
+  ConfigureBreakoutPayload,
   ImportRestoreMode,
   RoomBackground,
   SubBoardData,
@@ -30,8 +34,13 @@ export interface PendingSnapshotData {
 
 interface LiveGridOverviewProps {
   activeBoardId: string;
-  activeSubBoardList: SubBoardData[];
-  subBoards: Record<string, SubBoardData>;
+  boards: SubBoardData[];
+  roundLabel: string;
+  showRoundPrefix: boolean;
+  roundShortLabel: (roundId?: string) => string;
+  activeRoundId?: string;
+  activeRoundGroupBoards: SubBoardData[];
+  onAssignUserToBoard: (targetBoardId: string, targetUserId?: string) => void;
   users: User[];
   fullMainElements: CanvasElement[];
   fullMainBackground: RoomBackground | null;
@@ -47,8 +56,13 @@ interface LiveGridOverviewProps {
  */
 export function LiveGridOverview({
   activeBoardId,
-  activeSubBoardList,
-  subBoards,
+  boards,
+  roundLabel,
+  showRoundPrefix,
+  roundShortLabel,
+  activeRoundId,
+  activeRoundGroupBoards,
+  onAssignUserToBoard,
   users,
   fullMainElements,
   fullMainBackground,
@@ -64,7 +78,7 @@ export function LiveGridOverview({
         <div className="flex flex-wrap items-center justify-between gap-4 bg-white p-4 rounded-xl border border-slate-200">
           <div>
             <h2 className="font-display text-lg font-bold text-slate-900">
-              Live Classroom Boards Overview ({activeSubBoardList.length + 1} Boards)
+              Live Classroom Boards Overview — {roundLabel} ({boards.length + 1} Boards)
             </h2>
             <p className="text-xs text-slate-500">
               Click any student or group board below to jump onto their canvas, give feedback, or project it to the class.
@@ -82,7 +96,7 @@ export function LiveGridOverview({
               <span>
                 {pdfExportProgress
                   ? `Building PDF (${pdfExportProgress.current}/${pdfExportProgress.total})...`
-                  : `Export All Boards (.PDF)`}
+                  : `Export ${roundLabel} (.PDF)`}
               </span>
             </button>
             <button
@@ -141,7 +155,7 @@ export function LiveGridOverview({
           </div>
 
           {/* Individual / Group Sub-Board Cards */}
-          {(Object.values(subBoards) as SubBoardData[]).map((sb) => {
+          {boards.map((sb) => {
             const assignedNames = sb.assignedUserIds
               .map((uid) => users.find((u) => u.userId === uid)?.name || 'Student')
               .join(', ');
@@ -161,7 +175,7 @@ export function LiveGridOverview({
                 <div>
                   <div className="flex items-center justify-between gap-2">
                     <span className="font-display font-bold text-sm text-slate-900 truncate">
-                      {sb.title}
+                      {showRoundPrefix ? `${roundShortLabel(sb.roundId)} · ` : ''}{sb.title}
                     </span>
                     <span className="font-mono tabular-nums text-xs text-blue-600 font-semibold shrink-0">
                       {sb.elements.length} {sb.elements.length === 1 ? 'stroke' : 'strokes'}
@@ -170,6 +184,25 @@ export function LiveGridOverview({
                   <p className="text-xs text-slate-500 truncate mt-0.5">
                     {assignedNames || 'No students assigned yet'}
                   </p>
+                  {sb.kind === 'group' && sb.roundId === activeRoundId && sb.assignedUserIds.length > 0 && (
+                    <div className="space-y-1 mt-2" onClick={(e) => e.stopPropagation()}>
+                      {sb.assignedUserIds.map((uid) => (
+                        <div key={uid} className="flex items-center justify-between gap-2 text-[11px]">
+                          <span className="text-slate-700 truncate">{users.find((u) => u.userId === uid)?.name || 'Student'}</span>
+                          <select
+                            aria-label="Move student to another group"
+                            value={sb.id}
+                            onChange={(e) => onAssignUserToBoard(e.target.value, uid)}
+                            className="bg-slate-50 border border-slate-300 rounded px-1.5 py-0.5 text-[11px] text-slate-800 cursor-pointer"
+                          >
+                            {activeRoundGroupBoards.map((g) => (
+                              <option key={g.id} value={g.id}>{g.title}</option>
+                            ))}
+                          </select>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
 
                 <div className="h-32 rounded-lg bg-slate-50 border border-slate-200/80 flex items-center justify-center overflow-hidden relative">
@@ -201,14 +234,17 @@ export function LiveGridOverview({
 interface BreakoutManagerModalProps {
   users: User[];
   fullMainBackground: RoomBackground | null;
-  draftBreakoutMode: 'main' | 'individual' | 'groups';
-  setDraftBreakoutMode: (mode: 'main' | 'individual' | 'groups') => void;
+  activeRound: BreakoutRoundMeta | null;
+  nextRoundNumber: number;
+  currentMode: BreakoutMode;
+  draftRoundAction: 'update-current' | 'new-round';
+  onChangeDraftRoundAction: (next: 'update-current' | 'new-round') => void;
+  draftBreakoutMode: 'individual' | 'groups';
+  setDraftBreakoutMode: (mode: 'individual' | 'groups') => void;
   draftGroupCount: number;
   setDraftGroupCount: (count: number) => void;
-  draftGroups: Array<{ id: string; title: string; assignedUserIds: string[] }>;
-  setDraftGroups: React.Dispatch<
-    React.SetStateAction<Array<{ id: string; title: string; assignedUserIds: string[] }>>
-  >;
+  draftGroups: BreakoutGroupDraft[];
+  setDraftGroups: React.Dispatch<React.SetStateAction<BreakoutGroupDraft[]>>;
   draftAllowSelfSelect: boolean;
   setDraftAllowSelfSelect: (allow: boolean) => void;
   draftChatScope: 'unified' | 'board';
@@ -220,14 +256,7 @@ interface BreakoutManagerModalProps {
   draftWorksheetTopic: string;
   setDraftWorksheetTopic: (topic: string) => void;
   initializeDraftGroups: (count: number, randomize?: boolean) => void;
-  onConfigureBreakout: (payload: {
-    mode: 'main' | 'individual' | 'groups';
-    allowSelfSelect: boolean;
-    chatScope: 'unified' | 'board';
-    copyWorksheet: boolean;
-    customBackground?: RoomBackground | null;
-    groups?: Array<{ id: string; title: string; assignedUserIds: string[] }>;
-  }) => Promise<{ ok: boolean; error?: string }>;
+  onConfigureBreakout: (payload: ConfigureBreakoutPayload) => Promise<{ ok: boolean; error?: string }>;
   onClose: () => void;
   onShowLiveGridOverview: (show: boolean) => void;
 }
@@ -238,6 +267,11 @@ interface BreakoutManagerModalProps {
 export function BreakoutManagerModal({
   users,
   fullMainBackground,
+  activeRound,
+  nextRoundNumber,
+  currentMode,
+  draftRoundAction,
+  onChangeDraftRoundAction,
   draftBreakoutMode,
   setDraftBreakoutMode,
   draftGroupCount,
@@ -257,6 +291,14 @@ export function BreakoutManagerModal({
   onClose,
   onShowLiveGridOverview,
 }: BreakoutManagerModalProps) {
+  const isEditing = Boolean(activeRound) && draftRoundAction === 'update-current';
+  const templateLabelFor = (choice: typeof draftWorksheetChoice): string =>
+    choice === 'frayer' ? 'Frayer Model'
+    : choice === 'checkin' ? 'Task Pulse Check'
+    : choice === 'corners' ? 'Four Corners'
+    : choice === 'current' && fullMainBackground ? 'Copy of Main'
+    : 'Blank';
+
   return (
     <div className="fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-xs flex items-center justify-center p-4 select-text">
       <div className="bg-white border border-slate-200 rounded-2xl shadow-xl w-full max-w-2xl p-6 space-y-5 max-h-[90vh] overflow-y-auto">
@@ -278,103 +320,122 @@ export function BreakoutManagerModal({
           </button>
         </div>
 
+        {activeRound && (
+          <div className="grid grid-cols-2 gap-2.5">
+            <button
+              type="button"
+              onClick={() => onChangeDraftRoundAction('update-current')}
+              className={cn(
+                "p-3 rounded-xl border text-left transition-colors cursor-pointer",
+                draftRoundAction === 'update-current' ? "bg-blue-50/80 border-blue-600" : "bg-white border-slate-200 hover:border-slate-300"
+              )}
+            >
+              <div className="font-display font-semibold text-xs text-slate-900">Resume / Edit {activeRound.title}</div>
+              <p className="text-[11px] text-slate-500 mt-0.5">Keep every board and drawing. Change groups or chat settings.</p>
+            </button>
+            <button
+              type="button"
+              onClick={() => onChangeDraftRoundAction('new-round')}
+              className={cn(
+                "p-3 rounded-xl border text-left transition-colors cursor-pointer",
+                draftRoundAction === 'new-round' ? "bg-blue-50/80 border-blue-600" : "bg-white border-slate-200 hover:border-slate-300"
+              )}
+            >
+              <div className="font-display font-semibold text-xs text-slate-900">Start New Round {nextRoundNumber}</div>
+              <p className="text-[11px] text-slate-500 mt-0.5">Fresh boards and a new worksheet. Round {activeRound.number} is archived, not deleted.</p>
+            </button>
+          </div>
+        )}
+
         {/* 1. Mode Selection */}
-        <div className="grid grid-cols-3 gap-2.5">
-          <button
-            type="button"
-            onClick={() => setDraftBreakoutMode('main')}
-            className={cn(
-              "p-3 rounded-xl border text-left transition-colors cursor-pointer",
-              draftBreakoutMode === 'main'
-                ? "bg-blue-50/80 border-blue-600"
-                : "bg-white border-slate-200 hover:border-slate-300"
-            )}
-          >
-            <div className="font-display font-semibold text-xs text-slate-900">
-              Whole-Class Main Board
-            </div>
-            <p className="text-[11px] text-slate-500 mt-0.5">
-              Everyone draws together on one shared board.
-            </p>
-          </button>
+        {!isEditing && (
+          <div className="grid grid-cols-2 gap-2.5">
+            <button
+              type="button"
+              onClick={() => setDraftBreakoutMode('individual')}
+              className={cn(
+                "p-3 rounded-xl border text-left transition-colors cursor-pointer",
+                draftBreakoutMode === 'individual'
+                  ? "bg-blue-50/80 border-blue-600"
+                  : "bg-white border-slate-200 hover:border-slate-300"
+              )}
+            >
+              <div className="font-display font-semibold text-xs text-slate-900">
+                Individual Student Boards
+              </div>
+              <p className="text-[11px] text-slate-500 mt-0.5">
+                Every student gets their own private board + worksheet.
+              </p>
+            </button>
 
-          <button
-            type="button"
-            onClick={() => setDraftBreakoutMode('individual')}
-            className={cn(
-              "p-3 rounded-xl border text-left transition-colors cursor-pointer",
-              draftBreakoutMode === 'individual'
-                ? "bg-blue-50/80 border-blue-600"
-                : "bg-white border-slate-200 hover:border-slate-300"
-            )}
-          >
-            <div className="font-display font-semibold text-xs text-slate-900">
-              Individual Student Boards
-            </div>
-            <p className="text-[11px] text-slate-500 mt-0.5">
-              Every student gets their own private board + worksheet.
-            </p>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => {
-              setDraftBreakoutMode('groups');
-              if (draftGroups.length === 0) {
-                initializeDraftGroups(draftGroupCount, true);
-              }
-            }}
-            className={cn(
-              "p-3 rounded-xl border text-left transition-colors cursor-pointer",
-              draftBreakoutMode === 'groups'
-                ? "bg-blue-50/80 border-blue-600"
-                : "bg-white border-slate-200 hover:border-slate-300"
-            )}
-          >
-            <div className="font-display font-semibold text-xs text-slate-900">
-              Breakout Group Rooms
-            </div>
-            <p className="text-[11px] text-slate-500 mt-0.5">
-              Split into 2–8 small groups (random, manual, or self-select).
-            </p>
-          </button>
-        </div>
+            <button
+              type="button"
+              onClick={() => {
+                setDraftBreakoutMode('groups');
+                if (draftGroups.length === 0) {
+                  initializeDraftGroups(draftGroupCount, true);
+                }
+              }}
+              className={cn(
+                "p-3 rounded-xl border text-left transition-colors cursor-pointer",
+                draftBreakoutMode === 'groups'
+                  ? "bg-blue-50/80 border-blue-600"
+                  : "bg-white border-slate-200 hover:border-slate-300"
+              )}
+            >
+              <div className="font-display font-semibold text-xs text-slate-900">
+                Breakout Group Rooms
+              </div>
+              <p className="text-[11px] text-slate-500 mt-0.5">
+                Split into 2–8 small groups (random, manual, or self-select).
+              </p>
+            </button>
+          </div>
+        )}
+        {isEditing && activeRound && (
+          <p className="text-xs text-slate-600 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2">
+            {activeRound.mode === 'groups' ? 'Group round' : 'Individual round'} · Students&apos; drawings and worksheets are never changed here.
+            {activeRound.mode === 'individual' && ' Students who join late automatically get their own board.'}
+          </p>
+        )}
 
         {/* 2. Group Assignment Controls (when 'groups' is selected) */}
         {draftBreakoutMode === 'groups' && (
           <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-3">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <div className="flex items-center gap-2 text-xs">
-                <span className="font-semibold text-slate-700">Number of Groups:</span>
-                {[2, 3, 4, 5, 6, 8].map((n) => (
-                  <button
-                    key={n}
-                    type="button"
-                    onClick={() => {
-                      setDraftGroupCount(n);
-                      initializeDraftGroups(n, true);
-                    }}
-                    className={cn(
-                      "w-7 h-7 rounded-md font-mono text-xs font-semibold cursor-pointer",
-                      draftGroupCount === n
-                        ? "bg-blue-600 text-white"
-                        : "bg-white border border-slate-300 text-slate-700 hover:bg-slate-100"
-                    )}
-                  >
-                    {n}
-                  </button>
-                ))}
-              </div>
+            {!isEditing && (
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="flex items-center gap-2 text-xs">
+                  <span className="font-semibold text-slate-700">Number of Groups:</span>
+                  {[2, 3, 4, 5, 6, 8].map((n) => (
+                    <button
+                      key={n}
+                      type="button"
+                      onClick={() => {
+                        setDraftGroupCount(n);
+                        initializeDraftGroups(n, true);
+                      }}
+                      className={cn(
+                        "w-7 h-7 rounded-md font-mono text-xs font-semibold cursor-pointer",
+                        draftGroupCount === n
+                          ? "bg-blue-600 text-white"
+                          : "bg-white border border-slate-300 text-slate-700 hover:bg-slate-100"
+                      )}
+                    >
+                      {n}
+                    </button>
+                  ))}
+                </div>
 
-              <button
-                type="button"
-                onClick={() => initializeDraftGroups(draftGroupCount, true)}
-                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium bg-white border border-slate-300 text-slate-700 hover:bg-slate-100 cursor-pointer"
-              >
-                <Shuffle size={13} />
-                <span>Auto-Randomize Students</span>
-              </button>
-            </div>
+                <button
+                  type="button"
+                  onClick={() => initializeDraftGroups(draftGroupCount, true)}
+                  className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium bg-white border border-slate-300 text-slate-700 hover:bg-slate-100 cursor-pointer"
+                >
+                  <Shuffle size={13} />
+                  <span>Auto-Randomize Students</span>
+                </button>
+              </div>
+            )}
 
             {/* Manual Student Group Reassignment */}
             <div className="space-y-1.5 max-h-40 overflow-y-auto pr-1">
@@ -389,7 +450,7 @@ export function BreakoutManagerModal({
                     const currentGrp =
                       draftGroups.find((g) => g.assignedUserIds.includes(student.userId))?.id ||
                       draftGroups[0]?.id ||
-                      'grp_1';
+                      '';
                     return (
                       <div
                         key={student.userId}
@@ -443,7 +504,7 @@ export function BreakoutManagerModal({
         )}
 
         {/* 3. Pre-load Worksheet / Template on Sub-Boards */}
-        {draftBreakoutMode !== 'main' && (
+        {!isEditing && (
           <div className="space-y-3 pt-1 border-t border-slate-100">
             <label className="block text-xs font-semibold text-slate-700">
               Pre-load Worksheet / Template onto Every Board:
@@ -516,41 +577,47 @@ export function BreakoutManagerModal({
                 />
               </div>
             )}
-
-            {/* Chat Scope Selector */}
-            <div className="flex items-center justify-between pt-2">
-              <span className="text-xs font-semibold text-slate-700">Chat Room Mode:</span>
-              <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-lg text-xs">
-                <button
-                  type="button"
-                  onClick={() => setDraftChatScope('unified')}
-                  className={cn(
-                    "px-2.5 py-1 rounded-md font-medium cursor-pointer",
-                    draftChatScope === 'unified'
-                      ? "bg-white text-slate-900 shadow-xs"
-                      : "text-slate-600"
-                  )}
-                >
-                  Unified Class Chat
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setDraftChatScope('board')}
-                  className={cn(
-                    "px-2.5 py-1 rounded-md font-medium cursor-pointer",
-                    draftChatScope === 'board'
-                      ? "bg-white text-slate-900 shadow-xs"
-                      : "text-slate-600"
-                  )}
-                >
-                  Per-Board Group Chat
-                </button>
-              </div>
-            </div>
           </div>
         )}
 
-        <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100">
+        {/* Chat Scope Selector */}
+        <div className="flex items-center justify-between pt-2">
+          <span className="text-xs font-semibold text-slate-700">Chat Room Mode:</span>
+          <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-lg text-xs">
+            <button
+              type="button"
+              onClick={() => setDraftChatScope('unified')}
+              className={cn(
+                "px-2.5 py-1 rounded-md font-medium cursor-pointer",
+                draftChatScope === 'unified'
+                  ? "bg-white text-slate-900 shadow-xs"
+                  : "text-slate-600"
+              )}
+            >
+              Unified Class Chat
+            </button>
+            <button
+              type="button"
+              onClick={() => setDraftChatScope('board')}
+              className={cn(
+                "px-2.5 py-1 rounded-md font-medium cursor-pointer",
+                draftChatScope === 'board'
+                  ? "bg-white text-slate-900 shadow-xs"
+                  : "text-slate-600"
+              )}
+            >
+              Per-Board Group Chat
+            </button>
+          </div>
+        </div>
+
+        {activeRound && !isEditing && (
+          <p className="text-[11px] text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+            {activeRound.title} will be archived. Nothing is deleted. You can still open and export it from the Round selector.
+          </p>
+        )}
+
+        <div className="flex flex-wrap items-center justify-end gap-2 pt-3 border-t border-slate-100">
           <button
             type="button"
             onClick={onClose}
@@ -558,40 +625,61 @@ export function BreakoutManagerModal({
           >
             Cancel
           </button>
+          {currentMode !== 'main' && (
+            <button
+              type="button"
+              onClick={async () => {
+                const res = await onConfigureBreakout({ action: 'return-to-main' });
+                if (!res.ok) { window.alert(res.error || 'Could not return to the Main Board.'); return; }
+                onClose();
+                onShowLiveGridOverview(false);
+              }}
+              className="px-4 py-2 rounded-lg text-xs font-semibold bg-white border border-slate-300 text-slate-800 hover:bg-slate-100 cursor-pointer"
+            >
+              Bring Everyone to Main
+            </button>
+          )}
           <button
             type="button"
             onClick={async () => {
-              let customBg: RoomBackground | null | undefined = undefined;
-              if (draftWorksheetChoice === 'frayer') {
-                customBg = generateTemplateBackground('frayer-model', draftWorksheetTopic);
-              } else if (draftWorksheetChoice === 'checkin') {
-                customBg = generateTemplateBackground('checkin-columns', draftWorksheetTopic);
-              } else if (draftWorksheetChoice === 'corners') {
-                customBg = generateTemplateBackground('four-corners', draftWorksheetTopic);
-              } else if (draftWorksheetChoice === 'none') {
-                customBg = null;
-              }
-
-              await onConfigureBreakout({
-                mode: draftBreakoutMode,
-                allowSelfSelect: draftAllowSelfSelect,
-                chatScope: draftChatScope,
-                copyWorksheet: draftWorksheetChoice === 'current',
-                customBackground: customBg,
-                groups: draftBreakoutMode === 'groups' ? draftGroups : undefined,
-              });
-              onClose();
-              if (draftBreakoutMode !== 'main') {
-                onShowLiveGridOverview(true);
+              let payload: ConfigureBreakoutPayload;
+              if (isEditing && activeRound) {
+                payload = {
+                  action: currentMode === 'main' ? 'resume' : 'update-current',
+                  roundId: activeRound.id,
+                  allowSelfSelect: draftAllowSelfSelect,
+                  chatScope: draftChatScope,
+                  groups: activeRound.mode === 'groups' ? draftGroups : undefined,
+                };
               } else {
-                onShowLiveGridOverview(false);
+                let customBg: RoomBackground | null | undefined = undefined;
+                if (draftWorksheetChoice === 'frayer') customBg = generateTemplateBackground('frayer-model', draftWorksheetTopic);
+                else if (draftWorksheetChoice === 'checkin') customBg = generateTemplateBackground('checkin-columns', draftWorksheetTopic);
+                else if (draftWorksheetChoice === 'corners') customBg = generateTemplateBackground('four-corners', draftWorksheetTopic);
+                else if (draftWorksheetChoice === 'none') customBg = null;
+                payload = {
+                  action: 'new-round',
+                  mode: draftBreakoutMode,
+                  allowSelfSelect: draftAllowSelfSelect,
+                  chatScope: draftChatScope,
+                  copyWorksheet: draftWorksheetChoice === 'current',
+                  customBackground: customBg,
+                  groups: draftBreakoutMode === 'groups' ? draftGroups : undefined,
+                  templateLabel: templateLabelFor(draftWorksheetChoice),
+                };
               }
+              const res = await onConfigureBreakout(payload);
+              if (!res.ok) { window.alert(res.error || 'Could not update breakout boards.'); return; }
+              onClose();
+              onShowLiveGridOverview(payload.action !== 'update-current');
             }}
             className="px-4 py-2 rounded-lg text-xs font-semibold bg-blue-600 text-white hover:bg-blue-500 cursor-pointer"
           >
-            {draftBreakoutMode === 'main'
-              ? 'Return Class to Main Board'
-              : 'Launch Boards for Class'}
+            {isEditing && activeRound
+              ? currentMode === 'main'
+                ? `Send Class Back to Round ${activeRound.number}`
+                : 'Save Changes'
+              : `Launch Round ${nextRoundNumber}`}
           </button>
         </div>
       </div>
