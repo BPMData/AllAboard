@@ -10,8 +10,10 @@ import {
   ImportRestoreMode,
   SubBoardData,
   BreakoutConfig,
+  ConfigureBreakoutPayload,
   TimerControlPayload,
 } from './types';
+import { findStudentBoardId } from './lib/breakoutRounds';
 import Chat, { getUserColor } from './components/Chat';
 import Canvas from './components/Canvas';
 import { motion } from 'motion/react';
@@ -108,6 +110,7 @@ export default function App() {
     hasTeacherPin: false,
     breakoutConfig: {
       mode: 'main',
+      rounds: [],
       allowSelfSelect: false,
       chatScope: 'unified',
     },
@@ -116,6 +119,7 @@ export default function App() {
 
   const breakoutConfig: BreakoutConfig = roomSettings.breakoutConfig || {
     mode: 'main',
+    rounds: [],
     allowSelfSelect: false,
     chatScope: 'unified',
   };
@@ -128,21 +132,8 @@ export default function App() {
       }
       return teacherSelectedBoardId;
     }
-    if (breakoutConfig.mode === 'individual') {
-      const myIndId = `ind_${userId}`;
-      if (subBoards[myIndId]) return myIndId;
-    } else if (breakoutConfig.mode === 'groups') {
-      const assignedGroup = (Object.values(subBoards) as SubBoardData[]).find(
-        (sb) => sb.id.startsWith('grp_') && sb.assignedUserIds.includes(userId)
-      );
-      if (assignedGroup) return assignedGroup.id;
-      const firstGroup = (Object.values(subBoards) as SubBoardData[]).find((sb) =>
-        sb.id.startsWith('grp_')
-      );
-      if (firstGroup) return firstGroup.id;
-    }
-    return 'main';
-  }, [isTeacher, teacherSelectedBoardId, breakoutConfig.mode, subBoards, userId]);
+    return findStudentBoardId(subBoards, breakoutConfig, userId);
+  }, [isTeacher, teacherSelectedBoardId, roomSettings.breakoutConfig, subBoards, userId]);
 
   const activeBoardTitle = useMemo(() => {
     if (activeBoardId === 'main') return 'Main Class Board';
@@ -352,7 +343,7 @@ export default function App() {
           for (const [k, sb] of Object.entries(prev) as Array<[string, SubBoardData]>) {
             next[k] = {
               ...sb,
-              title: k === `ind_${renamedUserId}` ? `${newName}'s Board` : sb.title,
+              title: sb.kind === 'individual' && sb.assignedUserIds[0] === renamedUserId ? `${newName}'s Board` : sb.title,
               messages: sb.messages.map((m) =>
                 m.userId === renamedUserId ? { ...m, userName: newName } : m
               ),
@@ -663,21 +654,14 @@ export default function App() {
   }, [socket, roomId]);
 
   const handleConfigureBreakout = useCallback(
-    (payload: {
-      mode: 'main' | 'individual' | 'groups';
-      allowSelfSelect: boolean;
-      chatScope: 'unified' | 'board';
-      copyWorksheet: boolean;
-      customBackground?: RoomBackground | null;
-      groups?: Array<{ id: string; title: string; assignedUserIds: string[] }>;
-    }): Promise<{ ok: boolean; error?: string }> => {
+    (payload: ConfigureBreakoutPayload): Promise<{ ok: boolean; error?: string }> => {
       return new Promise((resolve) => {
         if (!socket) {
           resolve({ ok: false, error: 'Not connected to server.' });
           return;
         }
         socket.emit('teacher:configure-breakout', payload, (res: { ok: boolean; error?: string }) => {
-          if (res?.ok && payload.mode === 'main') {
+          if (res?.ok && (payload.action === 'return-to-main' || payload.mode === 'main')) {
             setTeacherSelectedBoardId('main');
           }
           resolve(res || { ok: false, error: 'No response from server.' });
