@@ -167,6 +167,48 @@ async function startServer() {
     }
   }
 
+  let isSavingAsync = false;
+  let saveQueuedAsync = false;
+
+  function buildSerializedRoomsPayload(): { updatedAt: number; rooms: SerializedRoom[] } {
+    const now = Date.now();
+    const serialized: SerializedRoom[] = [];
+    for (const [roomId, room] of rooms.entries()) {
+      let hasActiveSockets = false;
+      for (const u of room.usersByUserId.values()) {
+        if (u.sockets.size > 0) {
+          hasActiveSockets = true;
+          break;
+        }
+      }
+      if (!hasActiveSockets && now - room.lastActiveAt > ROOM_TTL_MS) {
+        rooms.delete(roomId);
+        continue;
+      }
+      if (
+        room.elements.length > 0 ||
+        room.messages.length > 0 ||
+        room.background !== null ||
+        room.subBoards.size > 0 ||
+        room.teacherPin !== null
+      ) {
+        serialized.push({
+          id: room.id,
+          messages: room.messages,
+          elements: room.elements,
+          background: room.background,
+          subBoards: serializeSubBoards(room.subBoards),
+          breakoutConfig: room.breakoutConfig,
+          timer: room.timer,
+          isCanvasLocked: room.isCanvasLocked,
+          teacherPin: room.teacherPin,
+          lastActiveAt: room.lastActiveAt,
+        });
+      }
+    }
+    return { updatedAt: now, rooms: serialized };
+  }
+
   function flushRoomsToDisk() {
     if (saveTimeout) {
       clearTimeout(saveTimeout);
@@ -174,67 +216,57 @@ async function startServer() {
     }
     try {
       fs.mkdirSync(DATA_DIR, { recursive: true });
-      const now = Date.now();
-      const serialized: SerializedRoom[] = [];
-      for (const [roomId, room] of rooms.entries()) {
-        let hasActiveSockets = false;
-        for (const u of room.usersByUserId.values()) {
-          if (u.sockets.size > 0) {
-            hasActiveSockets = true;
-            break;
-          }
-        }
-        if (!hasActiveSockets && now - room.lastActiveAt > ROOM_TTL_MS) {
-          rooms.delete(roomId);
-          continue;
-        }
-        if (
-          room.elements.length > 0 ||
-          room.messages.length > 0 ||
-          room.background !== null ||
-          room.subBoards.size > 0 ||
-          room.teacherPin !== null
-        ) {
-          serialized.push({
-            id: room.id,
-            messages: room.messages,
-            elements: room.elements,
-            background: room.background,
-            subBoards: serializeSubBoards(room.subBoards),
-            breakoutConfig: room.breakoutConfig,
-            timer: room.timer,
-            isCanvasLocked: room.isCanvasLocked,
-            teacherPin: room.teacherPin,
-            lastActiveAt: room.lastActiveAt,
-          });
-        }
-      }
+      const payload = buildSerializedRoomsPayload();
       const tmpFile = `${STORE_FILE}.tmp`;
-      fs.writeFileSync(
-        tmpFile,
-        JSON.stringify({ updatedAt: now, rooms: serialized }),
-        'utf-8'
-      );
+      fs.writeFileSync(tmpFile, JSON.stringify(payload), 'utf-8');
       fs.renameSync(tmpFile, STORE_FILE);
     } catch (err) {
       console.error('Failed to save rooms to disk:', err);
     }
   }
 
+  async function flushRoomsToDiskAsync() {
+    if (saveTimeout) {
+      clearTimeout(saveTimeout);
+      saveTimeout = null;
+    }
+    if (isSavingAsync) {
+      saveQueuedAsync = true;
+      return;
+    }
+    isSavingAsync = true;
+    try {
+      await fs.promises.mkdir(DATA_DIR, { recursive: true });
+      const payload = buildSerializedRoomsPayload();
+      const json = JSON.stringify(payload);
+      const tmpFile = `${STORE_FILE}.tmp`;
+      await fs.promises.writeFile(tmpFile, json, 'utf-8');
+      await fs.promises.rename(tmpFile, STORE_FILE);
+    } catch (err) {
+      console.error('Failed to save rooms to disk:', err);
+    } finally {
+      isSavingAsync = false;
+      if (saveQueuedAsync) {
+        saveQueuedAsync = false;
+        void flushRoomsToDiskAsync();
+      }
+    }
+  }
+
   function scheduleSaveToDisk(immediate = false) {
     if (immediate) {
-      flushRoomsToDisk();
+      void flushRoomsToDiskAsync();
       return;
     }
     if (saveTimeout) return;
     saveTimeout = setTimeout(() => {
-      flushRoomsToDisk();
+      void flushRoomsToDiskAsync();
     }, 2000);
   }
 
   loadRoomsFromDisk();
   setInterval(() => {
-    flushRoomsToDisk();
+    void flushRoomsToDiskAsync();
   }, 60 * 60 * 1000);
 
   function normalizeRoomId(raw?: string): string {
@@ -888,11 +920,14 @@ async function startServer() {
       const room = rooms.get(meta.roomId);
       if (!room) return;
 
+      const senderRecord = room.usersByUserId.get(meta.userId);
+      if (room.isCanvasLocked && !senderRecord?.isTeacher) return;
+
       const targetElements = getBoardElements(room, boardId);
       if (!targetElements) return;
 
       const el = targetElements.find((item) => item.id === id);
-      if (el && Array.isArray(el.points)) {
+      if (el && (el.userId === meta.userId || senderRecord?.isTeacher) && Array.isArray(el.points)) {
         el.points.push(...newPoints);
         room.lastActiveAt = Date.now();
         scheduleSaveToDisk();
@@ -906,16 +941,170 @@ async function startServer() {
       const room = rooms.get(meta.roomId);
       if (!room) return;
 
+      const senderRecord = room.usersByUserId.get(meta.userId);
+      if (room.isCanvasLocked && !senderRecord?.isTeacher) return;
+
       const boardId = patch.boardId || 'main';
       const targetElements = getBoardElements(room, boardId);
       if (!targetElements) return;
 
       const idx = targetElements.findIndex((item) => item.id === patch.id);
       if (idx !== -1) {
-        targetElements[idx] = { ...targetElements[idx], ...patch };
+        const existing = targetElements[idx];
+        if (existing.userId !== meta.userId && !senderRecord?.isTeacher) return;
+        const { bringToFront, userId: _ignoreUserId, ...cleanPatch } = patch;
+        const updated = { ...existing, ...cleanPatch };
+        if (bringToFront) {
+          targetElements.splice(idx, 1);
+          targetElements.push(updated);
+        } else {
+          targetElements[idx] = updated;
+        }
         room.lastActiveAt = Date.now();
         scheduleSaveToDisk();
-        socket.to(room.id).emit('element-update', { ...patch, boardId });
+        socket.to(room.id).emit('element-update', {
+          ...cleanPatch,
+          boardId,
+          bringToFront: Boolean(bringToFront),
+        });
+      }
+    });
+
+    socket.on('elements-batch-update', ({ boardId = 'main', updates, bringToFront = false }) => {
+      const meta = socketMeta.get(socket.id);
+      if (!meta || !Array.isArray(updates) || updates.length === 0) return;
+      const room = rooms.get(meta.roomId);
+      if (!room) return;
+
+      const senderRecord = room.usersByUserId.get(meta.userId);
+      if (room.isCanvasLocked && !senderRecord?.isTeacher) return;
+
+      const targetElements = getBoardElements(room, boardId);
+      if (!targetElements) return;
+
+      const updateMap = new Map<string, any>();
+      for (const u of updates) {
+        if (u && typeof u.id === 'string') {
+          updateMap.set(u.id, u);
+        }
+      }
+
+      const appliedUpdates: any[] = [];
+      const movedToFront: any[] = [];
+
+      for (let i = 0; i < targetElements.length; ) {
+        const el = targetElements[i];
+        const patch = updateMap.get(el.id);
+        if (patch && (el.userId === meta.userId || senderRecord?.isTeacher)) {
+          const { bringToFront: _ignored, ...cleanPatch } = patch;
+          const merged = { ...el, ...cleanPatch };
+          appliedUpdates.push(cleanPatch);
+          if (bringToFront) {
+            targetElements.splice(i, 1);
+            movedToFront.push(merged);
+            continue;
+          } else {
+            targetElements[i] = merged;
+          }
+        }
+        i++;
+      }
+
+      if (bringToFront && movedToFront.length > 0) {
+        targetElements.push(...movedToFront);
+      }
+
+      if (appliedUpdates.length > 0) {
+        room.lastActiveAt = Date.now();
+        scheduleSaveToDisk();
+        socket.to(room.id).emit('elements-batch-updated', {
+          boardId,
+          updates: appliedUpdates,
+          bringToFront: Boolean(bringToFront),
+        });
+      }
+    });
+
+    socket.on('elements-batch-add', ({ boardId = 'main', elements: newElements }) => {
+      const meta = socketMeta.get(socket.id);
+      if (!meta || !Array.isArray(newElements) || newElements.length === 0) return;
+      const room = rooms.get(meta.roomId);
+      if (!room) return;
+
+      const senderRecord = room.usersByUserId.get(meta.userId);
+      if (room.isCanvasLocked && !senderRecord?.isTeacher) return;
+
+      if (boardId === 'ALL_SUBBOARDS') {
+        if (!senderRecord?.isTeacher) return;
+        let changed = false;
+        for (const sb of room.subBoards.values()) {
+          for (const el of newElements) {
+            if (!el || typeof el.tool !== 'string') continue;
+            const cloned = {
+              ...el,
+              id: Math.random().toString(36).substring(2, 11) + '_' + Math.random().toString(36).substring(2, 5),
+              boardId: sb.id,
+              timestamp: Date.now(),
+            };
+            sb.elements.push(cloned);
+            changed = true;
+          }
+        }
+        if (changed) {
+          room.lastActiveAt = Date.now();
+          scheduleSaveToDisk();
+          broadcastBreakoutSync(room);
+        }
+        return;
+      }
+
+      const targetElements = getBoardElements(room, boardId);
+      if (!targetElements) return;
+
+      const existingIds = new Set(targetElements.map((e) => e.id));
+      const added: any[] = [];
+      for (const el of newElements) {
+        if (el && el.id && !existingIds.has(el.id)) {
+          const normalized = { ...el, boardId };
+          targetElements.push(normalized);
+          existingIds.add(el.id);
+          added.push(normalized);
+        }
+      }
+
+      if (added.length > 0) {
+        room.lastActiveAt = Date.now();
+        scheduleSaveToDisk();
+        socket.to(room.id).emit('elements-batch-added', { boardId, elements: added });
+      }
+    });
+
+    socket.on('elements-batch-remove', ({ boardId = 'main', ids }) => {
+      const meta = socketMeta.get(socket.id);
+      if (!meta || !Array.isArray(ids) || ids.length === 0) return;
+      const room = rooms.get(meta.roomId);
+      if (!room) return;
+
+      const senderRecord = room.usersByUserId.get(meta.userId);
+      if (room.isCanvasLocked && !senderRecord?.isTeacher) return;
+
+      const targetElements = getBoardElements(room, boardId);
+      if (!targetElements) return;
+
+      const idSet = new Set(ids);
+      const removedIds: string[] = [];
+      for (let i = targetElements.length - 1; i >= 0; i--) {
+        const el = targetElements[i];
+        if (idSet.has(el.id) && (el.userId === meta.userId || senderRecord?.isTeacher)) {
+          removedIds.push(el.id);
+          targetElements.splice(i, 1);
+        }
+      }
+
+      if (removedIds.length > 0) {
+        room.lastActiveAt = Date.now();
+        scheduleSaveToDisk();
+        socket.to(room.id).emit('elements-batch-removed', { boardId, ids: removedIds });
       }
     });
 
@@ -938,7 +1127,7 @@ async function startServer() {
           targetElements.splice(idx, 1);
           room.lastActiveAt = Date.now();
           scheduleSaveToDisk();
-          io.to(room.id).emit('element-removed', { id, boardId });
+          socket.to(room.id).emit('element-removed', { id, boardId });
         }
       }
     });

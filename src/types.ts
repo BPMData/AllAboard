@@ -2,6 +2,7 @@ export type StampKind = 'check' | 'question' | 'star' | 'thumbsup' | 'heart' | '
 
 export type ToolType =
   | 'pan'
+  | 'select'
   | 'move-bg'
   | 'solid'
   | 'hollow'
@@ -24,7 +25,7 @@ export interface CanvasElement {
   boardId?: string;
   userId: string;
   userName: string;
-  tool: Exclude<ToolType, 'pan' | 'move-bg'>;
+  tool: Exclude<ToolType, 'pan' | 'select' | 'move-bg'>;
   color: string;
   strokeWidth: number;
   points?: number[]; // Used for freehand strokes (solid, hollow, spray, highlighter, eraser) and line
