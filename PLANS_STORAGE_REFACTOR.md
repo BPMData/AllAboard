@@ -79,7 +79,18 @@ broadcast**. There are exactly these entry points, plus one safety net:
 
 ### 0.6 Baseline
 
-Before you start, run `npm run lint && npm test`. At the time of writing, both pass
+Before you start, install **all** dependencies, including devDependencies such as `@playwright/test`
+(`npm run lint` typechecks `playwright.config.ts` and `e2e/` too):
+
+```bash
+npm ci
+```
+
+```bash
+npx playwright install chromium
+```
+
+Then run `npm run lint && npm test`. At the time of writing, both pass
 (**64 tests**). If they don't pass, stop and report.
 
 **Pre-validation:** Phases 1–3 of this plan were applied verbatim to a scratch copy of the
@@ -87,7 +98,7 @@ repo before it was handed off. Result: `tsc --noEmit` is clean, all 64 existing 
 6 Phase 1 tests pass, and tests S3 (breakout copies share one asset; asset route 200/404) and
 S7 (lobby sees an unloaded room) pass. The other S-tests and Phase 5 (client) were **not** pre-run. You need Node **≥ 22.13** (the repo
 was checked on 22.23). `node:sqlite` prints a one-line `ExperimentalWarning` on start.
-That is expected. Do not try to suppress it.
+That is expected (newer Node versions may not print it). Do not try to suppress it.
 
 ---
 
