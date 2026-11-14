@@ -505,7 +505,39 @@ export async function startServer(options: StartServerOptions = {}) {
     return provisionIndividualBoard(room, round.id, { userId, name: userName });
   }
 
+  function getRoomAvailability(rawRoomId?: string) {
+    const normalizedId = normalizeRoomId(rawRoomId);
+    const room = rooms.get(normalizedId);
+    if (!room) {
+      return {
+        roomId: normalizedId,
+        exists: false,
+        activeUserCount: 0,
+        hasTeacherPin: false,
+        hasContent: false,
+      };
+    }
+    const activeUserCount = getRosterPayload(room).length;
+    const hasContent =
+      room.elements.length > 0 ||
+      room.messages.length > 0 ||
+      room.background !== null ||
+      room.subBoards.size > 0;
+    const hasTeacherPin = room.teacherPin !== null;
+    return {
+      roomId: normalizedId,
+      exists: activeUserCount > 0 || hasContent || hasTeacherPin,
+      activeUserCount,
+      hasTeacherPin,
+      hasContent,
+    };
+  }
+
   io.on('connection', (socket) => {
+    socket.on('check-room', (payload: { roomId?: string } | undefined, callback) => {
+      callback?.(getRoomAvailability(payload?.roomId));
+    });
+
     socket.on('join-room', ({ roomId: rawRoomId, userId, name, color, teacherPin }) => {
       if (!userId) return;
 
@@ -1196,6 +1228,47 @@ export async function startServer(options: StartServerOptions = {}) {
       scheduleSaveToDisk(true);
       broadcastRoomSettings(room);
       callback?.({ ok: true });
+    });
+
+    // Teacher-only Purge All User Contributions (chat messages, drawings, annotations across main + sub-boards)
+    socket.on('teacher:purge-user-contributions', ({ targetUserId }: { targetUserId?: string }, callback) => {
+      const meta = socketMeta.get(socket.id);
+      if (!meta || !targetUserId) {
+        callback?.({ ok: false, error: 'Invalid request.' });
+        return;
+      }
+      const room = rooms.get(meta.roomId);
+      if (!room) {
+        callback?.({ ok: false, error: 'Room not found.' });
+        return;
+      }
+      const callerRecord = room.usersByUserId.get(meta.userId);
+      if (!callerRecord?.isTeacher) {
+        callback?.({ ok: false, error: 'Only a verified Teacher can delete user contributions.' });
+        return;
+      }
+
+      const prevMainEls = room.elements.length;
+      const prevMainMsgs = room.messages.length;
+      room.elements = room.elements.filter((el) => el?.userId !== targetUserId);
+      room.messages = room.messages.filter((m) => m?.userId !== targetUserId);
+
+      let removedElements = prevMainEls - room.elements.length;
+      let removedMessages = prevMainMsgs - room.messages.length;
+
+      for (const sb of room.subBoards.values()) {
+        const beforeSbEls = sb.elements.length;
+        const beforeSbMsgs = sb.messages.length;
+        sb.elements = sb.elements.filter((el) => el?.userId !== targetUserId);
+        sb.messages = sb.messages.filter((m) => m?.userId !== targetUserId);
+        removedElements += beforeSbEls - sb.elements.length;
+        removedMessages += beforeSbMsgs - sb.messages.length;
+      }
+
+      room.lastActiveAt = Date.now();
+      scheduleSaveToDisk(true);
+      io.to(room.id).emit('user-contributions-purged', { targetUserId });
+      callback?.({ ok: true, removedElements, removedMessages });
     });
 
     socket.on('chat-message', (msg) => {

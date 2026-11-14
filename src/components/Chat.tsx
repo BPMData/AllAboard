@@ -397,7 +397,10 @@ export default function Chat({
                 <span className="text-slate-400 shrink-0">Room:</span>
                 <button
                   type="button"
-                  onClick={() => setIsEditingRoom(true)}
+                  onClick={() => {
+                    setRoomDraft(roomId);
+                    setIsEditingRoom(true);
+                  }}
                   className="font-mono font-semibold text-slate-800 hover:text-blue-600 truncate cursor-pointer"
                   title="Click to enter a different room code"
                 >
@@ -814,7 +817,7 @@ export default function Chat({
                     <p className="text-red-900 font-medium leading-snug">
                       Remove <span className="font-semibold">{participant.name}</span> from this classroom?
                       <span className="block text-[11px] text-red-700 font-normal mt-0.5">
-                        Their existing drawings and chat messages will be kept unless you erase them.
+                        You will be asked right away if you want to delete their contributions.
                       </span>
                     </p>
                     <div className="flex items-center gap-1.5">

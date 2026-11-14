@@ -243,3 +243,172 @@ test.describe('chat sidebar', () => {
   });
 });
 
+test.describe('room exists confirmation modal', () => {
+  test('warns when switching to an active room from chat sidebar and lets user cancel, join anyway, or create a fresh room', async ({ browser }) => {
+    const occupiedRoom = uniqueRoom('occupied');
+    const teacherRoom = uniqueRoom('myclass');
+    const otherTeacher = await newUser(browser);
+    const secondTeacher = await newUser(browser);
+
+    // First teacher claims occupiedRoom with a PIN and draws something
+    await joinRoom(otherTeacher.page, occupiedRoom, 'Ms. First', PIN);
+    await drawStroke(otherTeacher.page);
+
+    // Second teacher starts in their own unclaimed room
+    await joinRoom(secondTeacher.page, teacherRoom, 'Mr. Second');
+
+    // Second teacher tries switching to occupiedRoom via chat room switcher -> sees confirmation modal
+    await secondTeacher.page.getByTitle('Click to enter a different room code').click();
+    const roomInput = secondTeacher.page.getByPlaceholder('room-code');
+    await roomInput.fill(occupiedRoom);
+    await roomInput.press('Enter');
+
+    const dialog = secondTeacher.page.getByRole('dialog');
+    await expect(dialog).toBeVisible();
+    await expect(dialog.getByText('Room Already Exists')).toBeVisible();
+    await expect(dialog.getByText(`#${occupiedRoom}`)).toBeVisible();
+    await expect(dialog.getByText('1 person currently online')).toBeVisible();
+    await expect(dialog.getByText('Teacher PIN already set')).toBeVisible();
+
+    // Cancel keeps second teacher in their original room
+    await dialog.getByRole('button', { name: 'Cancel', exact: true }).click();
+    await expect(dialog).toHaveCount(0);
+    await expect(secondTeacher.page).toHaveURL(new RegExp(`room=${teacherRoom}`));
+
+    // Re-try switching to occupiedRoom and click "Create Fresh Room" -> moves to a new unclaimed room
+    await secondTeacher.page.getByTitle('Click to enter a different room code').click();
+    await secondTeacher.page.getByPlaceholder('room-code').fill(occupiedRoom);
+    await secondTeacher.page.getByPlaceholder('room-code').press('Enter');
+    await expect(dialog).toBeVisible();
+    await dialog.getByRole('button', { name: 'Create Fresh Room' }).click();
+    await expect(dialog).toHaveCount(0);
+    await expect(secondTeacher.page).toHaveURL(/room=class-/);
+
+    // Re-try switching to occupiedRoom and click "Join Anyway" -> enters occupiedRoom
+    await secondTeacher.page.getByTitle('Click to enter a different room code').click();
+    await secondTeacher.page.getByPlaceholder('room-code').fill(occupiedRoom);
+    await secondTeacher.page.getByPlaceholder('room-code').press('Enter');
+    await expect(dialog).toBeVisible();
+    await dialog.getByRole('button', { name: 'Join Anyway' }).click();
+    await expect(dialog).toHaveCount(0);
+    await expect(secondTeacher.page).toHaveURL(new RegExp(`room=${occupiedRoom}`));
+    await secondTeacher.page.getByRole('button', { name: /^Class/ }).click();
+    await expect(secondTeacher.page.getByText('Ms. First').first()).toBeVisible();
+
+    await otherTeacher.context.close();
+    await secondTeacher.context.close();
+  });
+
+  test('warns in lobby only when user edits room code to an existing room, not on direct invite links', async ({ browser }) => {
+    const existingRoom = uniqueRoom('lp');
+    const host = await newUser(browser);
+    const visitor = await newUser(browser);
+    const invitee = await newUser(browser);
+
+    await joinRoom(host.page, existingRoom, 'Ms. Host', PIN);
+
+    // Invitee opens invite link directly -> joins with zero modal
+    await invitee.page.goto(`/?room=${existingRoom}`);
+    await invitee.page.getByLabel('Your Display Name').fill('Sam');
+    await invitee.page.getByRole('button', { name: 'Join Classroom' }).click();
+    await expect(invitee.page.getByRole('dialog')).toHaveCount(0);
+    await expect(invitee.page.getByPlaceholder('Message the class...')).toBeVisible();
+
+    // Visitor lands at `/` and manually types the existing room code -> sees confirmation modal
+    await visitor.page.goto('/');
+    await visitor.page.getByLabel('Your Display Name').fill('Mr. Visitor');
+    await visitor.page.getByLabel('Room Code').fill(existingRoom);
+    await visitor.page.getByRole('button', { name: 'Join Classroom' }).click();
+
+    const dialog = visitor.page.getByRole('dialog');
+    await expect(dialog).toBeVisible();
+    await expect(dialog.getByText('Room Already Exists')).toBeVisible();
+
+    await dialog.getByRole('button', { name: 'Create Fresh Room' }).click();
+    await expect(dialog).toHaveCount(0);
+    await expect(visitor.page.getByPlaceholder('Message the class...')).toBeVisible();
+    await expect(visitor.page).toHaveURL(/room=class-/);
+
+    await host.context.close();
+    await visitor.context.close();
+    await invitee.context.close();
+  });
+});
+
+test.describe('kick or ban contribution purge modal', () => {
+  test('prompts immediately after kicking or banning a user with two-step confirmation', async ({ browser }) => {
+    const room = uniqueRoom('purge');
+    const teacher = await newUser(browser);
+    const disruptor = await newUser(browser);
+    const peer = await newUser(browser);
+
+    await joinRoom(teacher.page, room, 'Ms T', PIN);
+    await joinRoom(disruptor.page, room, 'Rowdy');
+    await joinRoom(peer.page, room, 'GoodKid');
+
+    // Disruptor draws a stroke and sends a chat message; GoodKid sends a chat message
+    await drawStroke(disruptor.page);
+    const disruptorInput = disruptor.page.getByPlaceholder('Message the class...');
+    await disruptorInput.fill('Distracting chat!');
+    await disruptorInput.press('Enter');
+
+    const peerInput = peer.page.getByPlaceholder('Message the class...');
+    await peerInput.fill('Helpful note');
+    await peerInput.press('Enter');
+
+    await expect(teacher.page.getByText('Distracting chat!')).toBeVisible();
+    await expect(teacher.page.getByText('Helpful note')).toBeVisible();
+
+    // Teacher kicks Rowdy -> follow-up modal pops up right away; clicking No preserves contributions
+    await teacher.page.getByRole('button', { name: /^Class/ }).click();
+    await teacher.page.getByTitle('Kick or Ban Rowdy').click();
+    await teacher.page.getByRole('button', { name: 'Kick', exact: true }).click();
+
+    const dialog = teacher.page.getByRole('dialog');
+    await expect(dialog).toBeVisible();
+    await expect(
+      dialog.getByText('Delete all their contributions to the room (chat messages, drawings, annotations)?')
+    ).toBeVisible();
+    await dialog.getByRole('button', { name: 'No', exact: true }).click();
+    await expect(dialog).toHaveCount(0);
+
+    // Rowdy was kicked to lobby, but contributions remain
+    await expect(disruptor.page.getByText(`You were removed from room #${room}`)).toBeVisible();
+    await teacher.page.getByRole('button', { name: /^Chat/ }).click();
+    await expect(teacher.page.getByText('Distracting chat!')).toBeVisible();
+
+    // Teacher bans Rowdy (now listed offline via ink), clicks Yes -> "Are you really sure?" -> No keeps contributions
+    await teacher.page.getByRole('button', { name: /^Class/ }).click();
+    await teacher.page.getByTitle('Kick or Ban Rowdy').click();
+    await teacher.page.getByRole('button', { name: 'Ban', exact: true }).click();
+    await expect(dialog).toBeVisible();
+    await dialog.getByRole('button', { name: 'Yes', exact: true }).click();
+    await expect(dialog.getByText('Are you really sure?')).toBeVisible();
+    await dialog.getByRole('button', { name: 'No', exact: true }).click();
+    await expect(dialog).toHaveCount(0);
+
+    await teacher.page.getByRole('button', { name: /^Chat/ }).click();
+    await expect(teacher.page.getByText('Distracting chat!')).toBeVisible();
+
+    // Teacher bans/kicks Rowdy again, clicks Yes -> "Are you really sure?" -> Yes -> deletes it all ASAP!
+    await teacher.page.getByRole('button', { name: /^Class/ }).click();
+    await teacher.page.getByTitle('Kick or Ban Rowdy').click();
+    await teacher.page.getByRole('button', { name: 'Ban', exact: true }).click();
+    await expect(dialog).toBeVisible();
+    await dialog.getByRole('button', { name: 'Yes', exact: true }).click();
+    await expect(dialog.getByText('Are you really sure?')).toBeVisible();
+    await dialog.getByRole('button', { name: 'Yes', exact: true }).click();
+    await expect(dialog).toHaveCount(0);
+
+    // Disruptor's chat & ink are gone for both teacher and peer; peer's message stays
+    await expect(peer.page.getByText('Distracting chat!')).toHaveCount(0);
+    await expect(peer.page.getByText('Helpful note')).toBeVisible();
+    await teacher.page.getByRole('button', { name: /^Chat/ }).click();
+    await expect(teacher.page.getByText('Distracting chat!')).toHaveCount(0);
+    await expect(teacher.page.getByText('Helpful note')).toBeVisible();
+
+    await teacher.context.close();
+    await disruptor.context.close();
+    await peer.context.close();
+  });
+});

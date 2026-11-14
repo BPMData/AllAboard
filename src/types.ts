@@ -170,6 +170,14 @@ export interface RoomSettings {
   bannedUsers?: BannedUserRecord[];
 }
 
+export interface RoomAvailability {
+  roomId: string;
+  exists: boolean;
+  activeUserCount: number;
+  hasTeacherPin: boolean;
+  hasContent: boolean;
+}
+
 export interface RemoteCursor {
   userId: string;
   userName: string;
