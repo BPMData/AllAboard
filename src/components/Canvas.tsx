@@ -44,7 +44,9 @@ import {
   GoogleError,
   downloadDriveFile,
   friendlyGoogleError,
+  getAccessToken,
   pickDriveFile,
+  saveJsonToDrive,
 } from '../lib/googleDrive';
 import { exportAllBoardsToPdf } from '../lib/batchPdfExport';
 import {
@@ -906,6 +908,17 @@ export default function Canvas({
   const [importMode, setImportMode] = useState<ImportRestoreMode>('replace');
   const [importError, setImportError] = useState<string | null>(null);
   const [isImporting, setIsImporting] = useState(false);
+  const [driveSaving, setDriveSaving] = useState(false);
+  const [driveOpening, setDriveOpening] = useState(false);
+  const [driveNotice, setDriveNotice] = useState<{ text: string; isError?: boolean } | null>(null);
+  const [driveOpenError, setDriveOpenError] = useState<string | null>(null);
+  const driveNoticeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (driveNoticeTimerRef.current) clearTimeout(driveNoticeTimerRef.current);
+    };
+  }, []);
 
   const stageRef = useRef<any>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -2062,6 +2075,57 @@ export default function Canvas({
     link.click();
     document.body.removeChild(link);
     URL.revokeObjectURL(url);
+  };
+
+  const showDriveNotice = (text: string, isError = false) => {
+    setDriveNotice({ text, isError });
+    if (driveNoticeTimerRef.current) clearTimeout(driveNoticeTimerRef.current);
+    driveNoticeTimerRef.current = setTimeout(() => {
+      setDriveNotice(null);
+      driveNoticeTimerRef.current = null;
+    }, 6000);
+  };
+
+  const handleSaveToDrive = async () => {
+    setDriveNotice(null);
+    if (driveNoticeTimerRef.current) {
+      clearTimeout(driveNoticeTimerRef.current);
+      driveNoticeTimerRef.current = null;
+    }
+    setDriveSaving(true);
+    try {
+      await getAccessToken(); // call first inside click handler so popup is not blocked
+      const { json, fileName } = await buildSnapshotJson();
+      const saved = await saveJsonToDrive(roomId, fileName, json);
+      showDriveNotice(`Saved ${saved.name} to Google Drive`);
+    } catch (err: any) {
+      const msg =
+        err instanceof GoogleError
+          ? friendlyGoogleError(err.code)
+          : err?.message || 'Could not save to Google Drive.';
+      showDriveNotice(msg, true);
+    } finally {
+      setDriveSaving(false);
+    }
+  };
+
+  const handleOpenFromDrive = async () => {
+    setDriveOpenError(null);
+    setDriveOpening(true);
+    try {
+      const doc = await pickDriveFile('snapshot');
+      if (!doc) return;
+      const file = await downloadDriveFile(doc);
+      openSnapshotText(doc.name, await file.text());
+    } catch (err: any) {
+      setDriveOpenError(
+        err instanceof GoogleError
+          ? friendlyGoogleError(err.code)
+          : err?.message || 'Could not open snapshot from Drive.'
+      );
+    } finally {
+      setDriveOpening(false);
+    }
   };
 
   const openSnapshotText = (fileName: string, text: string) => {
@@ -3881,6 +3945,31 @@ export default function Canvas({
             <span>Save .JSON</span>
           </button>
 
+          {isTeacher && isGoogleDriveConfigured() && (
+            <>
+              <button
+                type="button"
+                disabled={driveSaving}
+                onClick={handleSaveToDrive}
+                className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium text-slate-700 bg-slate-100 hover:bg-slate-200/80 rounded-lg transition-colors whitespace-nowrap shrink-0 cursor-pointer disabled:opacity-50"
+                title="Save room snapshot to your Google Drive"
+              >
+                <HardDrive size={14} className="text-emerald-600" />
+                <span>{driveSaving ? 'Saving...' : 'Save to Drive'}</span>
+              </button>
+              {driveNotice && (
+                <span
+                  className={cn(
+                    'text-xs whitespace-nowrap',
+                    driveNotice.isError ? 'text-red-600 font-medium' : 'text-slate-500'
+                  )}
+                >
+                  {driveNotice.text}
+                </span>
+              )}
+            </>
+          )}
+
           <button
             type="button"
             onClick={handleExportPNG}
@@ -4336,6 +4425,24 @@ export default function Canvas({
               <Upload size={13} />
               <span>Import .JSON</span>
             </button>
+
+            {isGoogleDriveConfigured() && (
+              <>
+                <button
+                  type="button"
+                  disabled={driveOpening}
+                  onClick={handleOpenFromDrive}
+                  className="flex items-center gap-1.5 px-3 py-1 rounded-md text-xs font-medium bg-white text-slate-800 border border-amber-300 hover:bg-amber-100/60 transition-colors whitespace-nowrap shrink-0 cursor-pointer disabled:opacity-50"
+                  title="Open a saved .json room snapshot from your Google Drive"
+                >
+                  <HardDrive size={13} className="text-emerald-600" />
+                  <span>{driveOpening ? 'Opening...' : 'Open from Drive'}</span>
+                </button>
+                {driveOpenError && (
+                  <span className="text-xs text-red-600 font-medium">{driveOpenError}</span>
+                )}
+              </>
+            )}
 
             <button
               type="button"
