@@ -26,8 +26,9 @@ import Chat, { getUserColor } from './components/Chat';
 import Canvas from './components/Canvas';
 import RoomExistsModal from './components/RoomExistsModal';
 import PurgeContributionsModal from './components/PurgeContributionsModal';
+import { normalizeRoomCode, sanitizeRoomCodeDraft } from './lib/roomCode';
 import { motion } from 'motion/react';
-import { LogIn, Users, KeyRound, PlusCircle } from 'lucide-react';
+import { LogIn, Users, KeyRound, PlusCircle, Shuffle } from 'lucide-react';
 
 const STORAGE_KEYS = {
   USER_ID: 'drawchat_user_id',
@@ -49,13 +50,7 @@ function getOrCreatePersistentUserId(): string {
 }
 
 function normalizeClientRoomId(raw?: string): string {
-  const cleaned = String(raw || 'main')
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9-_]/g, '-')
-    .replace(/-+/g, '-')
-    .replace(/^-|-$/g, '');
-  return cleaned || 'main';
+  return normalizeRoomCode(raw);
 }
 
 function hasInitialUrlRoomParam(): boolean {
@@ -133,6 +128,7 @@ export default function App() {
 
   const userNameRef = useRef<string>(userName);
   const isJoinedRef = useRef<boolean>(isJoined);
+  const roomCodeInputRef = useRef<HTMLInputElement | null>(null);
   useEffect(() => {
     userNameRef.current = userName;
   }, [userName]);
@@ -261,7 +257,7 @@ export default function App() {
     return messages;
   }, [breakoutConfig.chatScope, activeBoardId, subBoards, messages]);
 
-  const effectiveRoomId = roomId.trim() || 'main';
+  const effectiveRoomId = normalizeRoomCode(roomId);
 
   useEffect(() => {
     document.title = effectiveRoomId !== 'main' ? `AllAboard — #${effectiveRoomId}` : 'AllAboard';
@@ -1119,6 +1115,35 @@ export default function App() {
     }
   }, [pendingRoomPrompt, isCheckingRoom, generateUnusedRoomCode, performSwitchRoom, performLobbyJoin, userName]);
 
+  const handleCustomRoomFromModal = useCallback(
+    async (customRoomRaw: string) => {
+      if (!pendingRoomPrompt || isCheckingRoom) return;
+      const cleaned = normalizeRoomCode(customRoomRaw);
+      const prompt = pendingRoomPrompt;
+      setIsCheckingRoom(true);
+      try {
+        const availability = await checkRoomAvailability(cleaned);
+        if (availability?.exists) {
+          setPendingRoomPrompt({
+            ...prompt,
+            availability,
+          });
+          return;
+        }
+        setPendingRoomPrompt(null);
+        if (prompt.source === 'switch') {
+          setHasEditedLobbyRoom(false);
+          performSwitchRoom(cleaned);
+        } else {
+          performLobbyJoin(cleaned, prompt.userName || userName.trim(), prompt.teacherPin || '');
+        }
+      } finally {
+        setIsCheckingRoom(false);
+      }
+    },
+    [pendingRoomPrompt, isCheckingRoom, checkRoomAvailability, performSwitchRoom, performLobbyJoin, userName]
+  );
+
   const handleUpdateName = useCallback(
     (newName: string) => {
       if (isNameLocked && !isTeacher) return;
@@ -1550,10 +1575,11 @@ export default function App() {
               />
             </div>
 
-            <div className="flex items-center justify-between gap-2 px-3 py-2 rounded-xl bg-slate-800/50 border border-slate-800 text-xs">
-              <div className="flex items-center gap-2 min-w-0">
-                <span className="text-slate-400">Room Code:</span>
+            <div className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 rounded-xl bg-slate-800/50 border border-slate-800 text-xs">
+              <div className="flex items-center gap-2 min-w-0 flex-1">
+                <span className="text-slate-400 shrink-0">Room Code:</span>
                 <input
+                  ref={roomCodeInputRef}
                   aria-label="Room Code"
                   type="text"
                   value={roomId}
@@ -1561,27 +1587,43 @@ export default function App() {
                   onChange={(e) => {
                     setKickNotice(null);
                     setHasEditedLobbyRoom(true);
-                    setRoomId(
-                      e.target.value
-                        .toLowerCase()
-                        .replace(/[^a-z0-9-_]/g, '-')
-                        .replace(/-+/g, '-')
-                    );
+                    setRoomId(sanitizeRoomCodeDraft(e.target.value));
+                  }}
+                  onBlur={() => {
+                    setRoomId((prev) => prev.replace(/^-|-$/g, ''));
                   }}
                   maxLength={24}
-                  className="bg-slate-900 border border-slate-700 px-2 py-1 rounded font-mono text-xs text-white placeholder:text-slate-500 w-28 focus:outline-none focus:border-blue-500"
+                  className="bg-slate-900 border border-slate-700 px-2 py-1 rounded font-mono text-xs text-white placeholder:text-slate-500 w-28 flex-1 min-w-[6.5rem] focus:outline-none focus:border-blue-500"
                 />
               </div>
-              <button
-                type="button"
-                disabled={isCheckingRoom}
-                onClick={handleCreateNewRoom}
-                className="flex items-center gap-1 text-blue-400 hover:text-blue-300 font-medium whitespace-nowrap cursor-pointer disabled:opacity-50"
-                title="Generate a brand new room code"
-              >
-                <PlusCircle size={13} />
-                <span>New Room</span>
-              </button>
+              <div className="flex items-center gap-1.5 shrink-0">
+                <button
+                  type="button"
+                  disabled={isCheckingRoom}
+                  onClick={() => {
+                    setKickNotice(null);
+                    setHasEditedLobbyRoom(true);
+                    setRoomId('');
+                    roomCodeInputRef.current?.focus();
+                  }}
+                  className="flex items-center gap-1 text-blue-400 hover:text-blue-300 font-medium whitespace-nowrap cursor-pointer disabled:opacity-50"
+                  title="Type a custom room code"
+                >
+                  <PlusCircle size={13} />
+                  <span>New Room</span>
+                </button>
+                <span className="text-slate-700" aria-hidden="true">·</span>
+                <button
+                  type="button"
+                  disabled={isCheckingRoom}
+                  onClick={handleCreateNewRoom}
+                  className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white font-medium whitespace-nowrap cursor-pointer disabled:opacity-50 transition-colors"
+                  title="Generate a random unused room code"
+                >
+                  <Shuffle size={12} />
+                  <span>Random</span>
+                </button>
+              </div>
             </div>
 
             {showTeacherSetupOnJoin ? (
@@ -1651,6 +1693,7 @@ export default function App() {
             isBusy={isCheckingRoom}
             onJoinAnyway={handleConfirmJoinAnyway}
             onCreateFreshRoom={handleConfirmCreateFreshRoom}
+            onSwitchToCustomRoom={handleCustomRoomFromModal}
             onCancel={handleCancelRoomPrompt}
           />
         )}
@@ -1753,6 +1796,7 @@ export default function App() {
           isBusy={isCheckingRoom}
           onJoinAnyway={handleConfirmJoinAnyway}
           onCreateFreshRoom={handleConfirmCreateFreshRoom}
+          onSwitchToCustomRoom={handleCustomRoomFromModal}
           onCancel={handleCancelRoomPrompt}
         />
       )}

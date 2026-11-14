@@ -17,6 +17,7 @@ import {
   Lock,
   RotateCcw,
   PanelLeftClose,
+  Shuffle,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '../lib/utils';
@@ -25,6 +26,7 @@ import {
   clampChatWidth,
   getMaxChatWidth,
 } from '../lib/chatSidebar';
+import { normalizeRoomCode, sanitizeRoomCodeDraft } from '../lib/roomCode';
 
 interface ChatProps {
   roomId: string;
@@ -281,8 +283,10 @@ export default function Chat({
 
   const handleRoomSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (roomDraft.trim()) {
-      onSwitchRoom(roomDraft.trim());
+    const cleaned = normalizeRoomCode(roomDraft);
+    if (roomDraft.replace(/^-|-$/g, '').trim()) {
+      setRoomDraft(cleaned);
+      onSwitchRoom(cleaned);
       setIsEditingRoom(false);
     }
   };
@@ -363,30 +367,49 @@ export default function Chat({
           </div>
         </div>
 
-        {/* Room Code Bar + Instant "New Room" Escape Hatch */}
+        {/* Room Code Bar + Custom or Random "New Room" Controls */}
         <div className="flex flex-wrap items-center justify-between gap-1.5 px-2.5 py-1.5 rounded-lg bg-slate-50 border border-slate-200/80 text-xs">
           {isEditingRoom ? (
-            <form onSubmit={handleRoomSubmit} className="flex items-center gap-1 flex-1">
+            <form onSubmit={handleRoomSubmit} className="flex items-center gap-1 flex-1 min-w-0">
               <input
                 type="text"
                 value={roomDraft}
-                onChange={(e) => setRoomDraft(e.target.value)}
+                onChange={(e) => setRoomDraft(sanitizeRoomCodeDraft(e.target.value))}
+                onKeyDown={(e) => {
+                  if (e.key === 'Escape') {
+                    setIsEditingRoom(false);
+                  }
+                }}
                 placeholder="room-code"
                 autoFocus
                 maxLength={24}
-                className="w-full px-2 py-0.5 bg-white border border-slate-300 rounded font-mono text-xs text-slate-900 focus:outline-none focus:border-blue-500"
+                className="w-full min-w-0 px-2 py-0.5 bg-white border border-slate-300 rounded font-mono text-xs text-slate-900 focus:outline-none focus:border-blue-500"
               />
               <button
                 type="submit"
-                className="p-1 bg-blue-600 text-white rounded hover:bg-blue-700 cursor-pointer"
-                title="Switch room"
+                disabled={!roomDraft.replace(/^-|-$/g, '').trim()}
+                className="p-1 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-40 cursor-pointer shrink-0"
+                title="Switch to custom room code"
               >
                 <Check size={12} />
               </button>
               <button
                 type="button"
+                onClick={() => {
+                  setIsEditingRoom(false);
+                  onCreateNewRoom();
+                }}
+                className="flex items-center gap-1 px-1.5 py-0.5 bg-slate-200/80 hover:bg-slate-300/80 text-slate-700 rounded text-[11px] font-medium transition-colors cursor-pointer shrink-0"
+                title="Generate a random room code"
+              >
+                <Shuffle size={11} />
+                <span>Random</span>
+              </button>
+              <button
+                type="button"
                 onClick={() => setIsEditingRoom(false)}
-                className="p-1 text-slate-400 hover:text-slate-700 cursor-pointer"
+                className="p-1 text-slate-400 hover:text-slate-700 cursor-pointer shrink-0"
+                title="Cancel"
               >
                 <X size={12} />
               </button>
@@ -421,9 +444,12 @@ export default function Chat({
                 <span className="text-slate-300" aria-hidden="true">·</span>
                 <button
                   type="button"
-                  onClick={onCreateNewRoom}
+                  onClick={() => {
+                    setRoomDraft('');
+                    setIsEditingRoom(true);
+                  }}
                   className="flex items-center gap-1 px-1.5 py-0.5 text-[11px] font-medium text-blue-600 hover:text-blue-700 hover:bg-blue-50 rounded transition-colors cursor-pointer whitespace-nowrap"
-                  title="Create a brand new room with an unclaimed Teacher PIN"
+                  title="Enter a custom room code or generate a random room"
                 >
                   <PlusCircle size={11} />
                   <span>New Room</span>
