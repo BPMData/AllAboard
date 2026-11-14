@@ -412,17 +412,20 @@ const IDLE_UNLOAD_MS = 15 * 60 * 1000; // unload rooms from RAM after 15 min wit
 const HOUSEKEEPING_INTERVAL_MS = 5 * 60 * 1000;
 ```
 
-### 2.3 In `startServer`, replace the `storeFile` line (~line 110)
+### 2.3 In `startServer`, add the store below the `storeFile` line (~line 110)
 
-Remove:
+**Keep** this existing line for now. The old persistence functions still use it until
+Phase 3, and Phase 3.1 deletes it:
 ```ts
   const storeFile = path.join(dataDir, 'rooms-store.json');
 ```
-Add:
+Directly below it, add:
 ```ts
   const legacyStoreFile = path.join(dataDir, 'rooms-store.json');
   const store = new RoomStore(path.join(dataDir, 'allaboard.db'));
 ```
+`internBackground` and `legacyStoreFile` are unused until Phase 3. That is fine:
+`tsconfig.json` does not enable `noUnusedLocals`.
 
 ### 2.4 Asset route (directly after the `/healthz` route, ~line 125)
 
@@ -457,6 +460,7 @@ Add `store,` to the returned object so tests can inspect it.
 
 Delete all of them. Each one is replaced below.
 
+- `const storeFile = path.join(dataDir, 'rooms-store.json');` (~line 110). Phase 2.3 kept it; `legacyStoreFile` replaces it.
 - `let saveTimeout: NodeJS.Timeout | null = null;` (~line 129). It is re-declared in 3.6.
 - `function loadRoomsFromDisk() { … }` (~line 160–207)
 - `let isSavingAsync`, `let saveQueuedAsync`, `let activeSavePromise` (~line 209–211)
@@ -960,6 +964,9 @@ a manual smoke test with `npm run dev`:
 3. Final greps. **Each must print nothing:**
    ```bash
    grep -nE "scheduleSaveToDisk\((true)?\)" server.ts
+   ```
+   ```bash
+   grep -n "storeFile\b" server.ts | grep -v legacyStoreFile
    ```
    ```bash
    grep -nE "buildSerializedRoomsPayload|loadRoomsFromDisk|activeSavePromise|hourlyFlushInterval" server.ts
