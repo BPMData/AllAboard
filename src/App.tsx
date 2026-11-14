@@ -12,6 +12,7 @@ import {
   BreakoutConfig,
   ConfigureBreakoutPayload,
   TimerControlPayload,
+  RoomAvailability,
 } from './types';
 import { findStudentBoardId } from './lib/breakoutRounds';
 import {
@@ -23,6 +24,8 @@ import {
 } from './lib/chatSidebar';
 import Chat, { getUserColor } from './components/Chat';
 import Canvas from './components/Canvas';
+import RoomExistsModal from './components/RoomExistsModal';
+import PurgeContributionsModal from './components/PurgeContributionsModal';
 import { motion } from 'motion/react';
 import { LogIn, Users, KeyRound, PlusCircle } from 'lucide-react';
 
@@ -45,12 +48,31 @@ function getOrCreatePersistentUserId(): string {
   }
 }
 
+function normalizeClientRoomId(raw?: string): string {
+  const cleaned = String(raw || 'main')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9-_]/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^-|-$/g, '');
+  return cleaned || 'main';
+}
+
+function hasInitialUrlRoomParam(): boolean {
+  try {
+    const params = new URLSearchParams(window.location.search);
+    return Boolean(params.get('room')?.trim());
+  } catch {
+    return false;
+  }
+}
+
 function getInitialRoomId(): string {
   try {
     const params = new URLSearchParams(window.location.search);
     const fromUrl = params.get('room');
     if (fromUrl && fromUrl.trim()) {
-      return fromUrl.trim().toLowerCase().replace(/[^a-z0-9-_]/g, '-');
+      return normalizeClientRoomId(fromUrl);
     }
   } catch {
     // Ignore
@@ -69,6 +91,21 @@ export default function App() {
   const [userId] = useState<string>(() => getOrCreatePersistentUserId());
   const [userColor] = useState<string>(() => getUserColor(getOrCreatePersistentUserId()));
   const [roomId, setRoomId] = useState<string>(() => getInitialRoomId());
+  const [hadInitialUrlRoom] = useState<boolean>(() => hasInitialUrlRoomParam());
+  const [hasEditedLobbyRoom, setHasEditedLobbyRoom] = useState<boolean>(false);
+  const [pendingRoomPrompt, setPendingRoomPrompt] = useState<{
+    source: 'lobby' | 'switch';
+    availability: RoomAvailability;
+    userName?: string;
+    teacherPin?: string;
+  } | null>(null);
+  const [isCheckingRoom, setIsCheckingRoom] = useState<boolean>(false);
+  const [pendingPurgePrompt, setPendingPurgePrompt] = useState<{
+    targetUserId: string;
+    targetName: string;
+    mode: 'kick' | 'ban';
+  } | null>(null);
+  const [isPurgingContributions, setIsPurgingContributions] = useState<boolean>(false);
 
   const [userName, setUserName] = useState<string>(() => {
     try {
@@ -264,13 +301,19 @@ export default function App() {
       }
 
       if (savedName && savedName.trim() && savedJoined) {
+        const cleanSavedPin = savedPin && savedPin.trim().length >= 3 ? savedPin.trim() : undefined;
         newSocket.emit('join-room', {
           roomId: effectiveRoomId,
           userId,
           name: savedName.trim(),
           color: userColor,
-          teacherPin: savedPin,
+          teacherPin: cleanSavedPin,
         });
+        if (cleanSavedPin) {
+          newSocket.emit('teacher:auth', { pin: cleanSavedPin }, (res: { ok: boolean }) => {
+            if (res?.ok) setIsTeacher(true);
+          });
+        }
       }
     });
 
@@ -461,11 +504,29 @@ export default function App() {
       });
     });
 
+    newSocket.on('user-contributions-purged', ({ targetUserId }: { targetUserId: string }) => {
+      if (!targetUserId) return;
+      setElements((prev) => prev.filter((el) => el.userId !== targetUserId));
+      setMessages((prev) => prev.filter((m) => m.userId !== targetUserId));
+      setSubBoards((prev) => {
+        const next: Record<string, SubBoardData> = {};
+        for (const [k, sb] of Object.entries(prev) as Array<[string, SubBoardData]>) {
+          next[k] = {
+            ...sb,
+            elements: sb.elements.filter((el) => el.userId !== targetUserId),
+            messages: sb.messages.filter((m) => m.userId !== targetUserId),
+          };
+        }
+        return next;
+      });
+    });
+
     newSocket.on(
       'room-kicked',
       ({ reason, roomId: kickedRoom }: { reason: 'kicked' | 'banned'; roomId?: string }) => {
         setIsJoined(false);
         setIsTeacher(false);
+        setPendingPurgePrompt(null);
         try {
           localStorage.removeItem(STORAGE_KEYS.IS_JOINED);
         } catch {
@@ -855,44 +916,73 @@ export default function App() {
     [socket]
   );
 
-  const handleSwitchRoom = useCallback((nextRoomRaw: string) => {
-    const cleaned =
-      nextRoomRaw
-        .trim()
-        .toLowerCase()
-        .replace(/[^a-z0-9-_]/g, '-')
-        .replace(/-+/g, '-')
-        .replace(/^-|-$/g, '') || 'main';
+  const checkRoomAvailability = useCallback(
+    (targetRoomId: string): Promise<RoomAvailability | null> => {
+      return new Promise((resolve) => {
+        if (!socket) {
+          resolve(null);
+          return;
+        }
+        let settled = false;
+        let onConnect: (() => void) | undefined;
+        const timer = setTimeout(() => {
+          if (!settled) {
+            settled = true;
+            if (onConnect) socket.off('connect', onConnect);
+            resolve(null);
+          }
+        }, 2500);
+        const emitCheck = () => {
+          if (settled) return;
+          socket.emit('check-room', { roomId: targetRoomId }, (res: RoomAvailability) => {
+            if (!settled) {
+              settled = true;
+              clearTimeout(timer);
+              resolve(res || null);
+            }
+          });
+        };
+        if (socket.connected) {
+          emitCheck();
+        } else {
+          onConnect = emitCheck;
+          socket.once('connect', emitCheck);
+        }
+      });
+    },
+    [socket]
+  );
+
+  const generateUnusedRoomCode = useCallback(async (): Promise<string> => {
+    for (let attempt = 0; attempt < 5; attempt++) {
+      const candidate = generateFreshRoomCode();
+      const avail = await checkRoomAvailability(candidate);
+      if (!avail || !avail.exists) {
+        return candidate;
+      }
+    }
+    return generateFreshRoomCode();
+  }, [checkRoomAvailability]);
+
+  const performSwitchRoom = useCallback((cleanedRoomId: string) => {
     setRemoteCursors({});
     setIsTeacher(false);
     setIsNameLocked(false);
     setKickNotice(null);
+    setPendingPurgePrompt(null);
+    setIsPurgingContributions(false);
     setTeacherSelectedBoardId('main');
-    setRoomId(cleaned);
+    setRoomId(cleanedRoomId);
   }, []);
 
-  const handleCreateNewRoom = useCallback(() => {
-    const freshRoom = generateFreshRoomCode();
-    setRemoteCursors({});
-    setIsTeacher(false);
-    setIsNameLocked(false);
-    setKickNotice(null);
-    setTeacherSelectedBoardId('main');
-    setRoomId(freshRoom);
-  }, []);
-
-  const handleJoin = async (e: React.FormEvent) => {
-    e.preventDefault();
-    const trimmed = userName.trim();
-    if (trimmed && socket) {
+  const performLobbyJoin = useCallback(
+    (targetRoomId: string, trimmedName: string, cleanPin: string) => {
       setKickNotice(null);
-      const targetRoomId = effectiveRoomId;
       if (roomId !== targetRoomId) {
         setRoomId(targetRoomId);
       }
-      const cleanPin = initialTeacherPin.trim();
       try {
-        localStorage.setItem(STORAGE_KEYS.USER_NAME, trimmed);
+        localStorage.setItem(STORAGE_KEYS.USER_NAME, trimmedName);
         localStorage.setItem(STORAGE_KEYS.IS_JOINED, 'true');
         if (cleanPin.length >= 3) {
           localStorage.setItem(STORAGE_KEYS.TEACHER_PIN_PREFIX + targetRoomId, cleanPin);
@@ -900,24 +990,132 @@ export default function App() {
       } catch {
         // Ignore
       }
-      setUserName(trimmed);
-      socket.emit('join-room', {
-        roomId: targetRoomId,
-        userId,
-        name: trimmed,
-        color: userColor,
-        teacherPin: cleanPin.length >= 3 ? cleanPin : undefined,
-      });
-
-      if (cleanPin.length >= 3) {
-        socket.emit('teacher:auth', { pin: cleanPin }, (res: { ok: boolean }) => {
-          if (res?.ok) setIsTeacher(true);
+      setUserName(trimmedName);
+      if (socket && targetRoomId === effectiveRoomId) {
+        socket.emit('join-room', {
+          roomId: targetRoomId,
+          userId,
+          name: trimmedName,
+          color: userColor,
+          teacherPin: cleanPin.length >= 3 ? cleanPin : undefined,
         });
-      }
 
+        if (cleanPin.length >= 3) {
+          socket.emit('teacher:auth', { pin: cleanPin }, (res: { ok: boolean }) => {
+            if (res?.ok) setIsTeacher(true);
+          });
+        }
+      }
+      setHasEditedLobbyRoom(false);
       setIsJoined(true);
+    },
+    [roomId, effectiveRoomId, socket, userId, userColor]
+  );
+
+  const handleSwitchRoom = useCallback(
+    async (nextRoomRaw: string) => {
+      const cleaned = normalizeClientRoomId(nextRoomRaw);
+      if (cleaned === effectiveRoomId || isCheckingRoom) {
+        return;
+      }
+      setIsCheckingRoom(true);
+      try {
+        const availability = await checkRoomAvailability(cleaned);
+        if (availability?.exists) {
+          setPendingRoomPrompt({
+            source: 'switch',
+            availability,
+          });
+          return;
+        }
+        performSwitchRoom(cleaned);
+      } finally {
+        setIsCheckingRoom(false);
+      }
+    },
+    [effectiveRoomId, isCheckingRoom, checkRoomAvailability, performSwitchRoom]
+  );
+
+  const handleCreateNewRoom = useCallback(async () => {
+    if (isCheckingRoom) return;
+    setIsCheckingRoom(true);
+    try {
+      const freshRoom = await generateUnusedRoomCode();
+      setHasEditedLobbyRoom(false);
+      performSwitchRoom(freshRoom);
+    } finally {
+      setIsCheckingRoom(false);
     }
+  }, [isCheckingRoom, generateUnusedRoomCode, performSwitchRoom]);
+
+  const handleJoin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const trimmed = userName.trim();
+    if (!trimmed || !socket || isCheckingRoom) return;
+
+    const targetRoomId = effectiveRoomId;
+    const cleanPin = initialTeacherPin.trim();
+    const shouldWarnIfExists = hasEditedLobbyRoom || (!hadInitialUrlRoom && showTeacherSetupOnJoin);
+
+    if (shouldWarnIfExists) {
+      setIsCheckingRoom(true);
+      try {
+        const availability = await checkRoomAvailability(targetRoomId);
+        if (availability?.exists) {
+          setPendingRoomPrompt({
+            source: 'lobby',
+            availability,
+            userName: trimmed,
+            teacherPin: cleanPin,
+          });
+          return;
+        }
+      } finally {
+        setIsCheckingRoom(false);
+      }
+    }
+
+    performLobbyJoin(targetRoomId, trimmed, cleanPin);
   };
+
+  const handleCancelRoomPrompt = useCallback(() => {
+    if (!isCheckingRoom) {
+      setPendingRoomPrompt(null);
+    }
+  }, [isCheckingRoom]);
+
+  const handleConfirmJoinAnyway = useCallback(() => {
+    if (!pendingRoomPrompt || isCheckingRoom) return;
+    const prompt = pendingRoomPrompt;
+    setPendingRoomPrompt(null);
+    if (prompt.source === 'switch') {
+      performSwitchRoom(prompt.availability.roomId);
+    } else {
+      performLobbyJoin(
+        prompt.availability.roomId,
+        prompt.userName || userName.trim(),
+        prompt.teacherPin || ''
+      );
+    }
+  }, [pendingRoomPrompt, isCheckingRoom, performSwitchRoom, performLobbyJoin, userName]);
+
+  const handleConfirmCreateFreshRoom = useCallback(async () => {
+    if (!pendingRoomPrompt || isCheckingRoom) return;
+    const prompt = pendingRoomPrompt;
+    setIsCheckingRoom(true);
+    try {
+      const freshRoom = await generateUnusedRoomCode();
+      setPendingRoomPrompt(null);
+      if (prompt.source === 'switch') {
+        setHasEditedLobbyRoom(false);
+        performSwitchRoom(freshRoom);
+      } else {
+        performLobbyJoin(freshRoom, prompt.userName || userName.trim(), prompt.teacherPin || '');
+      }
+    } finally {
+      setIsCheckingRoom(false);
+    }
+  }, [pendingRoomPrompt, isCheckingRoom, generateUnusedRoomCode, performSwitchRoom, performLobbyJoin, userName]);
 
   const handleUpdateName = useCallback(
     (newName: string) => {
@@ -961,10 +1159,63 @@ export default function App() {
   const handleTeacherKickUser = useCallback(
     (targetUserId: string, mode: 'kick' | 'ban', targetName?: string) => {
       if (!socket || !targetUserId) return;
-      socket.emit('teacher:kick-user', { targetUserId, mode, targetName });
+      setPendingPurgePrompt({
+        targetUserId,
+        targetName: targetName || 'Student',
+        mode,
+      });
+      socket.emit(
+        'teacher:kick-user',
+        { targetUserId, mode, targetName },
+        (res?: { ok?: boolean }) => {
+          if (res && res.ok === false) {
+            setPendingPurgePrompt((prev) =>
+              prev?.targetUserId === targetUserId ? null : prev
+            );
+          }
+        }
+      );
     },
     [socket]
   );
+
+  const handleCancelPurgeContributions = useCallback(() => {
+    if (!isPurgingContributions) {
+      setPendingPurgePrompt(null);
+    }
+  }, [isPurgingContributions]);
+
+  const handleConfirmPurgeContributions = useCallback(() => {
+    if (!socket || !pendingPurgePrompt || isPurgingContributions) return;
+    const { targetUserId } = pendingPurgePrompt;
+    if (!socket.connected) {
+      setPendingPurgePrompt(null);
+      return;
+    }
+    setIsPurgingContributions(true);
+    socket.emit(
+      'teacher:purge-user-contributions',
+      { targetUserId },
+      () => {
+        setIsPurgingContributions(false);
+        setPendingPurgePrompt(null);
+      }
+    );
+  }, [socket, pendingPurgePrompt, isPurgingContributions]);
+
+  const purgeContributionCounts = useMemo(() => {
+    if (!pendingPurgePrompt) {
+      return { drawingCount: 0, messageCount: 0 };
+    }
+    const uid = pendingPurgePrompt.targetUserId;
+    let drawingCount = elements.filter((el) => el.userId === uid).length;
+    let messageCount = messages.filter((m) => m.userId === uid).length;
+    for (const sb of Object.values(subBoards) as SubBoardData[]) {
+      drawingCount += sb.elements.filter((el) => el.userId === uid).length;
+      messageCount += sb.messages.filter((m) => m.userId === uid).length;
+    }
+    return { drawingCount, messageCount };
+  }, [pendingPurgePrompt, elements, messages, subBoards]);
 
   const handleTeacherUnbanUser = useCallback(
     (targetUserId: string) => {
@@ -1301,11 +1552,13 @@ export default function App() {
               <div className="flex items-center gap-2 min-w-0">
                 <span className="text-slate-400">Room Code:</span>
                 <input
+                  aria-label="Room Code"
                   type="text"
                   value={roomId}
                   placeholder="main"
                   onChange={(e) => {
                     setKickNotice(null);
+                    setHasEditedLobbyRoom(true);
                     setRoomId(
                       e.target.value
                         .toLowerCase()
@@ -1319,8 +1572,9 @@ export default function App() {
               </div>
               <button
                 type="button"
+                disabled={isCheckingRoom}
                 onClick={handleCreateNewRoom}
-                className="flex items-center gap-1 text-blue-400 hover:text-blue-300 font-medium whitespace-nowrap cursor-pointer"
+                className="flex items-center gap-1 text-blue-400 hover:text-blue-300 font-medium whitespace-nowrap cursor-pointer disabled:opacity-50"
                 title="Generate a brand new room code"
               >
                 <PlusCircle size={13} />
@@ -1377,14 +1631,27 @@ export default function App() {
 
             <button
               type="submit"
-              disabled={!userName.trim()}
+              disabled={!userName.trim() || isCheckingRoom}
               className="w-full py-3 px-4 bg-blue-600 hover:bg-blue-500 disabled:bg-slate-800 disabled:text-slate-600 text-white font-semibold rounded-xl transition-colors flex items-center justify-center gap-2 cursor-pointer"
             >
               <LogIn size={18} />
-              <span>Join Classroom</span>
+              <span>{isCheckingRoom ? 'Checking Room...' : 'Join Classroom'}</span>
             </button>
           </form>
         </motion.div>
+
+        {pendingRoomPrompt && (
+          <RoomExistsModal
+            availability={pendingRoomPrompt.availability}
+            isJoiningAsTeacher={Boolean(
+              pendingRoomPrompt.teacherPin && pendingRoomPrompt.teacherPin.length >= 3
+            )}
+            isBusy={isCheckingRoom}
+            onJoinAnyway={handleConfirmJoinAnyway}
+            onCreateFreshRoom={handleConfirmCreateFreshRoom}
+            onCancel={handleCancelRoomPrompt}
+          />
+        )}
       </div>
     );
   }
@@ -1474,6 +1741,31 @@ export default function App() {
           onShowChat={() => setIsChatHidden(false)}
         />
       </div>
+
+      {pendingRoomPrompt && (
+        <RoomExistsModal
+          availability={pendingRoomPrompt.availability}
+          isJoiningAsTeacher={Boolean(
+            pendingRoomPrompt.teacherPin && pendingRoomPrompt.teacherPin.length >= 3
+          )}
+          isBusy={isCheckingRoom}
+          onJoinAnyway={handleConfirmJoinAnyway}
+          onCreateFreshRoom={handleConfirmCreateFreshRoom}
+          onCancel={handleCancelRoomPrompt}
+        />
+      )}
+
+      {pendingPurgePrompt && (
+        <PurgeContributionsModal
+          targetName={pendingPurgePrompt.targetName}
+          actionMode={pendingPurgePrompt.mode}
+          drawingCount={purgeContributionCounts.drawingCount}
+          messageCount={purgeContributionCounts.messageCount}
+          isBusy={isPurgingContributions}
+          onConfirmDelete={handleConfirmPurgeContributions}
+          onCancel={handleCancelPurgeContributions}
+        />
+      )}
     </div>
   );
 }

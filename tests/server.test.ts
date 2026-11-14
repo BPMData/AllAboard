@@ -852,5 +852,190 @@ describe('AllAboard server & Socket.IO integration tests', () => {
       assert.equal(switchSync.subBoards['r2_grp_1'].elements.length, 1);
     });
   });
+
+  it('reports room availability accurately via check-room without creating empty rooms', async () => {
+    const { socket: probe } = await joinTracked({
+      roomId: 'probe-home',
+      userId: 'u-probe',
+      name: 'Probe',
+    });
+
+    const unknownAvail = await emitAck(probe, 'check-room', { roomId: '  Brand New Room!! ' });
+    assert.deepEqual(unknownAvail, {
+      roomId: 'brand-new-room',
+      exists: false,
+      activeUserCount: 0,
+      hasTeacherPin: false,
+      hasContent: false,
+    });
+
+    // Probing an unknown room should not reserve/create it as existing
+    const secondProbe = await emitAck(probe, 'check-room', { roomId: 'brand-new-room' });
+    assert.equal(secondProbe.exists, false);
+
+    // Join target room, set Teacher PIN, and draw a stroke -> check-room reports activeUserCount, hasTeacherPin, hasContent
+    const { socket: teacher } = await joinTracked({
+      roomId: 'Busy Room',
+      userId: 't-busy',
+      name: 'Ms. Busy',
+    });
+    await emitAck(teacher, 'teacher:auth', { pin: '4321' });
+    teacher.emit('element-start', {
+      id: 'busy-el-1',
+      tool: 'solid',
+      points: [0, 0, 12, 12],
+      color: '#111111',
+      strokeWidth: 4,
+      userId: 't-busy',
+      boardId: 'main',
+      timestamp: Date.now(),
+    });
+    await delay(50);
+
+    const busyAvail = await emitAck(probe, 'check-room', { roomId: 'busy-room' });
+    assert.deepEqual(busyAvail, {
+      roomId: 'busy-room',
+      exists: true,
+      activeUserCount: 1,
+      hasTeacherPin: true,
+      hasContent: true,
+    });
+
+    // Even after everyone leaves, saved content & PIN keep the room marked as existing
+    teacher.disconnect();
+    await delay(50);
+    const dormantAvail = await emitAck(probe, 'check-room', { roomId: 'busy-room' });
+    assert.deepEqual(dormantAvail, {
+      roomId: 'busy-room',
+      exists: true,
+      activeUserCount: 0,
+      hasTeacherPin: true,
+      hasContent: true,
+    });
+  });
+
+  it('purges all messages, drawings, and annotations for a target user across main and sub-boards', async () => {
+    const { socket: teacher } = await joinTracked({
+      roomId: 'purge-room',
+      userId: 't-purge',
+      name: 'Teacher',
+    });
+    await emitAck(teacher, 'teacher:auth', { pin: '5555' });
+
+    const { socket: offender } = await joinTracked({
+      roomId: 'purge-room',
+      userId: 's-offend',
+      name: 'Disruptor',
+    });
+    const { socket: bystander } = await joinTracked({
+      roomId: 'purge-room',
+      userId: 's-good',
+      name: 'GoodStudent',
+    });
+
+    // Offender & bystander contribute to main board
+    const msg1 = waitForEvent(teacher, 'chat-message');
+    offender.emit('chat-message', { text: 'Spam chat', boardId: 'main' });
+    await msg1;
+
+    const msg2 = waitForEvent(teacher, 'chat-message');
+    bystander.emit('chat-message', { text: 'Valid question', boardId: 'main' });
+    await msg2;
+
+    offender.emit('element-start', {
+      id: 'off-draw',
+      tool: 'solid',
+      points: [0, 0, 20, 20],
+      color: '#111111',
+      strokeWidth: 4,
+      userId: 's-offend',
+      boardId: 'main',
+      timestamp: Date.now(),
+    });
+    offender.emit('element-start', {
+      id: 'off-note',
+      tool: 'text',
+      text: 'Bad annotation',
+      x: 30,
+      y: 30,
+      color: '#111111',
+      strokeWidth: 4,
+      userId: 's-offend',
+      boardId: 'main',
+      timestamp: Date.now(),
+    });
+    bystander.emit('element-start', {
+      id: 'good-draw',
+      tool: 'solid',
+      points: [5, 5, 15, 15],
+      color: '#2563eb',
+      strokeWidth: 4,
+      userId: 's-good',
+      boardId: 'main',
+      timestamp: Date.now(),
+    });
+    await delay(50);
+
+    // Launch individual breakout round with board-scoped chat and add contributions on sub-boards
+    const boSync = waitForEvent(teacher, 'breakout-sync');
+    await emitAck(teacher, 'teacher:configure-breakout', {
+      action: 'new-round',
+      mode: 'individual',
+      chatScope: 'board',
+    });
+    await boSync;
+
+    offender.emit('chat-message', { text: 'Spam breakout', boardId: 'r1_ind_s-offend' });
+    offender.emit('element-start', {
+      id: 'off-sub-draw',
+      tool: 'solid',
+      points: [1, 1, 9, 9],
+      color: '#111111',
+      strokeWidth: 4,
+      userId: 's-offend',
+      boardId: 'r1_ind_s-offend',
+      timestamp: Date.now(),
+    });
+    await delay(50);
+
+    // Non-teacher cannot purge
+    const denied = await emitAck(bystander, 'teacher:purge-user-contributions', {
+      targetUserId: 's-offend',
+    });
+    assert.equal(denied.ok, false);
+
+    // Teacher kicks offender, then purges all contributions
+    await emitAck(teacher, 'teacher:kick-user', {
+      targetUserId: 's-offend',
+      mode: 'ban',
+      targetName: 'Disruptor',
+    });
+
+    const purgedBroadcast = waitForEvent<any>(bystander, 'user-contributions-purged');
+    const purgeRes = await emitAck(teacher, 'teacher:purge-user-contributions', {
+      targetUserId: 's-offend',
+    });
+    assert.equal(purgeRes.ok, true);
+    assert.equal(purgeRes.removedElements, 3);
+    assert.equal(purgeRes.removedMessages, 2);
+    assert.equal((await purgedBroadcast).targetUserId, 's-offend');
+
+    // Verify clean init state when another user joins
+    const { init } = await joinTracked({
+      roomId: 'purge-room',
+      userId: 's-late',
+      name: 'LateJoiner',
+    });
+    assert.deepEqual(
+      init.messages.map((m: any) => m.text),
+      ['Valid question']
+    );
+    assert.deepEqual(
+      init.elements.map((e: any) => e.id),
+      ['good-draw']
+    );
+    assert.equal(init.subBoards['r1_ind_s-offend'].elements.length, 0);
+    assert.equal(init.subBoards['r1_ind_s-offend'].messages.length, 0);
+  });
 });
 
