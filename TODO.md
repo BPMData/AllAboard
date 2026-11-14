@@ -84,19 +84,32 @@ into board pages. It all runs in the browser, with no server changes.
 
 ### "Students start on their own boards" room mode
 - [ ] **Room setting (teacher-only toggle): "Students start on their own boards."** When it's on, every
-      non-teacher who joins goes straight to their **own individual board** with a copy of the current worksheet.
-      The **main board stays the teacher's copy** of that worksheet (a model answer or demo). The teacher can still
-      **bring everyone back to main** whenever they want.
+      non-teacher who joins goes straight to their **own individual board**, pre-loaded with a **student worksheet**
+      the teacher chose. The **main board is independent** and can hold completely different content. When the
+      teacher **brings everyone back to main**, the class moves on to that.
+  - **Example lesson:** students fill out a reading worksheet on their own boards. Then the teacher brings
+    everyone to main, which shows the built-in **Four Corners** template, and each student stamps their
+    name badge in the quadrant that best matches how they felt about the worksheet. The main board *could* be
+    the teacher's copy of the worksheet, but it doesn't have to be.
   - **Mostly already built:**
     - An individual breakout round already provisions boards for **late joiners** with the round's worksheet
       template (`ensureIndividualBoardForUser` / `provisionIndividualBoard` in `server.ts`, called from `join-room`).
     - `teacher:configure-breakout` already has `return-to-main`.
     - The teacher can already watch everyone in `LiveGridOverview`.
 
+    - Rounds already accept a separate student worksheet: `teacher:configure-breakout` → `new-round` takes
+      `customBackground` (or `copyWorksheet: true` to copy main), stored per round in `room.roundTemplates`.
+
     So the feature is mainly: **when the setting is on and a student joins while no individual round is active,
-    auto-start one** (`new-round`, `mode: 'individual'`, `copyWorksheet: true`) instead of waiting for the
-    teacher to click.
-  - **Store the flag** in `breakoutConfig` (e.g. `autoIndividual: boolean`), so it persists and backs up with the
+    auto-start one** (`new-round`, `mode: 'individual'`, `customBackground: <the chosen student worksheet>`)
+    instead of waiting for the teacher to click.
+  - **Two separate pickers in the setting:**
+    - **"Students start with:"** a worksheet (upload / template / "same as main board" / blank). This is
+      saved with the setting as the round template.
+    - **The main board:** whatever the teacher puts there, set with the normal worksheet tools. It is never
+      copied to students unless the teacher picks "same as main board."
+  - **Store the flag and the student-worksheet choice** in `breakoutConfig` (e.g. `autoIndividual: boolean`, plus the
+    chosen worksheet as an asset-backed background like `roundTemplates`), so it persists and backs up with the
     room like every other setting. Toggle it via `teacher:configure-breakout` (one new optional field, with no new
     socket event). Include it in `getRoomSettingsPayload`.
   - **Decisions to make when building:**
@@ -107,8 +120,8 @@ into board pages. It all runs in the browser, with no server changes.
       replaces only the **background**, never the student's ink. Or start a new round.
     - **Teacher PIN:** the room needs a claimed teacher for the mode to mean anything. Disable the toggle until a
       PIN is set.
-  - **Tests:** a student joining with the flag on lands on `r1_ind_<id>` with the worksheet. The teacher stays on
-    main. `return-to-main` moves everyone. The flag survives a restart (backup/restore).
+  - **Tests:** a student joining with the flag on lands on `r1_ind_<id>` with the **chosen student worksheet**, not
+    the main board's background. The teacher stays on main, and the main board keeps its own, different background. `return-to-main` moves everyone. The flag survives a restart (backup/restore).
 
 ## Housekeeping
 - [ ] Add a lifecycle rule to the `run-sources-loyal-rookery-403218-us-east1` bucket (delete objects older than 30 days).
