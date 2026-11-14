@@ -1,6 +1,7 @@
 import { describe, it, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
+import { createHash } from 'node:crypto';
 import os from 'node:os';
 import path from 'node:path';
 import { io as ioClient, Socket } from 'socket.io-client';
@@ -412,7 +413,7 @@ describe('AllAboard server & Socket.IO integration tests', () => {
     await strokeSeen;
 
     await srv.flushRoomsToDiskAsync();
-    assert.equal(fs.existsSync(path.join(tmpDir, 'rooms-store.json')), true);
+    assert.equal(fs.existsSync(path.join(tmpDir, 'allaboard.db')), true);
 
     // Tear down first server and restart on the same dataDir
     for (const s of openSockets.splice(0, openSockets.length)) {
@@ -791,6 +792,7 @@ describe('AllAboard server & Socket.IO integration tests', () => {
       assert.equal(init.roomSettings.breakoutConfig.activeRoundId, 'r1');
       assert.equal(init.subBoards['ind_s1'].elements.length, 1);
       assert.equal(init.subBoards['r1_ind_s1'], undefined);
+      assert.equal(fs.existsSync(path.join(tmpDir, 'rooms-store.json')), false);
     });
 
     it('T7 – non-teacher cannot configure', async () => {
@@ -1037,5 +1039,93 @@ describe('AllAboard server & Socket.IO integration tests', () => {
     assert.equal(init.subBoards['r1_ind_s-offend'].elements.length, 0);
     assert.equal(init.subBoards['r1_ind_s-offend'].messages.length, 0);
   });
+  describe('storage: SQLite + worksheet assets', () => {
+    const PNG = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
+    const worksheet = () => ({ id: 'ws1', fileName: 'w.png', pages: [{ dataUrl: PNG, width: 1, height: 1 }], x: 0, y: 0, scale: 1, layout: 'stack', opacity: 1 });
+    const restart = async () => {
+      for (const s of openSockets.splice(0)) if (s.connected) s.disconnect();
+      await srv.close();
+      srv = await startServer({ port: 0, host: '127.0.0.1', dataDir: tmpDir, skipVite: true });
+    };
+    const teacherIn = async (roomId: string) => {
+      const { socket } = await joinTracked({ roomId, userId: 't', name: 'Teacher' });
+      await emitAck(socket, 'teacher:auth', { pin: '1234' });
+      return socket;
+    };
+    const setWorksheet = async (teacher: Socket) => {
+      const sync = waitForEvent<any>(teacher, 'background-sync');
+      await emitAck(teacher, 'teacher:set-background', { boardId: 'main', background: worksheet() });
+      return (await sync).background.pages[0].dataUrl as string;
+    };
+
+    it('S1 – stores and serves an immutable asset', async () => {
+      const url = await setWorksheet(await teacherIn('s1'));
+      assert.match(url, /^\/api\/assets\/[a-f0-9]{64}$/);
+      const res = await fetch(`http://127.0.0.1:${srv.port}${url}`);
+      assert.equal(res.status, 200);
+      assert.equal(res.headers.get('content-type'), 'image/png');
+      assert.match(res.headers.get('cache-control')!, /immutable/);
+    });
+    it('S2 – rejects unknown and malformed asset hashes', async () => {
+      for (const hash of ['0'.repeat(64), 'not-a-hash']) {
+        assert.equal((await fetch(`http://127.0.0.1:${srv.port}/api/assets/${hash}`)).status, 404);
+      }
+    });
+    it('S3 – breakout copies share one asset', async () => {
+      const teacher = await teacherIn('s3');
+      for (let i = 0; i < 3; i++) await joinTracked({ roomId: 's3', userId: `s${i}`, name: `Student ${i}` });
+      const url = await setWorksheet(teacher);
+      const sync = waitForEvent<any>(teacher, 'breakout-sync');
+      await emitAck(teacher, 'teacher:configure-breakout', { action: 'new-round', mode: 'individual', copyWorksheet: true });
+      const boards = Object.values((await sync).subBoards) as any[];
+      assert.equal(boards.length, 3);
+      for (const board of boards) assert.equal(board.background.pages[0].dataUrl, url);
+      assert.equal(srv.store.countAssets(), 1);
+    });
+    it('S4 – writes only dirty rooms', async () => {
+      const a = await joinTracked({ roomId: 'iso-a', userId: 'a', name: 'A' });
+      const peer = await joinTracked({ roomId: 'iso-a', userId: 'peer', name: 'Peer' });
+      const b = await joinTracked({ roomId: 'iso-b', userId: 'b', name: 'B' });
+      const draw = (socket: Socket, id: string, userId: string) => socket.emit('element-start', { id, userId, boardId: 'main', tool: 'text', text: id, x: 1, y: 1, timestamp: Date.now() });
+      let seen = waitForEvent(peer.socket, 'element-start'); draw(a.socket, 'a1', 'a'); await seen;
+      const bPeer = await joinTracked({ roomId: 'iso-b', userId: 'bp', name: 'Peer' });
+      seen = waitForEvent(bPeer.socket, 'element-start'); draw(b.socket, 'b1', 'b'); await seen;
+      await srv.flushRoomsToDiskAsync();
+      const saved: string[] = [];
+      const orig = srv.store.saveRoom.bind(srv.store);
+      srv.store.saveRoom = (id, state, t) => { saved.push(id); orig(id, state, t); };
+      seen = waitForEvent(peer.socket, 'element-start'); draw(a.socket, 'a2', 'a'); await seen;
+      await srv.flushRoomsToDiskAsync();
+      assert.deepEqual(saved, ['iso-a']);
+    });
+    it('S5 – interns legacy worksheet on migration', async () => {
+      await srv.close();
+      fs.writeFileSync(path.join(tmpDir, 'rooms-store.json'), JSON.stringify({ rooms: [{ id: 'legacy-assets', messages: [], elements: [], background: worksheet(), teacherPin: '1234', isCanvasLocked: false, lastActiveAt: Date.now() }] }));
+      srv = await startServer({ port: 0, host: '127.0.0.1', dataDir: tmpDir, skipVite: true });
+      const { init } = await joinTracked({ roomId: 'legacy-assets', userId: 's', name: 'Student' });
+      assert.match(init.background.pages[0].dataUrl, /^\/api\/assets\//);
+    });
+    it('S6 – imports v2 embedded assets into a fresh store', async () => {
+      const teacher = await teacherIn('s6');
+      const hash = createHash('sha256').update(Buffer.from(PNG.split(',')[1], 'base64')).digest('hex');
+      const url = `/api/assets/${hash}`;
+      const sync = waitForEvent<any>(teacher, 'room-restored');
+      const result = await emitAck(teacher, 'teacher:import-room', { mode: 'replace', elements: [], messages: [], background: { ...worksheet(), pages: [{ dataUrl: url, width: 1, height: 1 }] }, assets: { [url]: PNG } });
+      assert.equal(result.ok, true);
+      assert.equal((await sync).background.pages[0].dataUrl, url);
+      assert.equal((await fetch(`http://127.0.0.1:${srv.port}${url}`)).status, 200);
+    });
+    it('S7 – lobby sees a saved unloaded room', async () => {
+      const teacher = await teacherIn('lobby-room');
+      await srv.flushRoomsToDiskAsync();
+      teacher.disconnect();
+      await restart();
+      const probe = await joinTracked({ roomId: 'other', userId: 'p', name: 'Probe' });
+      const result = await emitAck(probe.socket, 'check-room', { roomId: 'lobby-room' });
+      assert.equal(result.exists, true);
+      assert.equal(result.hasTeacherPin, true);
+    });
+  });
+
 });
 
