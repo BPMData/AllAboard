@@ -889,6 +889,7 @@ export default function App() {
         background?: RoomBackground | null;
         subBoards?: Record<string, SubBoardData>;
         breakoutConfig?: BreakoutConfig;
+        assets?: Record<string, string>;
       },
       mode: ImportRestoreMode
     ): Promise<{ ok: boolean; error?: string }> => {
@@ -905,6 +906,7 @@ export default function App() {
             background: snapshot.background,
             subBoards: snapshot.subBoards,
             breakoutConfig: snapshot.breakoutConfig,
+            assets: snapshot.assets,
             mode,
           },
           (response: { ok: boolean; error?: string }) => {

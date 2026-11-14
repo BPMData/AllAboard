@@ -163,6 +163,7 @@ interface CanvasProps {
       background?: RoomBackground | null;
       subBoards?: Record<string, SubBoardData>;
       breakoutConfig?: BreakoutConfig;
+      assets?: Record<string, string>;
     },
     mode: ImportRestoreMode
   ) => Promise<{ ok: boolean; error?: string }>;
@@ -509,6 +510,15 @@ function WorksheetPageNode({
       <KonvaImage image={img} x={0} y={0} width={width} height={height} opacity={opacity} />
     </Group>
   );
+}
+
+function blobToDataUrl(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result));
+    reader.onerror = () => reject(reader.error);
+    reader.readAsDataURL(blob);
+  });
 }
 
 export default function Canvas({
@@ -885,6 +895,7 @@ export default function Canvas({
     background?: RoomBackground | null;
     subBoards?: Record<string, SubBoardData>;
     breakoutConfig?: BreakoutConfig;
+    assets?: Record<string, string>;
   } | null>(null);
   const [importMode, setImportMode] = useState<ImportRestoreMode>('replace');
   const [importError, setImportError] = useState<string | null>(null);
@@ -1955,9 +1966,29 @@ export default function Canvas({
   };
 
   // Export complete Room Snapshot (.json) including main board + all breakout/individual subBoards
-  const handleExportJSON = () => {
+  const handleExportJSON = async () => {
+    const assetUrls = new Set<string>();
+    const collect = (bg?: RoomBackground | null) => {
+      for (const p of bg?.pages || []) {
+        if (typeof p.dataUrl === 'string' && p.dataUrl.startsWith('/api/assets/')) assetUrls.add(p.dataUrl);
+      }
+    };
+    collect(fullMainBackground);
+    for (const sb of Object.values(subBoards || {})) collect(sb?.background);
+
+    const assets: Record<string, string> = {};
+    for (const url of assetUrls) {
+      try {
+        const res = await fetch(url);
+        if (!res.ok) throw new Error(`Asset request failed: ${res.status}`);
+        assets[url] = await blobToDataUrl(await res.blob());
+      } catch (err) {
+        console.error('Could not embed worksheet asset in export:', url, err);
+      }
+    }
     const snapshot: RoomSnapshot = {
-      version: 1,
+      version: 2,
+      assets,
       roomId,
       exportedAt: Date.now(),
       exportedBy: userName,
@@ -2031,6 +2062,7 @@ export default function Canvas({
           background: parsed.background || null,
           subBoards: parsed.subBoards,
           breakoutConfig: parsed.breakoutConfig,
+          assets: parsed.assets && typeof parsed.assets === 'object' ? parsed.assets : undefined,
         });
         setImportMode('replace');
       } catch {
@@ -2058,6 +2090,7 @@ export default function Canvas({
         background: pendingSnapshot.background,
         subBoards: pendingSnapshot.subBoards,
         breakoutConfig: pendingSnapshot.breakoutConfig,
+        assets: pendingSnapshot.assets,
       },
       importMode
     );

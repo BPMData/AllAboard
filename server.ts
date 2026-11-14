@@ -135,6 +135,8 @@ export async function startServer(options: StartServerOptions = {}) {
       res.status(404).end();
       return;
     }
+    res.setHeader('Content-Security-Policy', 'sandbox');
+    res.setHeader('X-Content-Type-Options', 'nosniff');
     res.setHeader('Content-Type', asset.mime);
     res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
     res.end(Buffer.from(asset.bytes));

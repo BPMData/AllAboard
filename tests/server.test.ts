@@ -1064,6 +1064,8 @@ describe('AllAboard server & Socket.IO integration tests', () => {
       const res = await fetch(`http://127.0.0.1:${srv.port}${url}`);
       assert.equal(res.status, 200);
       assert.equal(res.headers.get('content-type'), 'image/png');
+      assert.equal(res.headers.get('content-security-policy'), 'sandbox');
+      assert.equal(res.headers.get('x-content-type-options'), 'nosniff');
       assert.match(res.headers.get('cache-control')!, /immutable/);
     });
     it('S2 – rejects unknown and malformed asset hashes', async () => {

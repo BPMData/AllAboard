@@ -46,6 +46,7 @@ export interface CanvasElement {
 }
 
 export interface BackgroundPage {
+  /** Either a base64 `data:` URL (fresh upload / old snapshot) or a server asset URL `/api/assets/<sha256>`. */
   dataUrl: string;
   width: number;
   height: number;
@@ -193,7 +194,9 @@ export interface RemoteCursor {
 export type ImportRestoreMode = 'replace' | 'readonly' | 'merge';
 
 export interface RoomSnapshot {
-  version: 1;
+  version: 1 | 2;
+  /** v2+: worksheet images, keyed by their `/api/assets/<hash>` URL, value = base64 data URL. */
+  assets?: Record<string, string>;
   roomId: string;
   exportedAt: number;
   exportedBy: string;
