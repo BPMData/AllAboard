@@ -1,7 +1,7 @@
 # AllAboard — notes for Claude
 
-**Before touching deployment, storage, env vars, Cloud Run settings, or server startup code, read
-[`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md).** The non-negotiables:
+**New here? Read [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) first (the system map).** Before touching deployment,
+storage, env vars, Cloud Run settings, or server startup code, read [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md). The non-negotiables:
 
 1. **AI Studio Publish rewrites the Cloud Run service config.** Console-added volume mounts vanish and env vars
    come and go. Anything that must persist is configured **in code**. Code must tolerate stale env vars.
