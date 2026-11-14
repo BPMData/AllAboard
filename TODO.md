@@ -123,6 +123,63 @@ into board pages. It all runs in the browser, with no server changes.
   - **Tests:** a student joining with the flag on lands on `r1_ind_<id>` with the **chosen student worksheet**, not
     the main board's background. The teacher stays on main, and the main board keeps its own, different background. `return-to-main` moves everyone. The flag survives a restart (backup/restore).
 
+### "Send this worksheet to…" (live boards and prepared rounds)
+- [ ] **Teacher button: "Send this worksheet to…"**
+  - **Everyone's current boards:** replaces only each board's **background**, never the student's ink.
+  - **A prepared breakout round** (see below): sets that round's worksheet template, so students who enter
+    it later get it.
+  - **Server:** a teacher-only path that applies `internBackground` once and then reuses the same asset URL for
+    every board. With content-addressed assets, 30 boards cost one stored image.
+
+### Prepared ("draft") breakout rounds
+- [ ] **Create breakout rounds in advance without moving anyone**, each with its own worksheet, mode
+      (individual/groups) and groups. Launch one later with a click.
+  - **Mostly exists:** rounds are already saved objects (`breakoutConfig.rounds`, `room.roundTemplates`), and
+    `resume` already activates an existing round. What's missing is a `new-round` variant that creates the round
+    **without** setting `mode`/`activeRoundId` (e.g. `prepare: true`), plus UI to list, edit and launch prepared rounds.
+  - **Stretch:** **"Group by quadrant."** After a Four Corners vote on main, auto-assign students to groups (or to
+    one of several prepared rounds) based on which quadrant their name stamp is in. The server already knows each
+    stamp's position and owner (once the `userId` spoofing fix below lands).
+
+### Lesson packs: a whole lesson in one file, shareable between teachers
+- [ ] **Export/import a "lesson pack"**: one file with everything needed to run a lesson, minus student data:
+  - the **main board** (background and teacher ink), e.g. a Four Corners "how did that feel?" vote that students
+    don't see until they finish
+  - **prepared rounds** with their worksheets and groups, e.g. three follow-up activities, one per reaction
+  - room settings like **"students start on their own boards"** and the student starting worksheet
+  - the teacher's **custom image stamps** (below)
+- **Builds on the existing room export (snapshot v2):** `handleExportJSON` / `teacher:import-room` already
+  carry the main board, sub-boards, `breakoutConfig`, and an `assets` map that embeds each image once. A lesson
+  pack is a new `kind: 'lesson'` (or `version: 3`) that:
+  - **strips student data:** student boards, chat, roster, banned/locked names
+  - **adds** prepared rounds, `roundTemplates`, and room settings
+  - **gets a friendly extension** (e.g. `.allaboard`, still JSON inside)
+
+  Base64 inside a *file* is fine. The problem was only base64 in live room state and broadcasts.
+- **Import flow:** "Load lesson…" sets up the current room (or a fresh one) with all of it. No students are moved
+  until the teacher launches something.
+- **Decisions to make:**
+  - Should packs include teacher ink on student worksheets (e.g. pre-written instructions)? Probably yes, as
+    part of the template.
+  - How are packs shared? Email/Drive/file is fine to start. A shared library would need accounts, so avoid it.
+
+### Custom image stamps (teacher)
+- [ ] **Teachers upload their own stamp images** (PNG/SVG: a signature, a custom "APPROVED" stamp, a school logo)
+      and place them like the built-in stamps. Pairs with the teacher-only stamps above.
+  - **Why it's cheap now:** the content-addressed asset system (`/api/assets/<hash>`, since #12) stores each image
+    **once**. A placed stamp is just a small element that references the asset URL. Backups need no new code:
+    `BackupMirror` and `room_assets` find every `/api/assets/` URL by scanning the room JSON. (The *bucket* is what
+    makes assets survive restarts. The *asset system* is what removed the base64 bloat.)
+  - **Server work:**
+    1. Today `internRoomAssets` / `internBackground` only convert **backgrounds**. Add a teacher upload path (e.g. a
+       `teacher:upload-asset` socket ack that returns the asset URL) so stamp elements never carry `data:` URLs. Also
+       reject or intern `data:` URLs on elements in `element-start` / `elements-batch-add`.
+    2. Size limit (e.g. ≤ 1 MB, with a max dimension) and image-type check (`sniffMime`).
+  - **The stamp library lives with the teacher, not the server.** There are no accounts, and `gcAssets` deletes
+    assets no room references after 1 hour. Keep the teacher's library in their browser (`localStorage` or
+    IndexedDB, holding the small image files) and in **lesson packs**, and re-upload on use. Deduplication makes
+    re-uploads free and gives the same URL.
+
 ## Housekeeping
 - [ ] Add a lifecycle rule to the `run-sources-loyal-rookery-403218-us-east1` bucket (delete objects older than 30 days).
       It stores ~80 MB of uploaded source per deploy.
