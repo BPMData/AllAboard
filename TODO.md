@@ -29,7 +29,10 @@ into board pages. It all runs in the browser, with no server changes.
   then `GoogleAuthProvider.credentialFromResult(result).accessToken` as the Bearer token for Picker/Drive.
   - Does **not** fix the school-IT blocker above. Workspace admins can still block the client.
   - The access token lasts ~1 hour and can't be refreshed client-side. Re-run the popup on a 401.
-  - Picker still needs the API key and `.setAppId(<project number>)`, or `drive.file` won't unlock the picked file.
+  - Picker still needs a browser API key: **ours, created once by the developer**, hard-coded and
+    restricted to our origins (users never see or touch it). Try the `apiKey` already in
+    `firebase-applet-config.json` first (needs the Picker API enabled on the project and the key not
+    API-restricted against it). Also call `.setAppId(<project number>)`, or `drive.file` won't unlock the picked file.
   - Same pattern covers Classroom (`classroom.courses.readonly`, `classroom.courseworkmaterials` to post a
     `?room=` link). Roster scopes (`classroom.rosters.readonly`) need Google verification for a public app.
 - **Other gotchas:**
