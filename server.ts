@@ -119,36 +119,38 @@ interface SerializedRoom {
 const DEFAULT_BACKUP_BUCKET = 'allaboard-data';
 
 /**
- * Picks where rooms are backed up. First match wins:
- *   1. options.backupBackend (tests only)
- *   2. BACKUP_DIR is set → plain files in that folder (local dev, or a bucket mounted as a volume)
- *   3. BACKUP_BUCKET is set → that bucket (set it to "off" to disable backups)
- *   4. Running on Cloud Run in production (K_SERVICE set, NODE_ENV=production) → DEFAULT_BACKUP_BUCKET
- * Probes the backend once. Returns null and logs if nothing applies or the backend is unusable.
- * Never throws: a broken backup must not stop the server from starting.
+ * Picks where rooms are backed up. Candidates, tried in this order; the first one whose probe
+ * succeeds wins:
+ *   1. BACKUP_DIR (or options.backupDir) → plain files in that folder (local dev, or a mounted bucket)
+ *   2. The bucket: options.backupBackend (tests only), else BACKUP_BUCKET (set "off" to disable),
+ *      else DEFAULT_BACKUP_BUCKET when running on Cloud Run in production (K_SERVICE + NODE_ENV=production)
+ * A candidate that fails its probe is skipped (and logged), so a stale BACKUP_DIR left behind by an
+ * AI Studio redeploy (env var kept, volume mount dropped) falls through to the bucket API instead of
+ * disabling backups. Returns null if nothing works. Never throws.
  */
 async function openBackupMirror(store: RoomStore, options: StartServerOptions): Promise<BackupMirror | null> {
   const dir = options.backupDir ?? process.env.BACKUP_DIR ?? '';
   const onCloudRun = Boolean(process.env.K_SERVICE) && process.env.NODE_ENV === 'production';
   const bucket = process.env.BACKUP_BUCKET ?? (onCloudRun ? DEFAULT_BACKUP_BUCKET : '');
 
-  let backend: BackupBackend | null = options.backupBackend ?? null;
-  if (!backend && dir) backend = new DirBackend(dir);
-  if (!backend && bucket && bucket !== 'off') backend = new GcsBackend(bucket);
-  if (!backend) {
-    if (process.env.NODE_ENV === 'production') {
-      console.warn('Backups are OFF: rooms will NOT survive a cold start or redeploy.');
+  const candidates: BackupBackend[] = [];
+  if (dir) candidates.push(new DirBackend(dir));
+  if (options.backupBackend) candidates.push(options.backupBackend);
+  else if (bucket && bucket !== 'off') candidates.push(new GcsBackend(bucket));
+
+  for (const backend of candidates) {
+    try {
+      await backend.probe();
+      console.log(`Backing up rooms to ${backend.label}.`);
+      return new BackupMirror(backend, (hash) => store.getAsset(hash)?.bytes ?? null);
+    } catch (err) {
+      console.error(`Backup target ${backend.label} is unusable, skipping:`, err);
     }
-    return null;
   }
-  try {
-    await backend.probe();
-  } catch (err) {
-    console.error(`Backups are OFF: ${backend.label} is unusable:`, err);
-    return null;
+  if (candidates.length > 0 || process.env.NODE_ENV === 'production') {
+    console.warn('Backups are OFF: rooms will NOT survive a cold start or redeploy.');
   }
-  console.log(`Backing up rooms to ${backend.label}.`);
-  return new BackupMirror(backend, (hash) => store.getAsset(hash)?.bytes ?? null);
+  return null;
 }
 
 export async function startServer(options: StartServerOptions = {}) {
