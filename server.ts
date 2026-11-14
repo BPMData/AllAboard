@@ -110,7 +110,6 @@ interface SerializedRoom {
 
 export async function startServer(options: StartServerOptions = {}) {
   const dataDir = options.dataDir || process.env.DATA_DIR || path.join(process.cwd(), '.data');
-  const storeFile = path.join(dataDir, 'rooms-store.json');
   const legacyStoreFile = path.join(dataDir, 'rooms-store.json');
   const store = new RoomStore(path.join(dataDir, 'allaboard.db'));
   const portToBind = options.port !== undefined ? options.port : Number(process.env.PORT) || 3000;
@@ -143,7 +142,6 @@ export async function startServer(options: StartServerOptions = {}) {
 
   const rooms: Map<string, RoomState> = new Map();
   const socketMeta: Map<string, { roomId: string; userId: string }> = new Map();
-  let saveTimeout: NodeJS.Timeout | null = null;
 
   function serializeSubBoards(subBoards: Map<string, SubBoardState>): Record<string, SubBoardState> {
     const obj: Record<string, SubBoardState> = {};
@@ -174,172 +172,170 @@ export async function startServer(options: StartServerOptions = {}) {
     return map;
   }
 
-  function loadRoomsFromDisk() {
+  /** SerializedRoom → in-memory RoomState. Returns null if missing/expired. */
+  function hydrateRoom(item: SerializedRoom, now = Date.now()): RoomState | null {
+    if (!item || !item.id) return null;
+    const lastActive = item.lastActiveAt || now;
+    if (now - lastActive > ROOM_TTL_MS) return null;
+
+    const subBoards = deserializeSubBoards(item.subBoards);
+    const breakoutConfig = normalizeBreakoutConfig(item.breakoutConfig);
+    migrateLegacyBreakout(subBoards, breakoutConfig);
+    return {
+      id: item.id,
+      messages: Array.isArray(item.messages) ? item.messages : [],
+      elements: Array.isArray(item.elements) ? item.elements : [],
+      background: item.background || null,
+      subBoards,
+      breakoutConfig,
+      roundTemplates: item.roundTemplates && typeof item.roundTemplates === 'object' ? item.roundTemplates : {},
+      timer: item.timer || {
+        isRunning: false,
+        durationMs: 5 * 60 * 1000,
+        remainingMs: 0,
+        endsAt: null,
+        autoLockOnExpire: false,
+      },
+      usersByUserId: new Map(),
+      lockedNames: item.lockedNames && typeof item.lockedNames === 'object' ? item.lockedNames : {},
+      bannedUsers: item.bannedUsers && typeof item.bannedUsers === 'object' ? item.bannedUsers : {},
+      isCanvasLocked: Boolean(item.isCanvasLocked),
+      teacherPin: item.teacherPin || null,
+      lastActiveAt: lastActive,
+    };
+  }
+
+  function serializeRoom(room: RoomState): SerializedRoom {
+    return {
+      id: room.id,
+      messages: room.messages,
+      elements: room.elements,
+      background: room.background,
+      subBoards: serializeSubBoards(room.subBoards),
+      breakoutConfig: room.breakoutConfig,
+      roundTemplates: room.roundTemplates,
+      timer: room.timer,
+      lockedNames: room.lockedNames,
+      bannedUsers: room.bannedUsers,
+      isCanvasLocked: room.isCanvasLocked,
+      teacherPin: room.teacherPin,
+      lastActiveAt: room.lastActiveAt,
+    };
+  }
+
+  function isRoomEmpty(room: RoomState): boolean {
+    return (
+      room.elements.length === 0 &&
+      room.messages.length === 0 &&
+      room.background === null &&
+      room.subBoards.size === 0 &&
+      room.teacherPin === null &&
+      Object.keys(room.lockedNames).length === 0 &&
+      Object.keys(room.bannedUsers).length === 0
+    );
+  }
+
+  function roomHasActiveSockets(room: RoomState): boolean {
+    for (const u of room.usersByUserId.values()) {
+      if (u.sockets.size > 0) return true;
+    }
+    return false;
+  }
+
+  /** Safety net: converts any remaining base64 worksheet pages in a room to asset URLs. */
+  function internRoomAssets(room: RoomState) {
+    room.background = internBackground(store, room.background);
+    for (const sb of room.subBoards.values()) {
+      sb.background = internBackground(store, sb.background);
+    }
+    for (const key of Object.keys(room.roundTemplates)) {
+      room.roundTemplates[key] = internBackground(store, room.roundTemplates[key]);
+    }
+  }
+
+  /** Imports an old rooms-store.json (if present) into SQLite, then renames it. */
+  function migrateLegacyJsonStore() {
+    if (!fs.existsSync(legacyStoreFile)) return;
     try {
-      fs.mkdirSync(dataDir, { recursive: true });
-      if (!fs.existsSync(storeFile)) return;
-      const raw = fs.readFileSync(storeFile, 'utf-8');
-      const parsed = JSON.parse(raw);
-      if (!parsed || !Array.isArray(parsed.rooms)) return;
-
-      const now = Date.now();
-      let restoredCount = 0;
-      for (const item of parsed.rooms as SerializedRoom[]) {
-        if (!item || !item.id) continue;
-        const lastActive = item.lastActiveAt || now;
-        if (now - lastActive > ROOM_TTL_MS) {
-          continue;
+      const parsed = JSON.parse(fs.readFileSync(legacyStoreFile, 'utf-8'));
+      let migrated = 0;
+      if (parsed && Array.isArray(parsed.rooms)) {
+        for (const item of parsed.rooms as SerializedRoom[]) {
+          const room = hydrateRoom(item);
+          if (!room) continue;
+          internRoomAssets(room);
+          store.saveRoom(room.id, serializeRoom(room), room.lastActiveAt);
+          migrated++;
         }
-        const subBoards = deserializeSubBoards(item.subBoards);
-        const breakoutConfig = normalizeBreakoutConfig(item.breakoutConfig);
-        migrateLegacyBreakout(subBoards, breakoutConfig);
-        rooms.set(item.id, {
-          id: item.id,
-          messages: Array.isArray(item.messages) ? item.messages : [],
-          elements: Array.isArray(item.elements) ? item.elements : [],
-          background: item.background || null,
-          subBoards,
-          breakoutConfig,
-          roundTemplates: item.roundTemplates && typeof item.roundTemplates === 'object' ? item.roundTemplates : {},
-          timer: item.timer || {
-            isRunning: false,
-            durationMs: 5 * 60 * 1000,
-            remainingMs: 0,
-            endsAt: null,
-            autoLockOnExpire: false,
-          },
-          usersByUserId: new Map(),
-          lockedNames: item.lockedNames && typeof item.lockedNames === 'object' ? item.lockedNames : {},
-          bannedUsers: item.bannedUsers && typeof item.bannedUsers === 'object' ? item.bannedUsers : {},
-          isCanvasLocked: Boolean(item.isCanvasLocked),
-          teacherPin: item.teacherPin || null,
-          lastActiveAt: lastActive,
-        });
-        restoredCount++;
       }
-      if (restoredCount > 0) {
-        console.log(`Restored ${restoredCount} active room(s) from disk.`);
-      }
+      fs.renameSync(legacyStoreFile, `${legacyStoreFile}.migrated-${Date.now()}`);
+      console.log(`Migrated ${migrated} room(s) from rooms-store.json into SQLite.`);
     } catch (err) {
-      console.error('Failed to load rooms from disk:', err);
+      console.error('Failed to migrate rooms-store.json (left in place):', err);
     }
   }
 
-  let isSavingAsync = false;
-  let saveQueuedAsync = false;
-  let activeSavePromise: Promise<void> | null = null;
+  const dirtyRooms = new Set<string>();
+  let saveTimeout: NodeJS.Timeout | null = null;
 
-  function buildSerializedRoomsPayload(): { updatedAt: number; rooms: SerializedRoom[] } {
-    const now = Date.now();
-    const serialized: SerializedRoom[] = [];
-    for (const [roomId, room] of rooms.entries()) {
-      let hasActiveSockets = false;
-      for (const u of room.usersByUserId.values()) {
-        if (u.sockets.size > 0) {
-          hasActiveSockets = true;
-          break;
-        }
-      }
-      if (!hasActiveSockets && now - room.lastActiveAt > ROOM_TTL_MS) {
-        rooms.delete(roomId);
-        continue;
-      }
-      if (
-        room.elements.length > 0 ||
-        room.messages.length > 0 ||
-        room.background !== null ||
-        room.subBoards.size > 0 ||
-        room.teacherPin !== null ||
-        Object.keys(room.lockedNames).length > 0 ||
-        Object.keys(room.bannedUsers).length > 0
-      ) {
-        serialized.push({
-          id: room.id,
-          messages: room.messages,
-          elements: room.elements,
-          background: room.background,
-          subBoards: serializeSubBoards(room.subBoards),
-          breakoutConfig: room.breakoutConfig,
-          roundTemplates: room.roundTemplates,
-          timer: room.timer,
-          lockedNames: room.lockedNames,
-          bannedUsers: room.bannedUsers,
-          isCanvasLocked: room.isCanvasLocked,
-          teacherPin: room.teacherPin,
-          lastActiveAt: room.lastActiveAt,
-        });
-      }
-    }
-    return { updatedAt: now, rooms: serialized };
-  }
-
+  /** Writes ONLY rooms that changed since the last flush. Synchronous (node:sqlite is sync). */
   function flushRoomsToDisk() {
     if (saveTimeout) {
       clearTimeout(saveTimeout);
       saveTimeout = null;
     }
-    try {
-      fs.mkdirSync(dataDir, { recursive: true });
-      const payload = buildSerializedRoomsPayload();
-      const tmpFile = `${storeFile}.tmp`;
-      fs.writeFileSync(tmpFile, JSON.stringify(payload), 'utf-8');
-      fs.renameSync(tmpFile, storeFile);
-    } catch (err) {
-      console.error('Failed to save rooms to disk:', err);
-    }
-  }
-
-  async function flushRoomsToDiskAsync(): Promise<void> {
-    if (saveTimeout) {
-      clearTimeout(saveTimeout);
-      saveTimeout = null;
-    }
-    if (isSavingAsync) {
-      saveQueuedAsync = true;
-      if (activeSavePromise) {
-        await activeSavePromise;
-      }
-      return;
-    }
-    isSavingAsync = true;
-    activeSavePromise = (async () => {
+    for (const roomId of [...dirtyRooms]) {
+      dirtyRooms.delete(roomId);
+      const room = rooms.get(roomId);
+      if (!room) continue;
       try {
-        await fs.promises.mkdir(dataDir, { recursive: true });
-        const payload = buildSerializedRoomsPayload();
-        const json = JSON.stringify(payload);
-        const tmpFile = `${storeFile}.tmp`;
-        await fs.promises.writeFile(tmpFile, json, 'utf-8');
-        await fs.promises.rename(tmpFile, storeFile);
-      } catch (err) {
-        console.error('Failed to save rooms to disk:', err);
-      } finally {
-        isSavingAsync = false;
-        activeSavePromise = null;
-        if (saveQueuedAsync) {
-          saveQueuedAsync = false;
-          await flushRoomsToDiskAsync();
+        if (isRoomEmpty(room)) {
+          store.deleteRoom(roomId);
+          continue;
         }
+        internRoomAssets(room);
+        store.saveRoom(roomId, serializeRoom(room), room.lastActiveAt);
+      } catch (err) {
+        dirtyRooms.add(roomId); // retry on next flush
+        console.error(`Failed to save room "${roomId}":`, err);
       }
-    })();
-    await activeSavePromise;
+    }
   }
 
-  function scheduleSaveToDisk(immediate = false) {
+  /** Kept for the test suite / callers that await it. */
+  async function flushRoomsToDiskAsync(): Promise<void> {
+    flushRoomsToDisk();
+  }
+
+  function scheduleSaveToDisk(room: RoomState, immediate = false) {
+    dirtyRooms.add(room.id);
     if (immediate) {
-      void flushRoomsToDiskAsync();
+      flushRoomsToDisk();
       return;
     }
     if (saveTimeout) return;
-    saveTimeout = setTimeout(() => {
-      void flushRoomsToDiskAsync();
-    }, 2000);
+    saveTimeout = setTimeout(flushRoomsToDisk, 2000);
   }
 
-  loadRoomsFromDisk();
-  const hourlyFlushInterval = setInterval(() => {
-    void flushRoomsToDiskAsync();
-  }, 60 * 60 * 1000);
-  hourlyFlushInterval.unref();
+  /** Every 5 min: flush, unload idle rooms from RAM, expire old rooms, GC unreferenced assets. */
+  function runHousekeeping() {
+    flushRoomsToDisk();
+    const now = Date.now();
+    for (const [roomId, room] of rooms) {
+      if (dirtyRooms.has(roomId) || roomHasActiveSockets(room)) continue;
+      if (now - room.lastActiveAt > IDLE_UNLOAD_MS) rooms.delete(roomId);
+    }
+    try {
+      store.deleteRoomsInactiveBefore(now - ROOM_TTL_MS);
+      store.gcAssets();
+    } catch (err) {
+      console.error('Housekeeping failed:', err);
+    }
+  }
+
+  migrateLegacyJsonStore();
+  const housekeepingInterval = setInterval(runHousekeeping, HOUSEKEEPING_INTERVAL_MS);
+  housekeepingInterval.unref();
 
   function normalizeRoomId(raw?: string): string {
     const cleaned = String(raw || 'main')
@@ -351,9 +347,24 @@ export async function startServer(options: StartServerOptions = {}) {
     return cleaned || 'main';
   }
 
+  /** In-memory room, else hydrate it from SQLite (and cache it). Never creates a new room. */
+  function findRoom(roomId: string): RoomState | null {
+    const inMemory = rooms.get(roomId);
+    if (inMemory) return inMemory;
+    const stored = store.loadRoom<SerializedRoom>(roomId);
+    if (!stored) return null;
+    const restored = hydrateRoom({ ...stored.state, id: roomId, lastActiveAt: stored.lastActiveAt });
+    if (!restored) {
+      store.deleteRoom(roomId); // expired
+      return null;
+    }
+    rooms.set(roomId, restored);
+    return restored;
+  }
+
   function getOrCreateRoom(rawRoomId?: string): RoomState {
     const roomId = normalizeRoomId(rawRoomId);
-    let room = rooms.get(roomId);
+    let room = findRoom(roomId);
     if (!room) {
       room = {
         id: roomId,
@@ -437,7 +448,7 @@ export async function startServer(options: StartServerOptions = {}) {
         }
         room.lastActiveAt = now;
         broadcastRoomSettings(room);
-        scheduleSaveToDisk();
+        scheduleSaveToDisk(room);
       }
     }
   }, 1000);
@@ -451,7 +462,7 @@ export async function startServer(options: StartServerOptions = {}) {
   }
 
   function cloneBackground(bg: any | null | undefined): any | null {
-    return bg ? JSON.parse(JSON.stringify(bg)) : null;
+    return bg ? internBackground(store, bg) : null;
   }
 
   /** Students who should receive breakout boards. */
@@ -524,7 +535,7 @@ export async function startServer(options: StartServerOptions = {}) {
 
   function getRoomAvailability(rawRoomId?: string) {
     const normalizedId = normalizeRoomId(rawRoomId);
-    const room = rooms.get(normalizedId);
+    const room = findRoom(normalizedId);
     if (!room) {
       return {
         roomId: normalizedId,
@@ -665,7 +676,7 @@ export async function startServer(options: StartServerOptions = {}) {
         room.teacherPin = cleanPin;
         room.lastActiveAt = Date.now();
         userRecord.isTeacher = true;
-        scheduleSaveToDisk(true);
+        scheduleSaveToDisk(room, true);
         broadcastRoomSettings(room);
         broadcastRoster(room);
         callback?.({ ok: true, mode: 'claimed', pin: cleanPin });
@@ -792,7 +803,7 @@ export async function startServer(options: StartServerOptions = {}) {
       }
 
       room.lastActiveAt = Date.now();
-      scheduleSaveToDisk(true);
+      scheduleSaveToDisk(room, true);
       broadcastRoomSettings(room);
       broadcastBreakoutSync(room);
       callback?.({
@@ -834,7 +845,7 @@ export async function startServer(options: StartServerOptions = {}) {
       targetBoard.assignedUserIds.push(userToMove);
 
       room.lastActiveAt = Date.now();
-      scheduleSaveToDisk();
+      scheduleSaveToDisk(room);
       broadcastBreakoutSync(room);
     });
 
@@ -858,7 +869,7 @@ export async function startServer(options: StartServerOptions = {}) {
       }
 
       const boardId = payload?.boardId || 'main';
-      const bgData = payload && 'background' in payload ? payload.background : payload;
+      const bgData = internBackground(store, payload && 'background' in payload ? payload.background : payload);
 
       if (boardId === 'main') {
         room.background = bgData || null;
@@ -872,7 +883,7 @@ export async function startServer(options: StartServerOptions = {}) {
       }
 
       room.lastActiveAt = Date.now();
-      scheduleSaveToDisk(true);
+      scheduleSaveToDisk(room, true);
       callback?.({ ok: true });
     });
 
@@ -888,17 +899,17 @@ export async function startServer(options: StartServerOptions = {}) {
 
       if (boardId === 'main') {
         if (!room.background) return;
-        room.background = { ...room.background, ...patch };
+        room.background = internBackground(store, { ...room.background, ...patch });
         io.to(room.id).emit('background-sync', { boardId: 'main', background: room.background });
       } else {
         const sb = room.subBoards.get(boardId);
         if (!sb || !sb.background) return;
-        sb.background = { ...sb.background, ...patch };
+        sb.background = internBackground(store, { ...sb.background, ...patch });
         io.to(room.id).emit('background-sync', { boardId, background: sb.background });
       }
 
       room.lastActiveAt = Date.now();
-      scheduleSaveToDisk();
+      scheduleSaveToDisk(room);
     });
 
     // Teacher-only JSON Snapshot Import & Restore
@@ -912,6 +923,7 @@ export async function startServer(options: StartServerOptions = {}) {
           subBoards: importedSubBoards,
           breakoutConfig: importedBreakoutConfig,
           mode,
+          assets: importedAssets,
         },
         callback
       ) => {
@@ -930,6 +942,12 @@ export async function startServer(options: StartServerOptions = {}) {
         if (!callerRecord?.isTeacher) {
           callback?.({ ok: false, error: 'Only a verified Teacher can import room snapshots.' });
           return;
+        }
+
+        if (importedAssets && typeof importedAssets === 'object') {
+          for (const dataUrl of Object.values(importedAssets)) {
+            if (typeof dataUrl === 'string') store.internDataUrl(dataUrl);
+          }
         }
 
         const validElements = Array.isArray(importedElements) ? importedElements : [];
@@ -998,9 +1016,10 @@ export async function startServer(options: StartServerOptions = {}) {
         }
 
         migrateLegacyBreakout(room.subBoards, room.breakoutConfig);
+        internRoomAssets(room);
 
         room.lastActiveAt = Date.now();
-        scheduleSaveToDisk(true);
+        scheduleSaveToDisk(room, true);
 
         io.to(room.id).emit('room-restored', {
           elements: room.elements,
@@ -1104,7 +1123,7 @@ export async function startServer(options: StartServerOptions = {}) {
       }
 
       room.lastActiveAt = Date.now();
-      scheduleSaveToDisk(true);
+      scheduleSaveToDisk(room, true);
 
       io.to(room.id).emit('user-renamed', {
         userId: targetUserId,
@@ -1140,7 +1159,7 @@ export async function startServer(options: StartServerOptions = {}) {
       }
 
       room.lastActiveAt = Date.now();
-      scheduleSaveToDisk();
+      scheduleSaveToDisk(room);
       io.to(room.id).emit('message-deleted', { messageId, boardId });
       callback?.({ ok: true });
     });
@@ -1215,7 +1234,7 @@ export async function startServer(options: StartServerOptions = {}) {
 
         io.to(room.id).emit('cursor-leave', { userId: targetUserId });
         room.lastActiveAt = Date.now();
-        scheduleSaveToDisk(true);
+        scheduleSaveToDisk(room, true);
         broadcastRoster(room);
         broadcastRoomSettings(room);
         callback?.({ ok: true });
@@ -1242,7 +1261,7 @@ export async function startServer(options: StartServerOptions = {}) {
 
       delete room.bannedUsers[targetUserId];
       room.lastActiveAt = Date.now();
-      scheduleSaveToDisk(true);
+      scheduleSaveToDisk(room, true);
       broadcastRoomSettings(room);
       callback?.({ ok: true });
     });
@@ -1283,7 +1302,7 @@ export async function startServer(options: StartServerOptions = {}) {
       }
 
       room.lastActiveAt = Date.now();
-      scheduleSaveToDisk(true);
+      scheduleSaveToDisk(room, true);
       io.to(room.id).emit('user-contributions-purged', { targetUserId });
       callback?.({ ok: true, removedElements, removedMessages });
     });
@@ -1319,7 +1338,7 @@ export async function startServer(options: StartServerOptions = {}) {
       }
 
       room.lastActiveAt = Date.now();
-      scheduleSaveToDisk();
+      scheduleSaveToDisk(room);
       io.to(room.id).emit('chat-message', message);
     });
 
@@ -1350,7 +1369,7 @@ export async function startServer(options: StartServerOptions = {}) {
         targetElements.push(element);
       }
       room.lastActiveAt = Date.now();
-      scheduleSaveToDisk();
+      scheduleSaveToDisk(room);
       socket.to(room.id).emit('element-start', { ...element, boardId });
     });
 
@@ -1370,7 +1389,7 @@ export async function startServer(options: StartServerOptions = {}) {
       if (el && (el.userId === meta.userId || senderRecord?.isTeacher) && Array.isArray(el.points)) {
         el.points.push(...newPoints);
         room.lastActiveAt = Date.now();
-        scheduleSaveToDisk();
+        scheduleSaveToDisk(room);
         socket.to(room.id).emit('element-append-points', { id, boardId, newPoints });
       }
     });
@@ -1401,7 +1420,7 @@ export async function startServer(options: StartServerOptions = {}) {
           targetElements[idx] = updated;
         }
         room.lastActiveAt = Date.now();
-        scheduleSaveToDisk();
+        scheduleSaveToDisk(room);
         socket.to(room.id).emit('element-update', {
           ...cleanPatch,
           boardId,
@@ -1456,7 +1475,7 @@ export async function startServer(options: StartServerOptions = {}) {
 
       if (appliedUpdates.length > 0) {
         room.lastActiveAt = Date.now();
-        scheduleSaveToDisk();
+        scheduleSaveToDisk(room);
         socket.to(room.id).emit('elements-batch-updated', {
           boardId,
           updates: appliedUpdates,
@@ -1492,7 +1511,7 @@ export async function startServer(options: StartServerOptions = {}) {
         }
         if (changed) {
           room.lastActiveAt = Date.now();
-          scheduleSaveToDisk();
+          scheduleSaveToDisk(room);
           broadcastBreakoutSync(room);
         }
         return;
@@ -1514,7 +1533,7 @@ export async function startServer(options: StartServerOptions = {}) {
 
       if (added.length > 0) {
         room.lastActiveAt = Date.now();
-        scheduleSaveToDisk();
+        scheduleSaveToDisk(room);
         socket.to(room.id).emit('elements-batch-added', { boardId, elements: added });
       }
     });
@@ -1543,7 +1562,7 @@ export async function startServer(options: StartServerOptions = {}) {
 
       if (removedIds.length > 0) {
         room.lastActiveAt = Date.now();
-        scheduleSaveToDisk();
+        scheduleSaveToDisk(room);
         socket.to(room.id).emit('elements-batch-removed', { boardId, ids: removedIds });
       }
     });
@@ -1566,7 +1585,7 @@ export async function startServer(options: StartServerOptions = {}) {
         if (el.userId === meta.userId || senderRecord?.isTeacher) {
           targetElements.splice(idx, 1);
           room.lastActiveAt = Date.now();
-          scheduleSaveToDisk();
+          scheduleSaveToDisk(room);
           socket.to(room.id).emit('element-removed', { id, boardId });
         }
       }
@@ -1598,7 +1617,7 @@ export async function startServer(options: StartServerOptions = {}) {
         if (targetElements[i].userId === userId) {
           const removed = targetElements.splice(i, 1)[0];
           room.lastActiveAt = Date.now();
-          scheduleSaveToDisk();
+          scheduleSaveToDisk(room);
           io.to(room.id).emit('element-removed', { id: removed.id, boardId });
           break;
         }
@@ -1635,7 +1654,7 @@ export async function startServer(options: StartServerOptions = {}) {
       }
 
       room.lastActiveAt = Date.now();
-      scheduleSaveToDisk(true);
+      scheduleSaveToDisk(room, true);
     });
 
     socket.on('teacher:set-lock', (isLocked: boolean) => {
@@ -1649,7 +1668,7 @@ export async function startServer(options: StartServerOptions = {}) {
 
       room.isCanvasLocked = Boolean(isLocked);
       room.lastActiveAt = Date.now();
-      scheduleSaveToDisk(true);
+      scheduleSaveToDisk(room, true);
       broadcastRoomSettings(room);
     });
 
@@ -1726,7 +1745,7 @@ export async function startServer(options: StartServerOptions = {}) {
         }
 
         room.lastActiveAt = now;
-        scheduleSaveToDisk();
+        scheduleSaveToDisk(room);
         broadcastRoomSettings(room);
         callback?.({ ok: true, timer: room.timer });
       }
@@ -1754,7 +1773,7 @@ export async function startServer(options: StartServerOptions = {}) {
       }
 
       room.lastActiveAt = Date.now();
-      scheduleSaveToDisk(true);
+      scheduleSaveToDisk(room, true);
     });
 
     socket.on('disconnect', () => {
@@ -1830,7 +1849,7 @@ export async function startServer(options: StartServerOptions = {}) {
   }
 
   async function close() {
-    clearInterval(hourlyFlushInterval);
+    clearInterval(housekeepingInterval);
     clearInterval(timerTickInterval);
     if (saveTimeout) {
       clearTimeout(saveTimeout);
@@ -1848,9 +1867,8 @@ export async function startServer(options: StartServerOptions = {}) {
         });
       });
     }
-    if (activeSavePromise) {
-      await activeSavePromise;
-    }
+    flushRoomsToDisk();
+    store.close();
   }
 
   return {
