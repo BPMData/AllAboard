@@ -22,11 +22,14 @@ import {
   resolveBreakoutAction,
   uniqueStrings,
 } from './src/lib/breakoutRounds.ts';
+import { RoomStore, internBackground, isValidAssetHash } from './roomStore.ts';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const ROOM_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 days inactivity cleanup
+const IDLE_UNLOAD_MS = 15 * 60 * 1000;
+const HOUSEKEEPING_INTERVAL_MS = 5 * 60 * 1000;
 
 export interface StartServerOptions {
   port?: number;
@@ -108,6 +111,8 @@ interface SerializedRoom {
 export async function startServer(options: StartServerOptions = {}) {
   const dataDir = options.dataDir || process.env.DATA_DIR || path.join(process.cwd(), '.data');
   const storeFile = path.join(dataDir, 'rooms-store.json');
+  const legacyStoreFile = path.join(dataDir, 'rooms-store.json');
+  const store = new RoomStore(path.join(dataDir, 'allaboard.db'));
   const portToBind = options.port !== undefined ? options.port : Number(process.env.PORT) || 3000;
   const hostToBind = options.host || '0.0.0.0';
 
@@ -122,6 +127,18 @@ export async function startServer(options: StartServerOptions = {}) {
 
   app.get('/healthz', (_req, res) => {
     res.status(200).json({ status: 'ok' });
+  });
+
+  app.get('/api/assets/:hash', (req, res) => {
+    const hash = req.params.hash;
+    const asset = isValidAssetHash(hash) ? store.getAsset(hash) : null;
+    if (!asset) {
+      res.status(404).end();
+      return;
+    }
+    res.setHeader('Content-Type', asset.mime);
+    res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+    res.end(Buffer.from(asset.bytes));
   });
 
   const rooms: Map<string, RoomState> = new Map();
@@ -1838,6 +1855,7 @@ export async function startServer(options: StartServerOptions = {}) {
 
   return {
     app,
+    store,
     httpServer,
     io,
     port: actualPort,
