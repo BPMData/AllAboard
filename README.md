@@ -54,6 +54,12 @@ npm run dev
 
 Open `http://localhost:3000` in your browser. Share the room URL or in-app **Invite QR Code** with students to join.
 
+## Storage
+
+Room state and worksheet assets are stored in `$DATA_DIR/allaboard.db` (default `.data/allaboard.db`). SQLite uses WAL mode, so `-wal` and `-shm` files may also be present. Stop the server before copying the `.db` file for backup. A legacy `rooms-store.json` is migrated automatically on first start and renamed `rooms-store.json.migrated-<timestamp>`.
+
+In production, mount a persistent volume at `DATA_DIR` so redeploys do not erase the database. Running multiple server processes against the same database is not supported.
+
 ## Testing
 
 ```bash
@@ -72,4 +78,4 @@ npm run test:e2e
 
 ## Tech Stack
 - **Frontend**: React 19, TypeScript, Tailwind CSS, Konva / React-Konva, PDF.js (`pdfjs-dist`), Lucide Icons
-- **Backend**: Node.js, Express, Socket.IO (WebSocket rooms with disk-backed JSON persistence)
+- **Backend**: Node.js, Express, Socket.IO (WebSocket rooms with SQLite persistence)
