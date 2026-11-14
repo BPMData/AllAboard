@@ -14,6 +14,13 @@ import {
   TimerControlPayload,
 } from './types';
 import { findStudentBoardId } from './lib/breakoutRounds';
+import {
+  DEFAULT_CHAT_WIDTH,
+  CHAT_STORAGE_KEYS,
+  clampChatWidth,
+  readStoredChatWidth,
+  readStoredChatHidden,
+} from './lib/chatSidebar';
 import Chat, { getUserColor } from './components/Chat';
 import Canvas from './components/Canvas';
 import { motion } from 'motion/react';
@@ -96,6 +103,57 @@ export default function App() {
     isJoinedRef.current = isJoined;
   }, [isJoined]);
 
+  // Resizable & Collapsible Chat Sidebar State
+  const [chatWidth, setChatWidth] = useState<number>(() => {
+    try {
+      return readStoredChatWidth(
+        typeof window !== 'undefined' ? window.localStorage : null,
+        typeof window !== 'undefined' ? window.innerWidth : undefined
+      );
+    } catch {
+      return DEFAULT_CHAT_WIDTH;
+    }
+  });
+  const [isChatHidden, setIsChatHidden] = useState<boolean>(() => {
+    try {
+      return readStoredChatHidden(typeof window !== 'undefined' ? window.localStorage : null);
+    } catch {
+      return false;
+    }
+  });
+  const [unreadChatCount, setUnreadChatCount] = useState<number>(0);
+
+  const isChatHiddenRef = useRef<boolean>(isChatHidden);
+  const seenChatIdsRef = useRef<Set<string>>(new Set());
+
+  useEffect(() => {
+    isChatHiddenRef.current = isChatHidden;
+    if (!isChatHidden) {
+      setUnreadChatCount(0);
+    }
+    try {
+      localStorage.setItem(CHAT_STORAGE_KEYS.HIDDEN, isChatHidden ? 'true' : 'false');
+    } catch {
+      // Ignore
+    }
+  }, [isChatHidden]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(CHAT_STORAGE_KEYS.WIDTH, String(chatWidth));
+    } catch {
+      // Ignore
+    }
+  }, [chatWidth]);
+
+  useEffect(() => {
+    const handleViewportResize = () => {
+      setChatWidth((prev) => clampChatWidth(prev, window.innerWidth));
+    };
+    window.addEventListener('resize', handleViewportResize);
+    return () => window.removeEventListener('resize', handleViewportResize);
+  }, []);
+
   // Main Board State + Sub-Boards State
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [elements, setElements] = useState<CanvasElement[]>([]);
@@ -134,6 +192,15 @@ export default function App() {
     }
     return findStudentBoardId(subBoards, breakoutConfig, userId);
   }, [isTeacher, teacherSelectedBoardId, roomSettings.breakoutConfig, subBoards, userId]);
+
+  const activeBoardIdRef = useRef<string>(activeBoardId);
+  const chatScopeRef = useRef<'unified' | 'board'>(breakoutConfig.chatScope || 'unified');
+  useEffect(() => {
+    activeBoardIdRef.current = activeBoardId;
+  }, [activeBoardId]);
+  useEffect(() => {
+    chatScopeRef.current = breakoutConfig.chatScope || 'unified';
+  }, [breakoutConfig.chatScope]);
 
   const activeBoardTitle = useMemo(() => {
     if (activeBoardId === 'main') return 'Main Class Board';
@@ -218,14 +285,25 @@ export default function App() {
         assignedName,
         isNameLocked: initNameLocked,
       }) => {
-        if (Array.isArray(initMsgs)) setMessages(initMsgs);
+        const nextSeen = new Set<string>();
+        if (Array.isArray(initMsgs)) {
+          setMessages(initMsgs);
+          for (const m of initMsgs) nextSeen.add(m.id);
+        }
         if (Array.isArray(initEls)) setElements(initEls);
         setBackground(initBg || null);
         if (initSubBoards && typeof initSubBoards === 'object') {
           setSubBoards(initSubBoards);
+          for (const sb of Object.values(initSubBoards) as SubBoardData[]) {
+            if (Array.isArray(sb?.messages)) {
+              for (const m of sb.messages) nextSeen.add(m.id);
+            }
+          }
         } else {
           setSubBoards({});
         }
+        seenChatIdsRef.current = nextSeen;
+        setUnreadChatCount(0);
         if (Array.isArray(initUsers)) setUsers(initUsers);
         if (initRoom) setRoomSettings(initRoom);
         if (typeof verifiedTeacher === 'boolean') setIsTeacher(verifiedTeacher);
@@ -417,6 +495,17 @@ export default function App() {
           if (prev.some((m) => m.id === msg.id)) return prev;
           return [...prev, msg];
         });
+      }
+
+      if (!seenChatIdsRef.current.has(msg.id)) {
+        seenChatIdsRef.current.add(msg.id);
+        const isCurrentChatStream =
+          chatScopeRef.current === 'board' && activeBoardIdRef.current !== 'main'
+            ? targetBoardId === activeBoardIdRef.current
+            : targetBoardId === 'main';
+        if (isChatHiddenRef.current && msg.userId !== userId && isCurrentChatStream) {
+          setUnreadChatCount((c) => c + 1);
+        }
       }
     });
 
@@ -1292,30 +1381,43 @@ export default function App() {
 
   return (
     <div className="flex h-screen bg-slate-100 overflow-hidden font-sans">
-      <Chat
-        roomId={roomId}
-        hasTeacherPin={roomSettings.hasTeacherPin}
-        messages={activeMessages}
-        users={users}
-        elements={activeElements}
-        onSendMessage={sendMessage}
-        userId={userId}
-        userName={userName}
-        userColor={userColor}
-        isTeacher={isTeacher}
-        isNameLocked={isNameLocked}
-        bannedUsers={roomSettings.bannedUsers || []}
-        onAuthenticateTeacher={handleAuthenticateTeacher}
-        onStepDownTeacher={handleStepDownTeacher}
-        onCreateNewRoom={handleCreateNewRoom}
-        onSwitchRoom={handleSwitchRoom}
-        onUpdateName={handleUpdateName}
-        onClearUserDrawings={handleClearUserDrawings}
-        onTeacherRenameUser={handleTeacherRenameUser}
-        onTeacherDeleteMessage={handleTeacherDeleteMessage}
-        onTeacherKickUser={handleTeacherKickUser}
-        onTeacherUnbanUser={handleTeacherUnbanUser}
-      />
+      {!isChatHidden && (
+        <Chat
+          roomId={roomId}
+          hasTeacherPin={roomSettings.hasTeacherPin}
+          messages={activeMessages}
+          users={users}
+          elements={activeElements}
+          onSendMessage={sendMessage}
+          userId={userId}
+          userName={userName}
+          userColor={userColor}
+          isTeacher={isTeacher}
+          isNameLocked={isNameLocked}
+          bannedUsers={roomSettings.bannedUsers || []}
+          onAuthenticateTeacher={handleAuthenticateTeacher}
+          onStepDownTeacher={handleStepDownTeacher}
+          onCreateNewRoom={handleCreateNewRoom}
+          onSwitchRoom={handleSwitchRoom}
+          onUpdateName={handleUpdateName}
+          onClearUserDrawings={handleClearUserDrawings}
+          onTeacherRenameUser={handleTeacherRenameUser}
+          onTeacherDeleteMessage={handleTeacherDeleteMessage}
+          onTeacherKickUser={handleTeacherKickUser}
+          onTeacherUnbanUser={handleTeacherUnbanUser}
+          width={chatWidth}
+          onWidthChange={setChatWidth}
+          onResetWidth={() =>
+            setChatWidth(
+              clampChatWidth(
+                DEFAULT_CHAT_WIDTH,
+                typeof window !== 'undefined' ? window.innerWidth : undefined
+              )
+            )
+          }
+          onHideChat={() => setIsChatHidden(true)}
+        />
+      )}
 
       <div className="flex-1 flex flex-col min-w-0">
         <Canvas
@@ -1357,6 +1459,9 @@ export default function App() {
           fullMainElements={elements}
           fullMainMessages={messages}
           fullMainBackground={background}
+          isChatHidden={isChatHidden}
+          unreadChatCount={unreadChatCount}
+          onShowChat={() => setIsChatHidden(false)}
         />
       </div>
     </div>
