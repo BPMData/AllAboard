@@ -10,6 +10,7 @@ import {
   RoomBackground,
   RemoteCursor,
   ImportRestoreMode,
+  PendingSnapshotData,
   RoomSnapshot,
   BreakoutConfig,
   BreakoutGroupDraft,
@@ -30,15 +31,21 @@ import {
 } from '../lib/breakoutRounds';
 import {
   processWorksheetFile,
+  getPdfPageCount,
+  isPdfFile,
+  MAX_PDF_PAGES,
   BUILT_IN_TEMPLATES,
   BuiltInTemplateId,
 } from '../lib/worksheetLoader';
+import type { PageRange } from '../lib/pageRange';
+import { parseSnapshotText, snapshotFileName } from '../lib/roomSnapshot';
 import { exportAllBoardsToPdf } from '../lib/batchPdfExport';
 import {
   LiveGridOverview,
   BreakoutManagerModal,
   WorksheetTemplateModal,
   RestoreSnapshotModal,
+  PdfPageRangeModal,
 } from './CanvasModals';
 import {
   NOTE_FONT,
@@ -714,6 +721,7 @@ export default function Canvas({
   const worksheetInputRef = useRef<HTMLInputElement>(null);
   const [isUploadingWorksheet, setIsUploadingWorksheet] = useState(false);
   const [worksheetError, setWorksheetError] = useState<string | null>(null);
+  const [pendingPdfRange, setPendingPdfRange] = useState<{ file: File; totalPages: number } | null>(null);
   const [showTemplateModal, setShowTemplateModal] = useState(false);
   const [selectedTemplateId, setSelectedTemplateId] = useState<BuiltInTemplateId>('checkin-columns');
   const [templatePromptText, setTemplatePromptText] = useState(
@@ -885,18 +893,7 @@ export default function Canvas({
 
   // JSON Import Modal States (Teacher Only)
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const [pendingSnapshot, setPendingSnapshot] = useState<{
-    fileName: string;
-    roomId: string;
-    exportedAt?: number;
-    exportedBy?: string;
-    elements: CanvasElement[];
-    messages: ChatMessage[];
-    background?: RoomBackground | null;
-    subBoards?: Record<string, SubBoardData>;
-    breakoutConfig?: BreakoutConfig;
-    assets?: Record<string, string>;
-  } | null>(null);
+  const [pendingSnapshot, setPendingSnapshot] = useState<PendingSnapshotData | null>(null);
   const [importMode, setImportMode] = useState<ImportRestoreMode>('replace');
   const [importError, setImportError] = useState<string | null>(null);
   const [isImporting, setIsImporting] = useState(false);
@@ -1899,23 +1896,19 @@ export default function Canvas({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeBoardId]);
 
-  const handleWorksheetFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    e.target.value = '';
-
+  const importWorksheetFile = async (file: File, range?: PageRange) => {
     setIsUploadingWorksheet(true);
     setWorksheetError(null);
 
     try {
-      const pages = await processWorksheetFile(file);
+      const pages = await processWorksheetFile(file, range);
       const firstPage = pages[0];
       const startX = firstPage ? Math.round(-firstPage.width / 2) : -400;
       const startY = firstPage ? Math.round(-firstPage.height / 2) : -300;
 
       const newBg: RoomBackground = {
         id: 'bg_' + Math.random().toString(36).substring(2, 10),
-        fileName: file.name,
+        fileName: range ? `${file.name} (pp. ${range.first}–${range.last})` : file.name,
         pages,
         x: startX,
         y: startY,
@@ -1935,6 +1928,29 @@ export default function Canvas({
     } finally {
       setIsUploadingWorksheet(false);
     }
+  };
+
+  const startWorksheetImport = async (file: File) => {
+    setWorksheetError(null);
+    if (isPdfFile(file)) {
+      try {
+        const total = await getPdfPageCount(file);
+        if (total > MAX_PDF_PAGES) {
+          setPendingPdfRange({ file, totalPages: total });
+          return;
+        }
+      } catch {
+        /* fall through; importWorksheetFile reports the error */
+      }
+    }
+    await importWorksheetFile(file);
+  };
+
+  const handleWorksheetFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    e.target.value = '';
+    await startWorksheetImport(file);
   };
 
   const handleExportPNG = () => {
@@ -1965,8 +1981,7 @@ export default function Canvas({
     document.body.removeChild(link);
   };
 
-  // Export complete Room Snapshot (.json) including main board + all breakout/individual subBoards
-  const handleExportJSON = async () => {
+  const buildSnapshotJson = async (): Promise<{ json: string; fileName: string }> => {
     const assetUrls = new Set<string>();
     const collect = (bg?: RoomBackground | null) => {
       for (const p of bg?.pages || []) {
@@ -1999,17 +2014,32 @@ export default function Canvas({
       breakoutConfig,
     };
 
-    const jsonString = JSON.stringify(snapshot, null, 2);
-    const blob = new Blob([jsonString], { type: 'application/json' });
+    return {
+      json: JSON.stringify(snapshot, null, 2),
+      fileName: snapshotFileName(roomId),
+    };
+  };
+
+  // Export complete Room Snapshot (.json) including main board + all breakout/individual subBoards
+  const handleExportJSON = async () => {
+    const { json, fileName } = await buildSnapshotJson();
+    const blob = new Blob([json], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
 
     const link = document.createElement('a');
-    link.download = `allaboard-room-${roomId}-${new Date().toISOString().slice(0, 10)}.json`;
+    link.download = fileName;
     link.href = url;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
     URL.revokeObjectURL(url);
+  };
+
+  const openSnapshotText = (fileName: string, text: string) => {
+    const { pending, error } = parseSnapshotText(fileName, text, roomId);
+    setImportError(error);
+    setPendingSnapshot(pending);
+    if (!error) setImportMode('replace');
   };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -2019,62 +2049,7 @@ export default function Canvas({
     setImportError(null);
     const reader = new FileReader();
     reader.onload = () => {
-      try {
-        const parsed = JSON.parse(String(reader.result || '{}'));
-        if (
-          !parsed ||
-          (!Array.isArray(parsed.elements) &&
-            !Array.isArray(parsed.messages) &&
-            !parsed.background &&
-            !parsed.subBoards)
-        ) {
-          setImportError(
-            'This JSON file does not contain valid AllAboard room data.'
-          );
-          setPendingSnapshot({
-            fileName: file.name,
-            roomId: roomId,
-            elements: [],
-            messages: [],
-            background: null,
-          });
-          return;
-        }
-
-        const safeElements: CanvasElement[] = Array.isArray(parsed.elements)
-          ? parsed.elements.filter(
-              (el: any) => el && typeof el.id === 'string' && typeof el.tool === 'string'
-            )
-          : [];
-        const safeMessages: ChatMessage[] = Array.isArray(parsed.messages)
-          ? parsed.messages.filter(
-              (m: any) => m && typeof m.id === 'string' && typeof m.text === 'string'
-            )
-          : [];
-
-        setPendingSnapshot({
-          fileName: file.name,
-          roomId: parsed.roomId || roomId,
-          exportedAt: parsed.exportedAt,
-          exportedBy: parsed.exportedBy,
-          elements: safeElements,
-          messages: safeMessages,
-          background: parsed.background || null,
-          subBoards: parsed.subBoards,
-          breakoutConfig: parsed.breakoutConfig,
-          assets: parsed.assets && typeof parsed.assets === 'object' ? parsed.assets : undefined,
-        });
-        setImportMode('replace');
-      } catch {
-        setImportError('Could not parse JSON file. Make sure it is a valid .json room snapshot.');
-        setPendingSnapshot({
-          fileName: file.name,
-          roomId: roomId,
-          elements: [],
-          messages: [],
-          background: null,
-        });
-      }
+      openSnapshotText(file.name, String(reader.result || ''));
     };
     reader.readAsText(file);
     e.target.value = '';
@@ -4514,6 +4489,21 @@ export default function Canvas({
             }
           }}
           onClose={() => setShowTemplateModal(false)}
+        />
+      )}
+
+      {/* Teacher PDF Page Range Modal */}
+      {pendingPdfRange && (
+        <PdfPageRangeModal
+          fileName={pendingPdfRange.file.name}
+          totalPages={pendingPdfRange.totalPages}
+          maxPages={MAX_PDF_PAGES}
+          onConfirm={(range) => {
+            const { file } = pendingPdfRange;
+            setPendingPdfRange(null);
+            void importWorksheetFile(file, range);
+          }}
+          onCancel={() => setPendingPdfRange(null)}
         />
       )}
 

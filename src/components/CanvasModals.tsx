@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
   BreakoutConfig,
   BreakoutGroupDraft,
@@ -8,6 +8,7 @@ import {
   ChatMessage,
   ConfigureBreakoutPayload,
   ImportRestoreMode,
+  PendingSnapshotData,
   RoomBackground,
   SubBoardData,
   User,
@@ -17,21 +18,11 @@ import {
   BuiltInTemplateId,
   generateTemplateBackground,
 } from '../lib/worksheetLoader';
+import { clampPageRange, type PageRange } from '../lib/pageRange';
 import { AlertCircle, Check, Download, Shuffle, X } from 'lucide-react';
 import { cn } from '../lib/utils';
 
-export interface PendingSnapshotData {
-  fileName: string;
-  roomId: string;
-  exportedAt?: number;
-  exportedBy?: string;
-  elements: CanvasElement[];
-  messages: ChatMessage[];
-  background?: RoomBackground | null;
-  subBoards?: Record<string, SubBoardData>;
-  breakoutConfig?: BreakoutConfig;
-  assets?: Record<string, string>;
-}
+export type { PendingSnapshotData };
 
 interface LiveGridOverviewProps {
   activeBoardId: string;
@@ -1060,6 +1051,121 @@ export function RestoreSnapshotModal({
               {isImporting ? 'Restoring...' : 'Restore Room Snapshot'}
             </button>
           )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+interface PdfPageRangeModalProps {
+  fileName: string;
+  totalPages: number;
+  maxPages: number;
+  onConfirm: (range: PageRange) => void;
+  onCancel: () => void;
+}
+
+/**
+ * Teacher modal for picking up to `maxPages` pages when importing a long PDF worksheet.
+ */
+export function PdfPageRangeModal({
+  fileName,
+  totalPages,
+  maxPages,
+  onConfirm,
+  onCancel,
+}: PdfPageRangeModalProps) {
+  const [firstText, setFirstText] = useState('1');
+  const [lastText, setLastText] = useState(String(Math.min(maxPages, totalPages)));
+
+  const clamped = clampPageRange(Number(firstText), Number(lastText), totalPages, maxPages);
+
+  const handleBlur = () => {
+    const next = clampPageRange(Number(firstText), Number(lastText), totalPages, maxPages);
+    setFirstText(String(next.first));
+    setLastText(String(next.last));
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-xs flex items-center justify-center p-4 select-text">
+      <div className="bg-white border border-slate-200 rounded-2xl shadow-xl w-full max-w-md p-6 space-y-5">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <h3 className="font-display text-lg font-bold text-slate-900">
+              Choose Pages to Import
+            </h3>
+            <p className="text-xs text-slate-500 mt-1">
+              "{fileName}" has {totalPages} pages. AllAboard imports up to {maxPages} at a time.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={onCancel}
+            className="p-1 text-slate-400 hover:text-slate-700 rounded-lg cursor-pointer"
+          >
+            <X size={18} />
+          </button>
+        </div>
+
+        <div className="space-y-3">
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label
+                htmlFor="pdf-range-from"
+                className="block text-xs font-semibold text-slate-700 mb-1.5"
+              >
+                From
+              </label>
+              <input
+                id="pdf-range-from"
+                type="number"
+                min={1}
+                max={totalPages}
+                value={firstText}
+                onChange={(e) => setFirstText(e.target.value)}
+                onBlur={handleBlur}
+                className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-sm text-slate-900 focus:bg-white focus:border-blue-600 focus:outline-none"
+              />
+            </div>
+            <div>
+              <label
+                htmlFor="pdf-range-to"
+                className="block text-xs font-semibold text-slate-700 mb-1.5"
+              >
+                To
+              </label>
+              <input
+                id="pdf-range-to"
+                type="number"
+                min={1}
+                max={totalPages}
+                value={lastText}
+                onChange={(e) => setLastText(e.target.value)}
+                onBlur={handleBlur}
+                className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-sm text-slate-900 focus:bg-white focus:border-blue-600 focus:outline-none"
+              />
+            </div>
+          </div>
+          <p className="text-xs text-slate-600">
+            Importing pages {clamped.first}&ndash;{clamped.last}.
+          </p>
+        </div>
+
+        <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
+          <button
+            type="button"
+            onClick={onCancel}
+            className="px-4 py-2 rounded-lg text-xs font-medium text-slate-600 hover:bg-slate-100 transition-colors cursor-pointer"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={() => onConfirm(clampPageRange(Number(firstText), Number(lastText), totalPages, maxPages))}
+            className="px-4 py-2 rounded-lg text-xs font-semibold bg-blue-600 text-white hover:bg-blue-500 transition-colors cursor-pointer"
+          >
+            Import pages
+          </button>
         </div>
       </div>
     </div>
