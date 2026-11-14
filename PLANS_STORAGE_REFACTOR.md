@@ -35,8 +35,9 @@ gigabytes of base64 over the network. We fix both problems at once.
 5. A `dirtyRooms: Set<string>` tracks which rooms changed. The flush writes only those.
    `scheduleSaveToDisk` now takes the room: `scheduleSaveToDisk(room)` /
    `scheduleSaveToDisk(room, true)`.
-6. Rooms are **lazy-loaded** from SQLite on join (`getOrCreateRoom`) and **unloaded** from RAM
-   after 15 minutes with no connected sockets. Nothing is loaded at boot.
+6. Rooms are **lazy-loaded** from SQLite by `findRoom()` (used by `getOrCreateRoom` and the lobby's
+   `getRoomAvailability`) and **unloaded** from RAM after 15 minutes with no connected sockets.
+   Nothing is loaded at boot.
 
 ### 0.3 Where base64 is converted ("interned")
 
@@ -68,7 +69,7 @@ broadcast**. There are exactly these entry points, plus one safety net:
 |---|---|---|
 | `roomStore.ts` (**new**, repo root next to `server.ts`) | 1 | SQLite store + asset helpers |
 | `tests/roomStore.test.ts` (**new**) | 1 | Unit tests for the store |
-| `server.ts` | 2–3 | Store wiring, asset route, lazy load, dirty-room flush, housekeeping, interning, legacy migration |
+| `server.ts` | 2–3 | Store wiring, asset route, lazy load (incl. lobby `check-room`), dirty-room flush, housekeeping, interning, legacy migration |
 | `tests/server.test.ts` | 4 | Update two file-path assertions, add storage tests |
 | `src/types.ts` | 5 | `RoomSnapshot` v2 (`assets` map), doc comment on `BackgroundPage.dataUrl` |
 | `src/components/Canvas.tsx` | 5 | Export embeds assets; import passes `assets` through |
@@ -79,12 +80,12 @@ broadcast**. There are exactly these entry points, plus one safety net:
 ### 0.6 Baseline
 
 Before you start, run `npm run lint && npm test`. At the time of writing, both pass
-(**62 tests**). If they don't pass, stop and report.
+(**64 tests**). If they don't pass, stop and report.
 
 **Pre-validation:** Phases 1–3 of this plan were applied verbatim to a scratch copy of the
-repo before it was handed off. Result: `tsc --noEmit` is clean, all 62 existing tests plus the
-6 Phase 1 tests pass, and test S3 (breakout copies share one asset; asset route returns 200/404)
-passes. Phases 4.2 (other S-tests) and 5 (client) were **not** pre-run. You need Node **≥ 22.13** (the repo
+repo before it was handed off. Result: `tsc --noEmit` is clean, all 64 existing tests plus the
+6 Phase 1 tests pass, and tests S3 (breakout copies share one asset; asset route 200/404) and
+S7 (lobby sees an unloaded room) pass. The other S-tests and Phase 5 (client) were **not** pre-run. You need Node **≥ 22.13** (the repo
 was checked on 22.23). `node:sqlite` prints a one-line `ExperimentalWarning` on start.
 That is expected. Do not try to suppress it.
 
@@ -381,7 +382,7 @@ describe('RoomStore', () => {
 });
 ```
 
-**Checkpoint 1:** `npm run lint && npm test` → 68 tests pass (62 + 6).
+**Checkpoint 1:** `npm run lint && npm test` → 70 tests pass (64 + 6).
 
 ---
 
@@ -435,7 +436,7 @@ bottom of `startServer`. Putting it next to `/healthz` guarantees that.
 
 Add `store,` to the returned object so tests can inspect it.
 
-**Checkpoint 2:** `npm run lint && npm test` → 68 pass. (Nothing uses the store yet except the route.)
+**Checkpoint 2:** `npm run lint && npm test` → 70 pass. (Nothing uses the store yet except the route.)
 
 ---
 
@@ -573,31 +574,50 @@ of the old `if (room.elements.length > 0 || …)` condition. Keep both exactly e
   }
 ```
 
-### 3.5 Lazy loading in `getOrCreateRoom` (~line 337)
+### 3.5 Lazy loading: `findRoom`, `getOrCreateRoom`, `getRoomAvailability`
 
-Replace the first three lines of the body:
+Add this helper directly **above** `getOrCreateRoom` (~line 337):
 
 ```ts
-    const roomId = normalizeRoomId(rawRoomId);
-    let room = rooms.get(roomId);
-    if (!room) {
+  /** In-memory room, else hydrate it from SQLite (and cache it). Never creates a new room. */
+  function findRoom(roomId: string): RoomState | null {
+    const inMemory = rooms.get(roomId);
+    if (inMemory) return inMemory;
+    const stored = store.loadRoom<SerializedRoom>(roomId);
+    if (!stored) return null;
+    const restored = hydrateRoom({ ...stored.state, id: roomId, lastActiveAt: stored.lastActiveAt });
+    if (!restored) {
+      store.deleteRoom(roomId); // expired
+      return null;
+    }
+    rooms.set(roomId, restored);
+    return restored;
+  }
 ```
-with:
+
+In `getOrCreateRoom`, change the one line
 ```ts
-    const roomId = normalizeRoomId(rawRoomId);
     let room = rooms.get(roomId);
-    if (!room) {
-      const stored = store.loadRoom<SerializedRoom>(roomId);
-      if (stored) {
-        const restored = hydrateRoom({ ...stored.state, id: roomId, lastActiveAt: stored.lastActiveAt });
-        if (restored) {
-          rooms.set(roomId, restored);
-          return restored;
-        }
-        store.deleteRoom(roomId); // expired
-      }
 ```
-Leave the rest (the new-room object and `rooms.set`) unchanged.
+to
+```ts
+    let room = findRoom(roomId);
+```
+Leave the rest (the `if (!room) { … new room … }` block) unchanged.
+
+In `getRoomAvailability` (~line 508, used by the lobby's `check-room` event), change
+```ts
+    const room = rooms.get(normalizedId);
+```
+to
+```ts
+    const room = findRoom(normalizedId);
+```
+**This one matters.** Without it, a saved room that has been unloaded from RAM reports
+`exists: false` in the lobby, and the "room already exists" confirmation never shows.
+
+Every other `rooms.get(meta.roomId)` in socket handlers stays as is. Those run only after
+`join-room`, which already loaded the room through `getOrCreateRoom`.
 
 ### 3.6 Dirty-room flush (put these where the old flush functions were)
 
@@ -688,7 +708,7 @@ It must print **nothing**. `npm run lint` will also flag any call you missed.
 ```
 `store` is created at the top of `startServer` (2.3), before any handler can call this.
 
-**`teacher:set-background` (~line 812).** Replace:
+**`teacher:set-background` (~line 844).** Replace:
 ```ts
       const bgData = payload && 'background' in payload ? payload.background : payload;
 ```
@@ -697,7 +717,7 @@ with:
       const bgData = internBackground(store, payload && 'background' in payload ? payload.background : payload);
 ```
 
-**`teacher:update-background` (~line 841).** Replace the two merges:
+**`teacher:update-background` (~line 863).** Replace the two merges:
 ```ts
         room.background = { ...room.background, ...patch };
 ```
@@ -714,7 +734,7 @@ and
         sb.background = internBackground(store, { ...sb.background, ...patch });
 ```
 
-### 3.9 `teacher:import-room` (~line 857)
+### 3.9 `teacher:import-room` (~line 889)
 
 1. Add `assets: importedAssets,` to the destructured payload (next to `mode,`).
 2. Directly after the teacher-permission check (the `if (!callerRecord?.isTeacher) {…}` block), add:
@@ -822,8 +842,13 @@ Write these tests:
   `elements: []`, `messages: []`, `background: { ...worksheet(), pages: [{ dataUrl: u, width: 1, height: 1 }] }`,
   `assets: { [u]: PNG_1PX }`. Assert `ok: true`, `room-restored`'s `background.pages[0].dataUrl === u`,
   and `GET u` → 200.
+- **S7 – the lobby sees a saved room that is not in memory.** Teacher joins `lobby-room` and
+  runs `emitAck(teacher, 'teacher:auth', { pin: '4242' })` (the PIN is set by `teacher:auth`,
+  **not** by `join-room`). Then `await srv.flushRoomsToDiskAsync()`, disconnect, `await srv.close()`,
+  and restart on the same `tmpDir`. A probe socket joins a *different* room and emits `check-room`
+  `{ roomId: 'lobby-room' }`. Assert `exists === true` and `hasTeacherPin === true`.
 
-**Checkpoint 4:** `npm run lint && npm test` → all pass (68 + 6 = 74).
+**Checkpoint 4:** `npm run lint && npm test` → all pass (70 + 7 = 77).
 
 ---
 
@@ -898,7 +923,7 @@ Then:
 
 Add `assets?: Record<string, string>;` to `PendingSnapshotData` (~line 23).
 
-### 5.5 `src/App.tsx`: `handleTeacherImportRoom` (~line 823)
+### 5.5 `src/App.tsx`: `handleTeacherImportRoom` (~line 884)
 
 Add `assets?: Record<string, string>;` to the `snapshot` parameter type, and add
 `assets: snapshot.assets,` to the `teacher:import-room` emit payload.
