@@ -626,7 +626,7 @@ run `npx playwright install chromium` (once) and `npm run test:e2e`, which must 
 Replace the "Storage" section's production paragraph with:
 
 > In production on Cloud Run, local disk is wiped on cold starts and redeploys. Mount a Cloud
-> Storage bucket as a volume and set `BACKUP_DIR` to its mount path (e.g. `/mnt/backup`). Rooms
+> Storage bucket as a volume and set `BACKUP_DIR` to its mount path (e.g. `/backup`). Rooms
 > are copied there within ~10 s of changing (immediately on shutdown) and restored automatically
 > at startup. Keep **max instances = 1**: one server process must be the only writer. Leave
 > `DATA_DIR` unset (local disk); never point it at the bucket mount, because SQLite needs real
@@ -638,24 +638,28 @@ Replace the "Storage" section's production paragraph with:
 
 ## Phase 4: Cloud Run setup (**human, in the Google Cloud console**)
 
+> **Already done** on 2026-11-14: bucket `allaboard-data` mounted at `/backup` on `app-container`,
+> `BACKUP_DIR=/backup`, `PORT=3000`, service account has `roles/storage.objectUser`. After Phase 1–3
+> deploy, only the **Verify** step remains.
+
 The bucket can be mounted **before** Phases 1–3 deploy (the current code ignores it). `BACKUP_DIR`
 only takes effect once this code is deployed. **Nothing here needs code or keys.**
 
 1. **Mount a Cloud Storage volume** (Cloud Run → `allaboard` → Edit & deploy new revision →
    Containers → Volumes → Mount volume → Cloud Storage bucket):
-   - **Mount path:** `/mnt/backup`
+   - **Mount path:** `/backup` (mounted on **`app-container`**)
    - **Bucket:** Browse → create a new bucket: region **us-east1**, class **Standard**,
      **public access prevention on**, uniform access control.
    - **Read-only:** unchecked.
-   - **UID / GID:** the runtime user's IDs (see the walkthrough in the PR / chat). If they are
-     wrong, the logs say `BACKUP_DIR "/mnt/backup" is unusable` with `EACCES`.
+   - **Mount options:** `dir-mode` = `777`, `file-mode` = `666` (lets the non-root app user write).
    - Everything else: defaults.
 2. **Permission:** in the bucket → Permissions → Grant access → the service account shown on the
    Cloud Run service's **Security** tab → role **Storage Object User**.
-3. **Variables:** add `BACKUP_DIR` = `/mnt/backup`. Make sure `DATA_DIR` and `PORT` are **not** set.
+3. **Variables (on `app-container`, not the nginx ingress container):** add `BACKUP_DIR` = `/backup`.
+   Keep `PORT` = `3000`: nginx listens on 8080 and forwards to the app on 3000. Make sure `DATA_DIR` is **not** set.
 4. **Scaling:** confirm **max instances = 1**.
 5. **Verify** after deploying the code:
-   - Logs show `Backing up rooms to "/mnt/backup".` and `Restored N room(s) from backup.`
+   - Logs show `Backing up rooms to "/backup".` and `Restored N room(s) from backup.`
    - Draw in a room, deploy a new revision, and re-open the room: the drawing is still there.
    - The bucket browser shows `rooms/<roomId>.json.gz` and `assets/<hash>`.
 
