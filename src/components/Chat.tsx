@@ -16,9 +16,15 @@ import {
   UserX,
   Lock,
   RotateCcw,
+  PanelLeftClose,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '../lib/utils';
+import {
+  MIN_CHAT_WIDTH,
+  clampChatWidth,
+  getMaxChatWidth,
+} from '../lib/chatSidebar';
 
 interface ChatProps {
   roomId: string;
@@ -43,6 +49,10 @@ interface ChatProps {
   onTeacherDeleteMessage?: (messageId: string) => void;
   onTeacherKickUser?: (targetUserId: string, mode: 'kick' | 'ban', targetName?: string) => void;
   onTeacherUnbanUser?: (targetUserId: string) => void;
+  width: number;
+  onWidthChange: (nextWidth: number) => void;
+  onResetWidth: () => void;
+  onHideChat: () => void;
 }
 
 const USER_COLORS = [
@@ -81,12 +91,17 @@ export default function Chat({
   onTeacherDeleteMessage,
   onTeacherKickUser,
   onTeacherUnbanUser,
+  width,
+  onWidthChange,
+  onResetWidth,
+  onHideChat,
 }: ChatProps) {
   const [activeTab, setActiveTab] = useState<'chat' | 'roster'>('chat');
   const [inputText, setInputText] = useState('');
   const [isEditingName, setIsEditingName] = useState(false);
   const [nameDraft, setNameDraft] = useState(userName);
   const [confirmEraseUserId, setConfirmEraseUserId] = useState<string | null>(null);
+  const [isResizing, setIsResizing] = useState(false);
 
   // Teacher Moderation States (Force Rename & Kick/Ban Confirmation)
   const [renamingUserId, setRenamingUserId] = useState<string | null>(null);
@@ -103,6 +118,66 @@ export default function Chat({
   const [roomDraft, setRoomDraft] = useState(roomId);
 
   const scrollRef = useRef<HTMLDivElement>(null);
+  const dragStartXRef = useRef(0);
+  const dragStartWidthRef = useRef(width);
+  const resizeCleanupRef = useRef<(() => void) | null>(null);
+
+  useEffect(() => {
+    return () => {
+      resizeCleanupRef.current?.();
+    };
+  }, []);
+
+  const handleResizePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (e.pointerType === 'mouse' && e.button !== 0) return;
+    e.preventDefault();
+    e.stopPropagation();
+
+    resizeCleanupRef.current?.();
+    dragStartXRef.current = e.clientX;
+    dragStartWidthRef.current = width;
+    setIsResizing(true);
+
+    const handlePointerMove = (moveEvent: PointerEvent) => {
+      const delta = moveEvent.clientX - dragStartXRef.current;
+      onWidthChange(clampChatWidth(dragStartWidthRef.current + delta, window.innerWidth));
+    };
+
+    const handlePointerUp = () => {
+      setIsResizing(false);
+      window.removeEventListener('pointermove', handlePointerMove);
+      window.removeEventListener('pointerup', handlePointerUp);
+      window.removeEventListener('pointercancel', handlePointerUp);
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+      resizeCleanupRef.current = null;
+    };
+
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+    window.addEventListener('pointermove', handlePointerMove);
+    window.addEventListener('pointerup', handlePointerUp);
+    window.addEventListener('pointercancel', handlePointerUp);
+    resizeCleanupRef.current = handlePointerUp;
+  };
+
+  const handleResizeKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    const step = e.shiftKey ? 48 : 16;
+    const viewportW = typeof window !== 'undefined' ? window.innerWidth : undefined;
+    if (e.key === 'ArrowLeft') {
+      e.preventDefault();
+      onWidthChange(clampChatWidth(width - step, viewportW));
+    } else if (e.key === 'ArrowRight') {
+      e.preventDefault();
+      onWidthChange(clampChatWidth(width + step, viewportW));
+    } else if (e.key === 'Home') {
+      e.preventDefault();
+      onWidthChange(MIN_CHAT_WIDTH);
+    } else if (e.key === 'End') {
+      e.preventDefault();
+      onWidthChange(getMaxChatWidth(viewportW));
+    }
+  };
 
   useEffect(() => {
     setNameDraft(userName);
@@ -229,51 +304,67 @@ export default function Chat({
   };
 
   return (
-    <aside className="flex flex-col h-full bg-slate-50 border-r border-slate-200 w-80 shrink-0 select-text">
+    <aside
+      aria-label="Class chat sidebar"
+      style={{ width: `${width}px` }}
+      className="relative flex flex-col h-full bg-slate-50 border-r border-slate-200 shrink-0 select-text"
+    >
       {/* Top Studio Header, Room Switcher & PIN-Protected Teacher Control */}
       <div className="p-3.5 border-b border-slate-200 bg-white space-y-2.5">
-        <div className="flex items-center justify-between gap-2">
+        <div className="flex items-center justify-between gap-1.5">
           <span className="font-display font-bold text-base tracking-tight text-slate-900 whitespace-nowrap shrink-0">
             AllAboard
           </span>
 
-          {isTeacher ? (
+          <div className="flex items-center gap-1.5 min-w-0">
+            {isTeacher ? (
+              <button
+                type="button"
+                onClick={onStepDownTeacher}
+                className="flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium bg-amber-50 text-amber-800 border border-amber-200 hover:bg-amber-100 transition-colors whitespace-nowrap shrink-0 cursor-pointer"
+                title="Click to exit Teacher Mode"
+              >
+                <Shield size={13} className="text-amber-600" />
+                <span>Teacher Active</span>
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={() => {
+                  setShowPinPrompt(!showPinPrompt);
+                  setPinError(null);
+                }}
+                className={cn(
+                  "flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium transition-colors whitespace-nowrap shrink-0 cursor-pointer",
+                  showPinPrompt
+                    ? "bg-slate-900 text-white"
+                    : "bg-slate-100 text-slate-600 hover:text-slate-900"
+                )}
+                title={
+                  hasTeacherPin
+                    ? "Enter room Teacher PIN to unlock moderation"
+                    : "Set a Teacher PIN for this room"
+                }
+              >
+                <KeyRound size={12} />
+                <span>{hasTeacherPin ? 'Teacher PIN' : 'Claim Teacher'}</span>
+              </button>
+            )}
+
             <button
               type="button"
-              onClick={onStepDownTeacher}
-              className="flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium bg-amber-50 text-amber-800 border border-amber-200 hover:bg-amber-100 transition-colors whitespace-nowrap shrink-0 cursor-pointer"
-              title="Click to exit Teacher Mode"
+              onClick={onHideChat}
+              className="p-1.5 rounded-md text-slate-500 hover:text-slate-900 hover:bg-slate-100 transition-colors cursor-pointer shrink-0"
+              title="Hide chat sidebar to focus on drawing"
+              aria-label="Hide chat sidebar"
             >
-              <Shield size={13} className="text-amber-600" />
-              <span>Teacher Active</span>
+              <PanelLeftClose size={15} />
             </button>
-          ) : (
-            <button
-              type="button"
-              onClick={() => {
-                setShowPinPrompt(!showPinPrompt);
-                setPinError(null);
-              }}
-              className={cn(
-                "flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium transition-colors whitespace-nowrap shrink-0 cursor-pointer",
-                showPinPrompt
-                  ? "bg-slate-900 text-white"
-                  : "bg-slate-100 text-slate-600 hover:text-slate-900"
-              )}
-              title={
-                hasTeacherPin
-                  ? "Enter room Teacher PIN to unlock moderation"
-                  : "Set a Teacher PIN for this room"
-              }
-            >
-              <KeyRound size={12} />
-              <span>{hasTeacherPin ? 'Teacher PIN' : 'Claim Teacher'}</span>
-            </button>
-          )}
+          </div>
         </div>
 
         {/* Room Code Bar + Instant "New Room" Escape Hatch */}
-        <div className="flex items-center justify-between gap-1.5 px-2.5 py-1.5 rounded-lg bg-slate-50 border border-slate-200/80 text-xs">
+        <div className="flex flex-wrap items-center justify-between gap-1.5 px-2.5 py-1.5 rounded-lg bg-slate-50 border border-slate-200/80 text-xs">
           {isEditingRoom ? (
             <form onSubmit={handleRoomSubmit} className="flex items-center gap-1 flex-1">
               <input
@@ -302,12 +393,12 @@ export default function Chat({
             </form>
           ) : (
             <>
-              <div className="flex items-center gap-1.5 min-w-0">
-                <span className="text-slate-400">Room:</span>
+              <div className="flex items-center gap-1.5 min-w-0 flex-1">
+                <span className="text-slate-400 shrink-0">Room:</span>
                 <button
                   type="button"
                   onClick={() => setIsEditingRoom(true)}
-                  className="font-mono font-semibold text-slate-800 hover:text-blue-600 truncate max-w-[95px] cursor-pointer"
+                  className="font-mono font-semibold text-slate-800 hover:text-blue-600 truncate cursor-pointer"
                   title="Click to enter a different room code"
                 >
                   {roomId}
@@ -476,22 +567,22 @@ export default function Chat({
                           aria-hidden="true"
                         />
                         <span
-                          className="font-display font-semibold text-xs truncate max-w-[140px]"
+                          className="font-display font-semibold text-xs truncate min-w-0"
                           style={{ color: resolvedColor }}
                         >
                           {msg.userName}
                         </span>
                         {msg.isTeacher && (
-                          <span className="text-[11px] text-amber-700 font-medium">
+                          <span className="text-[11px] text-amber-700 font-medium shrink-0">
                             · Teacher
                           </span>
                         )}
                         {isMe && (
-                          <span className="text-[11px] text-slate-400">
+                          <span className="text-[11px] text-slate-400 shrink-0">
                             · You
                           </span>
                         )}
-                        <span className="text-[11px] text-slate-400 font-mono tabular-nums ml-auto">
+                        <span className="text-[11px] text-slate-400 font-mono tabular-nums ml-auto shrink-0">
                           {new Date(msg.timestamp).toLocaleTimeString([], {
                             hour: '2-digit',
                             minute: '2-digit',
@@ -501,7 +592,7 @@ export default function Chat({
                           <button
                             type="button"
                             onClick={() => onTeacherDeleteMessage(msg.id)}
-                            className="p-0.5 text-slate-400 hover:text-red-600 rounded transition-colors cursor-pointer"
+                            className="p-0.5 text-slate-400 hover:text-red-600 rounded transition-colors cursor-pointer shrink-0"
                             title="Delete chat message"
                             aria-label={`Delete message from ${msg.userName}`}
                           >
@@ -850,6 +941,43 @@ export default function Chat({
             )}
           </div>
         )}
+      </div>
+
+      {/* Right-Edge Drag & Keyboard Resize Handle */}
+      <div
+        role="separator"
+        aria-orientation="vertical"
+        aria-label="Resize chat sidebar"
+        aria-valuemin={MIN_CHAT_WIDTH}
+        aria-valuemax={getMaxChatWidth(typeof window !== 'undefined' ? window.innerWidth : undefined)}
+        aria-valuenow={width}
+        tabIndex={0}
+        onPointerDown={handleResizePointerDown}
+        onDoubleClick={onResetWidth}
+        onKeyDown={handleResizeKeyDown}
+        title="Drag to resize chat sidebar (double-click to reset)"
+        className={cn(
+          "group absolute top-0 right-0 bottom-0 w-2 translate-x-1/2 z-30 cursor-col-resize flex items-center justify-center touch-none focus:outline-none",
+          isResizing && "z-40"
+        )}
+      >
+        <div
+          className={cn(
+            "w-0.5 h-full transition-colors",
+            isResizing
+              ? "bg-blue-600"
+              : "bg-transparent group-hover:bg-blue-400 group-focus-visible:bg-blue-500"
+          )}
+        />
+        <div
+          aria-hidden="true"
+          className={cn(
+            "absolute top-1/2 -translate-y-1/2 w-1 h-8 rounded-full transition-all",
+            isResizing
+              ? "bg-blue-600 opacity-100 scale-y-110"
+              : "bg-slate-400/80 opacity-0 group-hover:opacity-100 group-focus-visible:opacity-100"
+          )}
+        />
       </div>
     </aside>
   );

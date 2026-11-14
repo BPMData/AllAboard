@@ -113,6 +113,7 @@ import {
   Pause,
   RotateCcw,
   FileSpreadsheet,
+  PanelLeftOpen,
 } from 'lucide-react';
 import { cn } from '../lib/utils';
 
@@ -170,6 +171,9 @@ interface CanvasProps {
   fullMainElements: CanvasElement[];
   fullMainMessages: ChatMessage[];
   fullMainBackground: RoomBackground | null;
+  isChatHidden?: boolean;
+  unreadChatCount?: number;
+  onShowChat?: () => void;
 }
 
 const STAMP_OPTIONS: Array<{ kind: StampKind; symbol: string; label: string }> = [
@@ -546,6 +550,9 @@ export default function Canvas({
   fullMainElements,
   fullMainMessages,
   fullMainBackground,
+  isChatHidden = false,
+  unreadChatCount = 0,
+  onShowChat,
 }: CanvasProps) {
   // OverBoard-style Separate Tool Settings & Memory
   const [penColor, setPenColor] = useState<string>(() => readLocalColor('allaboard-pen-color', '#111111'));
@@ -889,17 +896,31 @@ export default function Canvas({
     : tool;
 
   useEffect(() => {
+    const el = containerRef.current;
     const updateSize = () => {
       if (containerRef.current) {
-        setDimensions({
-          width: containerRef.current.offsetWidth,
-          height: containerRef.current.offsetHeight,
-        });
+        const w = containerRef.current.offsetWidth;
+        const h = containerRef.current.offsetHeight;
+        if (w > 0 && h > 0) {
+          setDimensions({ width: w, height: h });
+        }
       }
     };
     window.addEventListener('resize', updateSize);
     updateSize();
-    return () => window.removeEventListener('resize', updateSize);
+
+    let observer: ResizeObserver | null = null;
+    if (el && typeof ResizeObserver !== 'undefined') {
+      observer = new ResizeObserver(() => {
+        updateSize();
+      });
+      observer.observe(el);
+    }
+
+    return () => {
+      window.removeEventListener('resize', updateSize);
+      observer?.disconnect();
+    };
   }, []);
 
   // Close Highlighter/Cover, Hollow, or Grid radial popout menu when clicking outside or pressing Escape
@@ -3024,6 +3045,27 @@ export default function Canvas({
         data-keep-note="true"
         className="px-4 py-2 border-b border-slate-200 flex flex-wrap items-center gap-2.5 bg-white z-20"
       >
+        {isChatHidden && onShowChat && (
+          <button
+            type="button"
+            onClick={onShowChat}
+            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-slate-100 hover:bg-slate-200/80 text-slate-700 hover:text-slate-900 border border-slate-200/80 transition-colors whitespace-nowrap shrink-0 cursor-pointer"
+            title="Show chat sidebar"
+            aria-label="Show chat sidebar"
+          >
+            <PanelLeftOpen size={15} />
+            <span>Chat</span>
+            {unreadChatCount > 0 && (
+              <span
+                aria-label={`${unreadChatCount} unread messages`}
+                className="px-1.5 py-0.5 rounded-full bg-blue-600 text-white text-[10px] font-mono tabular-nums leading-none"
+              >
+                {unreadChatCount > 99 ? '99+' : unreadChatCount}
+              </span>
+            )}
+          </button>
+        )}
+
         {/* Navigation & Brush Tools */}
         <div className="flex items-center gap-0.5 bg-slate-100 p-1 rounded-lg border border-slate-200/80">
           <button

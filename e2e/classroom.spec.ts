@@ -158,3 +158,88 @@ test.describe('teacher and students', () => {
     await imposter.context.close();
   });
 });
+
+test.describe('chat sidebar', () => {
+  test('can be resized by dragging, reset on double-click, and persists across reload', async ({ page }) => {
+    const room = uniqueRoom('resize');
+    await joinRoom(page, room, 'Alex');
+
+    const sidebar = page.getByLabel('Class chat sidebar');
+    const handle = page.getByRole('separator', { name: 'Resize chat sidebar' });
+    const stage = page.locator('.konvajs-content canvas').first();
+
+    const initialSidebarBox = await sidebar.boundingBox();
+    const initialStageBox = await stage.boundingBox();
+    expect(initialSidebarBox?.width).toBe(320);
+
+    const handleBox = await handle.boundingBox();
+    expect(handleBox).not.toBeNull();
+    const startX = handleBox!.x + handleBox!.width / 2;
+    const startY = handleBox!.y + handleBox!.height / 2;
+
+    await page.mouse.move(startX, startY);
+    await page.mouse.down();
+    await page.mouse.move(startX + 140, startY, { steps: 10 });
+    await page.mouse.up();
+
+    await expect.poll(async () => Math.round((await sidebar.boundingBox())!.width)).toBe(460);
+    await expect.poll(async () => Math.round((await stage.boundingBox())!.width)).toBe(
+      Math.round(initialStageBox!.width - 140)
+    );
+
+    // Persists after reload
+    await page.reload();
+    await expect(page.getByPlaceholder('Message the class...')).toBeVisible();
+    await expect.poll(async () => Math.round((await sidebar.boundingBox())!.width)).toBe(460);
+
+    // Double-click resets back to 320px
+    const reloadedHandleBox = await handle.boundingBox();
+    await page.mouse.dblclick(
+      reloadedHandleBox!.x + reloadedHandleBox!.width / 2,
+      reloadedHandleBox!.y + reloadedHandleBox!.height / 2
+    );
+    await expect.poll(async () => Math.round((await sidebar.boundingBox())!.width)).toBe(320);
+  });
+
+  test('can be hidden with one click to focus on drawing and restored with unread count', async ({ browser }) => {
+    const room = uniqueRoom('hidechat');
+    const teacher = await newUser(browser);
+    const student = await newUser(browser);
+    await joinRoom(teacher.page, room, 'Ms T', PIN);
+    await joinRoom(student.page, room, 'Alex');
+
+    const sidebar = student.page.getByLabel('Class chat sidebar');
+    const stage = student.page.locator('.konvajs-content canvas').first();
+    const beforeStageWidth = (await stage.boundingBox())!.width;
+
+    // Hide chat sidebar
+    await student.page.getByRole('button', { name: 'Hide chat sidebar' }).click();
+    await expect(sidebar).toHaveCount(0);
+
+    const showChatBtn = student.page.getByRole('button', { name: 'Show chat sidebar' });
+    await expect(showChatBtn).toBeVisible();
+    await expect.poll(async () => Math.round((await stage.boundingBox())!.width)).toBe(
+      Math.round(beforeStageWidth + 320)
+    );
+
+    // Student can draw cleanly on the expanded canvas (including where the sidebar used to be)
+    await drawStroke(student.page, { x: 120, y: 350 }, { x: 350, y: 500 });
+
+    // Teacher sends a message while student's chat is hidden
+    const teacherInput = teacher.page.getByPlaceholder('Message the class...');
+    await teacherInput.fill('Nice work!');
+    await teacherInput.press('Enter');
+
+    await expect(showChatBtn).toContainText('1');
+
+    // Restore chat with one click and confirm unread badge clears and message is visible
+    await showChatBtn.click();
+    await expect(sidebar).toBeVisible();
+    await expect(student.page.getByText('Nice work!')).toBeVisible();
+    await expect(student.page.getByText('1 drawn')).toBeVisible();
+
+    await teacher.context.close();
+    await student.context.close();
+  });
+});
+
