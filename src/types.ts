@@ -114,7 +114,8 @@ export interface BreakoutGroupDraft {
 export interface ConfigureBreakoutPayload {
   action?: BreakoutAction;
   mode?: BreakoutMode;                       // used by 'new-round' (and legacy callers)
-  roundId?: string;                          // used by 'resume' (defaults to active round)
+  roundId?: string;                          // used by 'resume' / 'update-current' (defaults to active round)
+  targetRoundId?: string;                    // alias for roundId
   allowSelfSelect?: boolean;
   chatScope?: 'unified' | 'board';
   copyWorksheet?: boolean;                   // 'new-round' only
@@ -139,6 +140,9 @@ export interface BreakoutConfig {
   activeRoundId?: string;
   rounds?: BreakoutRoundMeta[];
   allowSelfSelect: boolean;
+  allowRoundSelfSelect?: boolean;
+  /** Optional per-student board override (maps userId -> boardId or 'main') for future per-student cross-round routing. */
+  userBoardOverrides?: Record<string, string>;
   chatScope: 'unified' | 'board';
 }
 

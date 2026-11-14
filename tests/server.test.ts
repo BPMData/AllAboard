@@ -801,5 +801,56 @@ describe('AllAboard server & Socket.IO integration tests', () => {
       });
       assert.equal(res.ok, false);
     });
+
+    it('T8 – teacher can switch class back to an earlier round (Round 2 -> Round 1) with drawings intact', async () => {
+      const { teacher, s1 } = await setupClass('mr-t8');
+
+      // Start Round 1 (individual)
+      const r1SyncPromise = waitForEvent<any>(teacher, 'breakout-sync');
+      await emitAck(teacher, 'teacher:configure-breakout', {
+        action: 'new-round',
+        mode: 'individual',
+      });
+      await r1SyncPromise;
+
+      // Student draws on Round 1 board
+      s1.emit('element-start', stroke('r1-stroke', 'r1_ind_s1', 's1'));
+      await delay(50);
+
+      // Start Round 2 (groups)
+      const r2SyncPromise = waitForEvent<any>(teacher, 'breakout-sync');
+      await emitAck(teacher, 'teacher:configure-breakout', {
+        action: 'new-round',
+        mode: 'groups',
+        groups: [
+          { id: 'grp_1', title: 'Group A', assignedUserIds: ['s1'] },
+          { id: 'grp_2', title: 'Group B', assignedUserIds: ['s2'] },
+        ],
+      });
+      const r2Sync = await r2SyncPromise;
+      assert.equal(r2Sync.breakoutConfig.activeRoundId, 'r2');
+      assert.equal(r2Sync.breakoutConfig.mode, 'groups');
+
+      // Student draws on Round 2 board
+      s1.emit('element-start', stroke('r2-stroke', 'r2_grp_1', 's1'));
+      await delay(50);
+
+      // Teacher switches the whole class back to Round 1
+      const switchBackPromise = waitForEvent<any>(teacher, 'breakout-sync');
+      const switchRes = await emitAck(teacher, 'teacher:configure-breakout', {
+        action: 'resume',
+        targetRoundId: 'r1',
+      });
+      assert.equal(switchRes.ok, true);
+      assert.equal(switchRes.activeRoundId, 'r1');
+      assert.equal(switchRes.mode, 'individual');
+
+      const switchSync = await switchBackPromise;
+      assert.equal(switchSync.breakoutConfig.activeRoundId, 'r1');
+      assert.equal(switchSync.breakoutConfig.mode, 'individual');
+      assert.equal(switchSync.subBoards['r1_ind_s1'].elements.length, 1);
+      assert.equal(switchSync.subBoards['r2_grp_1'].elements.length, 1);
+    });
   });
 });
+

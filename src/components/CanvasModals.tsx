@@ -39,6 +39,9 @@ interface LiveGridOverviewProps {
   showRoundPrefix: boolean;
   roundShortLabel: (roundId?: string) => string;
   activeRoundId?: string;
+  viewingRound?: BreakoutRoundMeta | null;
+  currentMode?: BreakoutMode;
+  onSendClassToRound?: (roundId: string) => void;
   activeRoundGroupBoards: SubBoardData[];
   onAssignUserToBoard: (targetBoardId: string, targetUserId?: string) => void;
   users: User[];
@@ -61,6 +64,9 @@ export function LiveGridOverview({
   showRoundPrefix,
   roundShortLabel,
   activeRoundId,
+  viewingRound,
+  currentMode,
+  onSendClassToRound,
   activeRoundGroupBoards,
   onAssignUserToBoard,
   users,
@@ -72,6 +78,12 @@ export function LiveGridOverview({
   onSelectBoard,
   onClose,
 }: LiveGridOverviewProps) {
+  const canSendClassToViewingRound = Boolean(
+    viewingRound &&
+      onSendClassToRound &&
+      (currentMode === 'main' || viewingRound.id !== activeRoundId)
+  );
+
   return (
     <div className="flex-1 bg-slate-100 overflow-y-auto p-6 z-30 select-text">
       <div className="max-w-6xl mx-auto space-y-5">
@@ -85,6 +97,16 @@ export function LiveGridOverview({
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
+            {canSendClassToViewingRound && viewingRound && onSendClassToRound && (
+              <button
+                type="button"
+                onClick={() => onSendClassToRound(viewingRound.id)}
+                className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-blue-600 text-white hover:bg-blue-700 cursor-pointer"
+                title={`Move the whole class into ${viewingRound.title} with their saved work intact`}
+              >
+                Send Class to Round {viewingRound.number}
+              </button>
+            )}
             <button
               type="button"
               disabled={Boolean(pdfExportProgress)}
@@ -234,7 +256,11 @@ export function LiveGridOverview({
 interface BreakoutManagerModalProps {
   users: User[];
   fullMainBackground: RoomBackground | null;
+  rounds?: BreakoutRoundMeta[];
   activeRound: BreakoutRoundMeta | null;
+  draftEditRoundId?: string;
+  onSelectDraftEditRound?: (roundId: string) => void;
+  onFollowRound?: () => void;
   nextRoundNumber: number;
   currentMode: BreakoutMode;
   draftRoundAction: 'update-current' | 'new-round';
@@ -267,7 +293,11 @@ interface BreakoutManagerModalProps {
 export function BreakoutManagerModal({
   users,
   fullMainBackground,
+  rounds = [],
   activeRound,
+  draftEditRoundId,
+  onSelectDraftEditRound,
+  onFollowRound,
   nextRoundNumber,
   currentMode,
   draftRoundAction,
@@ -291,7 +321,14 @@ export function BreakoutManagerModal({
   onClose,
   onShowLiveGridOverview,
 }: BreakoutManagerModalProps) {
-  const isEditing = Boolean(activeRound) && draftRoundAction === 'update-current';
+  const targetRound =
+    (draftEditRoundId ? rounds.find((r) => r.id === draftEditRoundId) : null) ||
+    activeRound ||
+    (rounds.length > 0 ? rounds[rounds.length - 1] : null);
+  const isEditing = Boolean(targetRound) && draftRoundAction === 'update-current';
+  const isSwitchingOrResuming = Boolean(
+    isEditing && targetRound && (currentMode === 'main' || targetRound.id !== activeRound?.id)
+  );
   const templateLabelFor = (choice: typeof draftWorksheetChoice): string =>
     choice === 'frayer' ? 'Frayer Model'
     : choice === 'checkin' ? 'Task Pulse Check'
@@ -320,7 +357,7 @@ export function BreakoutManagerModal({
           </button>
         </div>
 
-        {activeRound && (
+        {targetRound && (
           <div className="grid grid-cols-2 gap-2.5">
             <button
               type="button"
@@ -330,8 +367,14 @@ export function BreakoutManagerModal({
                 draftRoundAction === 'update-current' ? "bg-blue-50/80 border-blue-600" : "bg-white border-slate-200 hover:border-slate-300"
               )}
             >
-              <div className="font-display font-semibold text-xs text-slate-900">Resume / Edit {activeRound.title}</div>
-              <p className="text-[11px] text-slate-500 mt-0.5">Keep every board and drawing. Change groups or chat settings.</p>
+              <div className="font-display font-semibold text-xs text-slate-900">
+                {rounds.length > 1 ? 'Resume / Edit Existing Round' : `Resume / Edit ${targetRound.title}`}
+              </div>
+              <p className="text-[11px] text-slate-500 mt-0.5">
+                {rounds.length > 1
+                  ? 'Send the class back to Round 1, Round 2, etc., or update groups with all work kept.'
+                  : 'Keep every board and drawing. Change groups or chat settings.'}
+              </p>
             </button>
             <button
               type="button"
@@ -342,8 +385,50 @@ export function BreakoutManagerModal({
               )}
             >
               <div className="font-display font-semibold text-xs text-slate-900">Start New Round {nextRoundNumber}</div>
-              <p className="text-[11px] text-slate-500 mt-0.5">Fresh boards and a new worksheet. Round {activeRound.number} is archived, not deleted.</p>
+              <p className="text-[11px] text-slate-500 mt-0.5">
+                Fresh boards and a new worksheet. Earlier rounds stay saved and can be resumed anytime.
+              </p>
             </button>
+          </div>
+        )}
+
+        {/* Round Picker when multiple rounds exist and teacher is in Resume / Edit mode */}
+        {isEditing && rounds.length > 1 && targetRound && (
+          <div className="p-3 rounded-xl bg-slate-50 border border-slate-200 space-y-2">
+            <label className="block text-xs font-semibold text-slate-700">
+              Choose Which Round to Send Class To / Edit:
+            </label>
+            <div className="flex flex-wrap gap-2">
+              {rounds.map((r) => {
+                const isSelected = r.id === targetRound.id;
+                const isLive = currentMode !== 'main' && r.id === activeRound?.id;
+                return (
+                  <button
+                    key={r.id}
+                    type="button"
+                    onClick={() => onSelectDraftEditRound?.(r.id)}
+                    className={cn(
+                      "px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors cursor-pointer flex items-center gap-1.5",
+                      isSelected
+                        ? "bg-blue-600 text-white border-blue-600"
+                        : "bg-white text-slate-800 border-slate-300 hover:bg-slate-100"
+                    )}
+                  >
+                    <span>{r.title}</span>
+                    {isLive && (
+                      <span
+                        className={cn(
+                          "px-1.5 py-0.2 rounded text-[10px] font-semibold",
+                          isSelected ? "bg-blue-500 text-white" : "bg-emerald-100 text-emerald-800"
+                        )}
+                      >
+                        Live
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
           </div>
         )}
 
@@ -392,10 +477,10 @@ export function BreakoutManagerModal({
             </button>
           </div>
         )}
-        {isEditing && activeRound && (
+        {isEditing && targetRound && (
           <p className="text-xs text-slate-600 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2">
-            {activeRound.mode === 'groups' ? 'Group round' : 'Individual round'} · Students&apos; drawings and worksheets are never changed here.
-            {activeRound.mode === 'individual' && ' Students who join late automatically get their own board.'}
+            {targetRound.mode === 'groups' ? 'Group round' : 'Individual round'} · Students&apos; drawings and worksheets in {targetRound.title} are kept intact.
+            {targetRound.mode === 'individual' && ' Students who join late automatically get their own board.'}
           </p>
         )}
 
@@ -643,13 +728,13 @@ export function BreakoutManagerModal({
             type="button"
             onClick={async () => {
               let payload: ConfigureBreakoutPayload;
-              if (isEditing && activeRound) {
+              if (isEditing && targetRound) {
                 payload = {
-                  action: currentMode === 'main' ? 'resume' : 'update-current',
-                  roundId: activeRound.id,
+                  action: isSwitchingOrResuming ? 'resume' : 'update-current',
+                  roundId: targetRound.id,
                   allowSelfSelect: draftAllowSelfSelect,
                   chatScope: draftChatScope,
-                  groups: activeRound.mode === 'groups' ? draftGroups : undefined,
+                  groups: targetRound.mode === 'groups' ? draftGroups : undefined,
                 };
               } else {
                 let customBg: RoomBackground | null | undefined = undefined;
@@ -670,14 +755,15 @@ export function BreakoutManagerModal({
               }
               const res = await onConfigureBreakout(payload);
               if (!res.ok) { window.alert(res.error || 'Could not update breakout boards.'); return; }
+              onFollowRound?.();
               onClose();
               onShowLiveGridOverview(payload.action !== 'update-current');
             }}
             className="px-4 py-2 rounded-lg text-xs font-semibold bg-blue-600 text-white hover:bg-blue-500 cursor-pointer"
           >
-            {isEditing && activeRound
-              ? currentMode === 'main'
-                ? `Send Class Back to Round ${activeRound.number}`
+            {isEditing && targetRound
+              ? isSwitchingOrResuming
+                ? `Send Class to Round ${targetRound.number}`
                 : 'Save Changes'
               : `Launch Round ${nextRoundNumber}`}
           </button>

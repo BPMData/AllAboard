@@ -224,20 +224,22 @@ export default function App() {
     return messages;
   }, [breakoutConfig.chatScope, activeBoardId, subBoards, messages]);
 
+  const effectiveRoomId = roomId.trim() || 'main';
+
   useEffect(() => {
-    document.title = roomId && roomId !== 'main' ? `AllAboard — #${roomId}` : 'AllAboard';
+    document.title = effectiveRoomId !== 'main' ? `AllAboard — #${effectiveRoomId}` : 'AllAboard';
     try {
       const url = new URL(window.location.href);
-      if (roomId === 'main') {
+      if (effectiveRoomId === 'main') {
         url.searchParams.delete('room');
       } else {
-        url.searchParams.set('room', roomId);
+        url.searchParams.set('room', effectiveRoomId);
       }
       window.history.replaceState({}, '', url.toString());
     } catch {
       // Ignore
     }
-  }, [roomId]);
+  }, [effectiveRoomId]);
 
   useEffect(() => {
     const newSocket = io({
@@ -256,14 +258,14 @@ export default function App() {
       try {
         savedName = localStorage.getItem(STORAGE_KEYS.USER_NAME) || savedName;
         savedJoined = localStorage.getItem(STORAGE_KEYS.IS_JOINED) === 'true' || savedJoined;
-        savedPin = localStorage.getItem(STORAGE_KEYS.TEACHER_PIN_PREFIX + roomId) || undefined;
+        savedPin = localStorage.getItem(STORAGE_KEYS.TEACHER_PIN_PREFIX + effectiveRoomId) || undefined;
       } catch {
         // Ignore storage errors
       }
 
       if (savedName && savedName.trim() && savedJoined) {
         newSocket.emit('join-room', {
-          roomId,
+          roomId: effectiveRoomId,
           userId,
           name: savedName.trim(),
           color: userColor,
@@ -705,7 +707,7 @@ export default function App() {
     return () => {
       newSocket.close();
     };
-  }, [userId, userColor, roomId]);
+  }, [userId, userColor, effectiveRoomId]);
 
   const handleAuthenticateTeacher = useCallback(
     (pin: string): Promise<{ ok: boolean; error?: string; mode?: string }> => {
@@ -884,19 +886,23 @@ export default function App() {
     const trimmed = userName.trim();
     if (trimmed && socket) {
       setKickNotice(null);
+      const targetRoomId = effectiveRoomId;
+      if (roomId !== targetRoomId) {
+        setRoomId(targetRoomId);
+      }
       const cleanPin = initialTeacherPin.trim();
       try {
         localStorage.setItem(STORAGE_KEYS.USER_NAME, trimmed);
         localStorage.setItem(STORAGE_KEYS.IS_JOINED, 'true');
         if (cleanPin.length >= 3) {
-          localStorage.setItem(STORAGE_KEYS.TEACHER_PIN_PREFIX + roomId, cleanPin);
+          localStorage.setItem(STORAGE_KEYS.TEACHER_PIN_PREFIX + targetRoomId, cleanPin);
         }
       } catch {
         // Ignore
       }
       setUserName(trimmed);
       socket.emit('join-room', {
-        roomId,
+        roomId: targetRoomId,
         userId,
         name: trimmed,
         color: userColor,
@@ -1262,7 +1268,7 @@ export default function App() {
             Welcome to AllAboard
           </h1>
           <p className="text-slate-400 text-center mb-6 text-sm">
-            Enter your name to join room <span className="font-mono text-slate-200">#{roomId}</span>
+            Enter your name to join room <span className="font-mono text-slate-200">#{effectiveRoomId}</span>
           </p>
 
           {kickNotice && (
@@ -1297,14 +1303,18 @@ export default function App() {
                 <input
                   type="text"
                   value={roomId}
+                  placeholder="main"
                   onChange={(e) => {
                     setKickNotice(null);
                     setRoomId(
-                      e.target.value.toLowerCase().replace(/[^a-z0-9-_]/g, '-') || 'main'
+                      e.target.value
+                        .toLowerCase()
+                        .replace(/[^a-z0-9-_]/g, '-')
+                        .replace(/-+/g, '-')
                     );
                   }}
                   maxLength={24}
-                  className="bg-slate-900 border border-slate-700 px-2 py-1 rounded font-mono text-xs text-white w-28 focus:outline-none focus:border-blue-500"
+                  className="bg-slate-900 border border-slate-700 px-2 py-1 rounded font-mono text-xs text-white placeholder:text-slate-500 w-28 focus:outline-none focus:border-blue-500"
                 />
               </div>
               <button

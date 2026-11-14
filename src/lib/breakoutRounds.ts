@@ -8,7 +8,7 @@ import type {
   BreakoutRoundMeta,
   ConfigureBreakoutPayload,
   SubBoardKind,
-} from '../types';
+} from '../types.ts';
 
 /** Minimal board shape. Works for both server SubBoardState and client SubBoardData. */
 export interface BoardLike {
@@ -25,6 +25,8 @@ export interface BreakoutConfigLike {
   activeRoundId?: string;
   rounds?: BreakoutRoundMeta[];
   allowSelfSelect: boolean;
+  allowRoundSelfSelect?: boolean;
+  userBoardOverrides?: Record<string, string>;
   chatScope: 'unified' | 'board';
 }
 
@@ -125,6 +127,7 @@ export function getAllBoardsByRound<B extends BoardLike>(
 /**
  * Which board should a STUDENT see right now? Returns a board id or 'main'.
  * - mode 'main' or no active round      -> 'main'
+ * - optional userBoardOverrides[userId] -> specific board across any round (or 'main')
  * - individual: their individual board in the active round
  * - groups: the group in the active round that lists them; else the first group (legacy behavior)
  */
@@ -134,6 +137,15 @@ export function findStudentBoardId<B extends BoardLike>(
   userId: string
 ): string {
   if (config.mode === 'main') return 'main';
+  const overrideBoardId = config.userBoardOverrides?.[userId];
+  if (overrideBoardId) {
+    if (overrideBoardId === 'main') return 'main';
+    const exists =
+      boards instanceof Map
+        ? boards.has(overrideBoardId)
+        : Boolean(boards && Object.prototype.hasOwnProperty.call(boards, overrideBoardId));
+    if (exists) return overrideBoardId;
+  }
   const round = getActiveRound(config);
   if (!round) return 'main';
   const wantedKind: SubBoardKind = config.mode === 'groups' ? 'group' : 'individual';
@@ -163,11 +175,25 @@ export function normalizeBreakoutConfig(raw: unknown): BreakoutConfigLike {
     typeof r.activeRoundId === 'string' && rounds.some((x) => x.id === r.activeRoundId)
       ? r.activeRoundId
       : undefined;
+  let userBoardOverrides: Record<string, string> | undefined;
+  if (r.userBoardOverrides && typeof r.userBoardOverrides === 'object') {
+    const cleanOverrides: Record<string, string> = {};
+    for (const [uid, bid] of Object.entries(r.userBoardOverrides)) {
+      if (typeof uid === 'string' && uid && typeof bid === 'string' && bid) {
+        cleanOverrides[uid] = bid;
+      }
+    }
+    if (Object.keys(cleanOverrides).length > 0) {
+      userBoardOverrides = cleanOverrides;
+    }
+  }
   return {
     mode,
     activeRoundId,
     rounds,
     allowSelfSelect: Boolean(r.allowSelfSelect),
+    ...(r.allowRoundSelfSelect !== undefined ? { allowRoundSelfSelect: Boolean(r.allowRoundSelfSelect) } : {}),
+    ...(userBoardOverrides ? { userBoardOverrides } : {}),
     chatScope: r.chatScope === 'board' ? 'board' : 'unified',
   };
 }

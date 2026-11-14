@@ -178,4 +178,25 @@ describe('breakoutRounds helpers', () => {
       ['r1_ind_u1', 'r2_grp_1']
     );
   });
+
+  it('findStudentBoardId honors optional userBoardOverrides for cross-round placement', () => {
+    const boards = new Map<string, BoardLike>([
+      ['r1_ind_u1', { id: 'r1_ind_u1', roundId: 'r1', kind: 'individual', title: "U1's R1 Board", assignedUserIds: ['u1'] }],
+      ['r2_ind_u1', { id: 'r2_ind_u1', roundId: 'r2', kind: 'individual', title: "U1's R2 Board", assignedUserIds: ['u1'] }],
+    ]);
+    const config: BreakoutConfigLike = {
+      mode: 'individual',
+      activeRoundId: 'r2',
+      rounds: [
+        { id: 'r1', number: 1, title: 'Round 1 · Individual', mode: 'individual', createdAt: 1 },
+        { id: 'r2', number: 2, title: 'Round 2 · Individual', mode: 'individual', createdAt: 2 },
+      ],
+      allowSelfSelect: false,
+      chatScope: 'unified',
+      userBoardOverrides: { u1: 'r1_ind_u1' },
+    };
+
+    assert.equal(findStudentBoardId(boards, config, 'u1'), 'r1_ind_u1');
+  });
 });
+

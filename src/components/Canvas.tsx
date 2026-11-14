@@ -718,6 +718,7 @@ export default function Canvas({
   const [draftGroupCount, setDraftGroupCount] = useState<number>(4);
   const [draftGroups, setDraftGroups] = useState<BreakoutGroupDraft[]>([]);
   const [draftRoundAction, setDraftRoundAction] = useState<'update-current' | 'new-round'>('new-round');
+  const [draftEditRoundId, setDraftEditRoundId] = useState<string>('');
   /** null = follow the live active round; 'all' = every round; otherwise a round id. */
   const [teacherViewingRoundId, setTeacherViewingRoundId] = useState<string | 'all' | null>(null);
   const [draftAllowSelfSelect, setDraftAllowSelfSelect] = useState<boolean>(
@@ -748,6 +749,14 @@ export default function Canvas({
     teacherViewingRoundId === 'all' || getRoundById(breakoutConfig, teacherViewingRoundId)
       ? teacherViewingRoundId
       : breakoutConfig.activeRoundId ?? null;
+
+  const viewingRound = useMemo(
+    () =>
+      effectiveViewingRoundId && effectiveViewingRoundId !== 'all'
+        ? getRoundById(breakoutConfig, effectiveViewingRoundId)
+        : activeRound,
+    [breakoutConfig, effectiveViewingRoundId, activeRound]
+  );
 
   const teacherVisibleBoards = useMemo(
     () =>
@@ -1011,32 +1020,64 @@ export default function Canvas({
     [users]
   );
 
-  const loadDraftGroupsFromActiveRound = useCallback((): boolean => {
-    const current = activeRound
-      ? getBoardsInRound(subBoards, activeRound.id).filter((sb) => sb.kind === 'group')
-      : [];
-    if (current.length === 0) return false;
-    setDraftGroupCount(current.length);
-    setDraftGroups(current.map((sb) => ({ id: sb.id, title: sb.title, assignedUserIds: [...sb.assignedUserIds] })));
-    return true;
-  }, [activeRound, subBoards]);
+  const loadDraftGroupsForRound = useCallback(
+    (roundId: string | null | undefined): boolean => {
+      const current = roundId
+        ? getBoardsInRound(subBoards, roundId).filter((sb) => sb.kind === 'group')
+        : [];
+      if (current.length === 0) return false;
+      setDraftGroupCount(current.length);
+      setDraftGroups(
+        current.map((sb) => ({
+          id: sb.id,
+          title: sb.title,
+          assignedUserIds: [...sb.assignedUserIds],
+        }))
+      );
+      return true;
+    },
+    [subBoards]
+  );
+
+  const handleSelectDraftEditRound = useCallback(
+    (roundId: string) => {
+      setDraftEditRoundId(roundId);
+      const target = getRoundById(breakoutConfig, roundId);
+      if (target) {
+        setDraftBreakoutMode(target.mode);
+        if (!loadDraftGroupsForRound(target.id)) {
+          initializeDraftGroups(draftGroupCount, true);
+        }
+      }
+    },
+    [breakoutConfig, loadDraftGroupsForRound, initializeDraftGroups, draftGroupCount]
+  );
 
   const handleChangeDraftRoundAction = (next: 'update-current' | 'new-round') => {
     setDraftRoundAction(next);
-    if (next === 'update-current' && activeRound) {
-      setDraftBreakoutMode(activeRound.mode);
-      if (!loadDraftGroupsFromActiveRound()) initializeDraftGroups(draftGroupCount, true);
+    const target =
+      (draftEditRoundId ? getRoundById(breakoutConfig, draftEditRoundId) : null) ||
+      viewingRound ||
+      activeRound ||
+      (rounds.length > 0 ? rounds[rounds.length - 1] : null);
+    if (next === 'update-current' && target) {
+      setDraftEditRoundId(target.id);
+      setDraftBreakoutMode(target.mode);
+      if (!loadDraftGroupsForRound(target.id)) initializeDraftGroups(draftGroupCount, true);
     } else if (next === 'new-round') {
       initializeDraftGroups(draftGroupCount, true);
     }
   };
 
   const handleOpenBreakoutModal = () => {
-    setDraftRoundAction(activeRound ? 'update-current' : 'new-round');
-    setDraftBreakoutMode(activeRound?.mode ?? 'individual');
+    const initialTarget =
+      viewingRound || activeRound || (rounds.length > 0 ? rounds[rounds.length - 1] : null);
+    setDraftRoundAction(initialTarget ? 'update-current' : 'new-round');
+    setDraftEditRoundId(initialTarget?.id || '');
+    setDraftBreakoutMode(initialTarget?.mode ?? 'individual');
     setDraftAllowSelfSelect(breakoutConfig.allowSelfSelect);
     setDraftChatScope(breakoutConfig.chatScope);
-    if (!loadDraftGroupsFromActiveRound()) {
+    if (!loadDraftGroupsForRound(initialTarget?.id)) {
       initializeDraftGroups(draftGroupCount, true);
     }
     setShowBreakoutModal(true);
@@ -3853,16 +3894,22 @@ export default function Canvas({
                 Bring All to Main
               </button>
             )}
-            {breakoutConfig.mode === 'main' && activeRound && (
-              <button
-                type="button"
-                onClick={() => onConfigureBreakout({ action: 'resume', roundId: activeRound.id })}
-                className="flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium transition-colors whitespace-nowrap shrink-0 cursor-pointer bg-white text-blue-800 border border-blue-300 hover:bg-blue-50"
-                title={`Send students back to ${activeRound.title} with their work intact`}
-              >
-                Resume Round {activeRound.number}
-              </button>
-            )}
+            {viewingRound &&
+              (breakoutConfig.mode === 'main' || viewingRound.id !== breakoutConfig.activeRoundId) && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    onConfigureBreakout({ action: 'resume', roundId: viewingRound.id });
+                    setTeacherViewingRoundId(null);
+                  }}
+                  className="flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium transition-colors whitespace-nowrap shrink-0 cursor-pointer bg-white text-blue-800 border border-blue-300 hover:bg-blue-50"
+                  title={`Send students to ${viewingRound.title} with their work intact`}
+                >
+                  {breakoutConfig.mode === 'main' && viewingRound.id === activeRound?.id
+                    ? `Resume Round ${viewingRound.number}`
+                    : `Send Class to Round ${viewingRound.number}`}
+                </button>
+              )}
 
             {/* Teacher Board Switcher Dropdown + Live Grid Overview Button */}
             {Object.keys(subBoards).length > 0 && (
@@ -4365,6 +4412,12 @@ export default function Canvas({
           showRoundPrefix={effectiveViewingRoundId === 'all'}
           roundShortLabel={roundShortLabel}
           activeRoundId={breakoutConfig.activeRoundId}
+          viewingRound={viewingRound}
+          currentMode={breakoutConfig.mode}
+          onSendClassToRound={(roundId) => {
+            onConfigureBreakout({ action: 'resume', roundId });
+            setTeacherViewingRoundId(null);
+          }}
           activeRoundGroupBoards={activeRoundBoards.filter((sb) => sb.kind === 'group')}
           onAssignUserToBoard={onAssignUserToBoard}
           users={users}
@@ -4383,7 +4436,11 @@ export default function Canvas({
         <BreakoutManagerModal
           users={users}
           fullMainBackground={fullMainBackground}
+          rounds={rounds}
           activeRound={activeRound}
+          draftEditRoundId={draftEditRoundId}
+          onSelectDraftEditRound={handleSelectDraftEditRound}
+          onFollowRound={() => setTeacherViewingRoundId(null)}
           nextRoundNumber={getNextRoundNumber(breakoutConfig)}
           currentMode={breakoutConfig.mode}
           draftRoundAction={draftRoundAction}

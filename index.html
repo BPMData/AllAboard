@@ -11,6 +11,25 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400..700;1,9..40,400..700&family=JetBrains+Mono:wght@400;500;600&family=Plus+Jakarta+Sans:wght@500;600;700&display=swap" rel="stylesheet">
+    <script>
+      if ('serviceWorker' in navigator) {
+        navigator.serviceWorker
+          .getRegistrations()
+          .then(function (regs) {
+            for (var i = 0; i < regs.length; i++) {
+              regs[i].unregister();
+            }
+          })
+          .catch(function () {});
+        var origRegister = navigator.serviceWorker.register.bind(navigator.serviceWorker);
+        navigator.serviceWorker.register = function (scriptURL, options) {
+          if (String(scriptURL).indexOf('_service-worker.js') !== -1) {
+            return Promise.resolve({ scope: window.location.origin + '/' });
+          }
+          return origRegister(scriptURL, options);
+        };
+      }
+    </script>
   </head>
   <body>
     <div id="root"></div>

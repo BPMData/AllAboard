@@ -5,7 +5,7 @@ import { createServer as createViteServer } from 'vite';
 import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
-import type { BreakoutRoundMeta, ConfigureBreakoutPayload, SubBoardKind } from './src/types';
+import type { BreakoutRoundMeta, ConfigureBreakoutPayload, SubBoardKind } from './src/types.ts';
 import {
   type BreakoutConfigLike,
   buildRoundTitle,
@@ -21,7 +21,7 @@ import {
   normalizeBreakoutConfig,
   resolveBreakoutAction,
   uniqueStrings,
-} from './src/lib/breakoutRounds';
+} from './src/lib/breakoutRounds.ts';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -668,19 +668,19 @@ export async function startServer(options: StartServerOptions = {}) {
 
       if (action === 'return-to-main') {
         cfg.mode = 'main';
+        delete cfg.userBoardOverrides;
       } else if (action === 'resume' || action === 'update-current') {
-        const round =
-          action === 'resume'
-            ? getRoundById(cfg, safePayload.roundId || cfg.activeRoundId)
-            : getActiveRound(cfg);
+        const targetId = safePayload.roundId || safePayload.targetRoundId;
+        const round = getRoundById(cfg, targetId || cfg.activeRoundId);
         if (!round) {
           callback?.({ ok: false, error: 'There is no breakout round to resume or edit yet.' });
           return;
         }
         applyRoundEdits(room, round, safePayload);
-        if (action === 'resume') {
+        if (action === 'resume' || targetId) {
           cfg.activeRoundId = round.id;
           cfg.mode = round.mode;
+          delete cfg.userBoardOverrides;
         }
         if (round.mode === 'individual' && cfg.mode === 'individual' && cfg.activeRoundId === round.id) {
           for (const u of getBreakoutStudents(room)) provisionIndividualBoard(room, round.id, u);
@@ -746,7 +746,12 @@ export async function startServer(options: StartServerOptions = {}) {
       scheduleSaveToDisk(true);
       broadcastRoomSettings(room);
       broadcastBreakoutSync(room);
-      callback?.({ ok: true, action, activeRoundId: room.breakoutConfig.activeRoundId });
+      callback?.({
+        ok: true,
+        action,
+        activeRoundId: room.breakoutConfig.activeRoundId,
+        mode: room.breakoutConfig.mode,
+      });
     });
 
     // Student self-select or Teacher manual student reassignment to a sub-board
