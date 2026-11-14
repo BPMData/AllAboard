@@ -82,6 +82,34 @@ into board pages. It all runs in the browser, with no server changes.
        once `userId` can't be spoofed.
     4. Add server tests for all three.
 
+### "Students start on their own boards" room mode
+- [ ] **Room setting (teacher-only toggle): "Students start on their own boards."** When it's on, every
+      non-teacher who joins goes straight to their **own individual board** with a copy of the current worksheet.
+      The **main board stays the teacher's copy** of that worksheet (a model answer or demo). The teacher can still
+      **bring everyone back to main** whenever they want.
+  - **Mostly already built:**
+    - An individual breakout round already provisions boards for **late joiners** with the round's worksheet
+      template (`ensureIndividualBoardForUser` / `provisionIndividualBoard` in `server.ts`, called from `join-room`).
+    - `teacher:configure-breakout` already has `return-to-main`.
+    - The teacher can already watch everyone in `LiveGridOverview`.
+
+    So the feature is mainly: **when the setting is on and a student joins while no individual round is active,
+    auto-start one** (`new-round`, `mode: 'individual'`, `copyWorksheet: true`) instead of waiting for the
+    teacher to click.
+  - **Store the flag** in `breakoutConfig` (e.g. `autoIndividual: boolean`), so it persists and backs up with the
+    room like every other setting. Toggle it via `teacher:configure-breakout` (one new optional field, with no new
+    socket event). Include it in `getRoomSettingsPayload`.
+  - **Decisions to make when building:**
+    - **After "return to main," where do new joiners go?** Suggested: they follow the class (main) until the teacher
+      starts another round or re-enables the mode. Otherwise a late student lands alone while everyone else is on main.
+    - **The teacher changes the worksheet after students have started.** Today a round's template is captured
+      when the round starts. Suggested: add a teacher button, "Send this worksheet to everyone's board," that
+      replaces only the **background**, never the student's ink. Or start a new round.
+    - **Teacher PIN:** the room needs a claimed teacher for the mode to mean anything. Disable the toggle until a
+      PIN is set.
+  - **Tests:** a student joining with the flag on lands on `r1_ind_<id>` with the worksheet. The teacher stays on
+    main. `return-to-main` moves everyone. The flag survives a restart (backup/restore).
+
 ## Housekeeping
 - [ ] Add a lifecycle rule to the `run-sources-loyal-rookery-403218-us-east1` bucket (delete objects older than 30 days).
       It stores ~80 MB of uploaded source per deploy.
