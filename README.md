@@ -58,7 +58,7 @@ Open `http://localhost:3000` in your browser. Share the room URL or in-app **Inv
 
 Room state and worksheet assets are stored in `$DATA_DIR/allaboard.db` (default `.data/allaboard.db`). SQLite uses WAL mode, so `-wal` and `-shm` files may also be present. Stop the server before copying the `.db` file for backup. A legacy `rooms-store.json` is migrated automatically on first start and renamed `rooms-store.json.migrated-<timestamp>`.
 
-In production, mount a persistent volume at `DATA_DIR` so redeploys do not erase the database. Running multiple server processes against the same database is not supported.
+In production on Cloud Run, local disk is wiped on cold starts and redeploys. Mount a Cloud Storage bucket as a volume and set `BACKUP_DIR` to its mount path (e.g. `/backup`). Rooms are copied there within ~10 s of changing (immediately on shutdown) and restored automatically at startup. Keep **max instances = 1**: one server process must be the only writer. Leave `DATA_DIR` unset (local disk); never point it at the bucket mount, because SQLite needs real file locking.
 
 ## Testing
 

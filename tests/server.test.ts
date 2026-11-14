@@ -1039,6 +1039,58 @@ describe('AllAboard server & Socket.IO integration tests', () => {
     assert.equal(init.subBoards['r1_ind_s-offend'].elements.length, 0);
     assert.equal(init.subBoards['r1_ind_s-offend'].messages.length, 0);
   });
+  describe('storage: backup bucket (BACKUP_DIR)', () => {
+    const PNG = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
+
+    it('B1 – a cold start restores rooms and worksheets from the backup', async () => {
+      const backupDir = path.join(tmpDir, 'bucket');
+      await srv.close();
+      srv = await startServer({ port: 0, host: '127.0.0.1', dataDir: path.join(tmpDir, 'disk-1'), backupDir, skipVite: true });
+
+      const { socket: teacher } = await joinTracked({ roomId: 'cold', userId: 't', name: 'Teacher' });
+      await emitAck(teacher, 'teacher:auth', { pin: '1234' });
+      const bgSync = waitForEvent<any>(teacher, 'background-sync');
+      await emitAck(teacher, 'teacher:set-background', {
+        boardId: 'main',
+        background: { id: 'ws', fileName: 'w.png', pages: [{ dataUrl: PNG, width: 1, height: 1 }], x: 0, y: 0, scale: 1, layout: 'stack', opacity: 1 },
+      });
+      const url = (await bgSync).background.pages[0].dataUrl as string;
+      await srv.flushRoomsToDiskAsync();
+      await srv.backup!.flushNow();
+
+      // Simulate Cloud Run wiping the local disk: same bucket, brand-new data dir.
+      for (const s of openSockets.splice(0)) if (s.connected) s.disconnect();
+      await srv.close();
+      srv = await startServer({ port: 0, host: '127.0.0.1', dataDir: path.join(tmpDir, 'disk-2'), backupDir, skipVite: true });
+
+      const { init } = await joinTracked({ roomId: 'cold', userId: 's', name: 'Student' });
+      assert.equal(init.background.pages[0].dataUrl, url);
+      assert.equal(srv.store.countAssets(), 0); // not restored until requested
+      const res = await fetch(`http://127.0.0.1:${srv.port}${url}`);
+      assert.equal(res.status, 200);
+      assert.equal(res.headers.get('content-type'), 'image/png');
+      assert.equal(srv.store.countAssets(), 1);
+    });
+
+    it('B2 – an unusable DATA_DIR falls back instead of crashing', async () => {
+      const blocker = path.join(tmpDir, 'not-a-dir');
+      fs.writeFileSync(blocker, 'x');
+      await srv.close();
+      srv = await startServer({ port: 0, host: '127.0.0.1', dataDir: path.join(blocker, 'data'), skipVite: true });
+      const res = await fetch(`http://127.0.0.1:${srv.port}/healthz`);
+      assert.equal(res.status, 200);
+    });
+
+    it('B3 – an unusable BACKUP_DIR runs without backups instead of crashing', async () => {
+      const blocker = path.join(tmpDir, 'not-a-bucket');
+      fs.writeFileSync(blocker, 'x');
+      await srv.close();
+      srv = await startServer({ port: 0, host: '127.0.0.1', dataDir: tmpDir, backupDir: path.join(blocker, 'b'), skipVite: true });
+      assert.equal(srv.backup, null);
+      assert.equal((await fetch(`http://127.0.0.1:${srv.port}/healthz`)).status, 200);
+    });
+  });
+
   describe('storage: SQLite + worksheet assets', () => {
     const PNG = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
     const worksheet = () => ({ id: 'ws1', fileName: 'w.png', pages: [{ dataUrl: PNG, width: 1, height: 1 }], x: 0, y: 0, scale: 1, layout: 'stack', opacity: 1 });
