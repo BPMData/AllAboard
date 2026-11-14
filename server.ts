@@ -23,6 +23,7 @@ import {
   uniqueStrings,
 } from './src/lib/breakoutRounds.ts';
 import { RoomStore, internBackground, isValidAssetHash } from './roomStore.ts';
+import { BackupMirror, sniffMime } from './backupMirror.ts';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -35,6 +36,7 @@ export interface StartServerOptions {
   port?: number;
   host?: string;
   dataDir?: string;
+  backupDir?: string;
   skipVite?: boolean;
 }
 
@@ -108,10 +110,29 @@ interface SerializedRoom {
   lastActiveAt: number;
 }
 
+/** Opens the backup mirror if BACKUP_DIR is set. Returns null (and logs) if unset or unusable. */
+function openBackupMirror(backupDir: string, store: RoomStore): BackupMirror | null {
+  if (!backupDir) {
+    if (process.env.NODE_ENV === 'production') {
+      console.warn('BACKUP_DIR is not set: rooms will NOT survive a cold start or redeploy.');
+    }
+    return null;
+  }
+  try {
+    const mirror = new BackupMirror(backupDir, (hash) => store.getAsset(hash)?.bytes ?? null);
+    console.log(`Backing up rooms to "${backupDir}".`);
+    return mirror;
+  } catch (err) {
+    console.error(`BACKUP_DIR "${backupDir}" is unusable; running WITHOUT backups:`, err);
+    return null;
+  }
+}
+
 export async function startServer(options: StartServerOptions = {}) {
   const dataDir = options.dataDir || process.env.DATA_DIR || path.join(process.cwd(), '.data');
   const legacyStoreFile = path.join(dataDir, 'rooms-store.json');
   const store = new RoomStore(path.join(dataDir, 'allaboard.db'));
+  const backup = openBackupMirror(options.backupDir ?? process.env.BACKUP_DIR ?? '', store);
   const portToBind = options.port !== undefined ? options.port : Number(process.env.PORT) || 3000;
   const hostToBind = options.host || '0.0.0.0';
 
@@ -128,18 +149,32 @@ export async function startServer(options: StartServerOptions = {}) {
     res.status(200).json({ status: 'ok' });
   });
 
-  app.get('/api/assets/:hash', (req, res) => {
+  app.get('/api/assets/:hash', async (req, res) => {
     const hash = req.params.hash;
-    const asset = isValidAssetHash(hash) ? store.getAsset(hash) : null;
-    if (!asset) {
+    if (!isValidAssetHash(hash)) {
       res.status(404).end();
       return;
     }
-    res.setHeader('Content-Security-Policy', 'sandbox');
-    res.setHeader('X-Content-Type-Options', 'nosniff');
-    res.setHeader('Content-Type', asset.mime);
-    res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
-    res.end(Buffer.from(asset.bytes));
+    try {
+      let asset = store.getAsset(hash);
+      if (!asset && backup) {
+        // Cold start: the local store is empty but the backup bucket has the image.
+        const bytes = await backup.readAsset(hash);
+        if (bytes && store.putAsset(bytes, sniffMime(bytes)) === hash) asset = store.getAsset(hash);
+      }
+      if (!asset) {
+        res.status(404).end();
+        return;
+      }
+      res.setHeader('Content-Security-Policy', 'sandbox');
+      res.setHeader('X-Content-Type-Options', 'nosniff');
+      res.setHeader('Content-Type', asset.mime);
+      res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+      res.end(Buffer.from(asset.bytes));
+    } catch (err) {
+      console.error(`Failed to serve asset ${hash}:`, err);
+      res.status(500).end();
+    }
   });
 
   const rooms: Map<string, RoomState> = new Map();
@@ -277,6 +312,37 @@ export async function startServer(options: StartServerOptions = {}) {
     }
   }
 
+  /** Cold start: copy rooms from the backup into the local SQLite store. */
+  function restoreFromBackup() {
+    if (!backup) return;
+    try {
+      let restored = 0;
+      for (const { roomId, state, lastActiveAt } of backup.loadAllRoomsSync()) {
+        const room = hydrateRoom({ ...state, id: roomId, lastActiveAt });
+        if (!room) {
+          backup.deleteRoom(roomId); // expired
+          continue;
+        }
+        const local = store.loadRoom<SerializedRoom>(roomId);
+        if (local && local.lastActiveAt >= room.lastActiveAt) continue;
+        store.saveRoom(roomId, serializeRoom(room), room.lastActiveAt);
+        restored++;
+      }
+      console.log(`Restored ${restored} room(s) from backup.`);
+    } catch (err) {
+      console.error('Restoring from backup failed; starting with local state only:', err);
+    }
+  }
+
+  /** Queue a room for the backup. Reads the latest state when the write happens; null deletes it. */
+  function backupRoom(roomId: string) {
+    backup?.scheduleRoom(roomId, () => {
+      const live = rooms.get(roomId);
+      if (live) return isRoomEmpty(live) ? null : serializeRoom(live);
+      return store.loadRoom<SerializedRoom>(roomId)?.state ?? null;
+    });
+  }
+
   const dirtyRooms = new Set<string>();
   let saveTimeout: NodeJS.Timeout | null = null;
 
@@ -293,10 +359,12 @@ export async function startServer(options: StartServerOptions = {}) {
       try {
         if (isRoomEmpty(room)) {
           store.deleteRoom(roomId);
+          backupRoom(roomId);
           continue;
         }
         internRoomAssets(room);
         store.saveRoom(roomId, serializeRoom(room), room.lastActiveAt);
+        backupRoom(roomId);
       } catch (err) {
         dirtyRooms.add(roomId); // retry on next flush
         console.error(`Failed to save room "${roomId}":`, err);
@@ -328,7 +396,7 @@ export async function startServer(options: StartServerOptions = {}) {
       if (now - room.lastActiveAt > IDLE_UNLOAD_MS) rooms.delete(roomId);
     }
     try {
-      store.deleteRoomsInactiveBefore(now - ROOM_TTL_MS);
+      for (const roomId of store.deleteRoomsInactiveBefore(now - ROOM_TTL_MS)) backupRoom(roomId);
       store.gcAssets();
     } catch (err) {
       console.error('Housekeeping failed:', err);
@@ -336,6 +404,7 @@ export async function startServer(options: StartServerOptions = {}) {
   }
 
   migrateLegacyJsonStore();
+  restoreFromBackup();
   const housekeepingInterval = setInterval(runHousekeeping, HOUSEKEEPING_INTERVAL_MS);
   housekeepingInterval.unref();
 
@@ -1838,9 +1907,12 @@ export async function startServer(options: StartServerOptions = {}) {
     }, 8000);
     forceExitTimeout.unref();
 
-    io.close(() => {
-      httpServer.close(() => {
-        process.exit(0);
+    // Cloud Run allows ~10 s after SIGTERM: push pending room backups before exiting.
+    void (backup ? backup.stop() : Promise.resolve()).finally(() => {
+      io.close(() => {
+        httpServer.close(() => {
+          process.exit(0);
+        });
       });
     });
   }
@@ -1870,12 +1942,14 @@ export async function startServer(options: StartServerOptions = {}) {
       });
     }
     flushRoomsToDisk();
+    await backup?.stop();
     store.close();
   }
 
   return {
     app,
     store,
+    backup,
     httpServer,
     io,
     port: actualPort,
