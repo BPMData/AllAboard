@@ -6,6 +6,8 @@ import os from 'node:os';
 import path from 'node:path';
 import { io as ioClient, Socket } from 'socket.io-client';
 import { startServer } from '../server';
+import { GcsBackend } from '../backupMirror.ts';
+import { createFakeGcs } from './fakeGcs.ts';
 
 type ServerHandle = Awaited<ReturnType<typeof startServer>>;
 
@@ -1070,6 +1072,45 @@ describe('AllAboard server & Socket.IO integration tests', () => {
       assert.equal(res.status, 200);
       assert.equal(res.headers.get('content-type'), 'image/png');
       assert.equal(srv.store.countAssets(), 1);
+    });
+
+    it('B4 – a cold start restores rooms and worksheets from a Cloud Storage bucket', async () => {
+      const fake = createFakeGcs('allaboard-data');
+      const gcs = () => new GcsBackend('allaboard-data', { fetchImpl: fake.fetch, apiBase: 'https://gcs.test', getToken: async () => 'test-token' });
+      await srv.close();
+      srv = await startServer({ port: 0, host: '127.0.0.1', dataDir: path.join(tmpDir, 'gcs-disk-1'), backupBackend: gcs(), skipVite: true });
+
+      const { socket: teacher } = await joinTracked({ roomId: 'cold-gcs', userId: 't', name: 'Teacher' });
+      await emitAck(teacher, 'teacher:auth', { pin: '1234' });
+      const bgSync = waitForEvent<any>(teacher, 'background-sync');
+      await emitAck(teacher, 'teacher:set-background', {
+        boardId: 'main',
+        background: { id: 'ws', fileName: 'w.png', pages: [{ dataUrl: PNG, width: 1, height: 1 }], x: 0, y: 0, scale: 1, layout: 'stack', opacity: 1 },
+      });
+      const url = (await bgSync).background.pages[0].dataUrl as string;
+      for (const s of openSockets.splice(0)) if (s.connected) s.disconnect();
+      await srv.close(); // close() flushes the backup, like SIGTERM on Cloud Run
+      assert.equal(fake.objects.has('rooms/cold-gcs.json.gz'), true);
+      assert.equal(fake.objects.has(`assets/${url.split('/').pop()}`), true);
+
+      srv = await startServer({ port: 0, host: '127.0.0.1', dataDir: path.join(tmpDir, 'gcs-disk-2'), backupBackend: gcs(), skipVite: true });
+      const { init } = await joinTracked({ roomId: 'cold-gcs', userId: 's', name: 'Student' });
+      assert.equal(init.background.pages[0].dataUrl, url);
+      const res = await fetch(`http://127.0.0.1:${srv.port}${url}`);
+      assert.equal(res.status, 200);
+      assert.equal(res.headers.get('content-type'), 'image/png');
+    });
+
+    it('B5 – an unreachable bucket (403) runs without backups instead of crashing', async () => {
+      const fake = createFakeGcs('allaboard-data');
+      fake.failWith = 403;
+      await srv.close();
+      srv = await startServer({
+        port: 0, host: '127.0.0.1', dataDir: tmpDir, skipVite: true,
+        backupBackend: new GcsBackend('allaboard-data', { fetchImpl: fake.fetch, apiBase: 'https://gcs.test', getToken: async () => 'test-token' }),
+      });
+      assert.equal(srv.backup, null);
+      assert.equal((await fetch(`http://127.0.0.1:${srv.port}/healthz`)).status, 200);
     });
 
     it('B2 – an unusable DATA_DIR falls back instead of crashing', async () => {

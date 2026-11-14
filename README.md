@@ -58,7 +58,7 @@ Open `http://localhost:3000` in your browser. Share the room URL or in-app **Inv
 
 Room state and worksheet assets are stored in `$DATA_DIR/allaboard.db` (default `.data/allaboard.db`). SQLite uses WAL mode, so `-wal` and `-shm` files may also be present. Stop the server before copying the `.db` file for backup. A legacy `rooms-store.json` is migrated automatically on first start and renamed `rooms-store.json.migrated-<timestamp>`.
 
-In production on Cloud Run, local disk is wiped on cold starts and redeploys. Mount a Cloud Storage bucket as a volume and set `BACKUP_DIR` to its mount path (e.g. `/backup`). Rooms are copied there within ~10 s of changing (immediately on shutdown) and restored automatically at startup. Keep **max instances = 1**: one server process must be the only writer. Leave `DATA_DIR` unset (local disk); never point it at the bucket mount, because SQLite needs real file locking.
+In production on Cloud Run, local disk is wiped on cold starts and redeploys, so rooms and worksheet images are backed up to the Cloud Storage bucket `allaboard-data` (set in `server.ts` as `DEFAULT_BACKUP_BUCKET`), directly over the Cloud Storage API using the service's own service account. No volume mount or env var is needed, so AI Studio redeploys can't break it. The service account needs **Storage Object User** on the bucket. Rooms are copied within ~10 s of changing (immediately on shutdown) and restored at startup. Keep **max instances = 1**. Overrides: `BACKUP_DIR=<folder>` (plain files, e.g. local dev) or `BACKUP_BUCKET=<name>` / `BACKUP_BUCKET=off`.
 
 ## Testing
 

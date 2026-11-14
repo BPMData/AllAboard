@@ -23,7 +23,7 @@ import {
   uniqueStrings,
 } from './src/lib/breakoutRounds.ts';
 import { RoomStore, internBackground, isValidAssetHash } from './roomStore.ts';
-import { BackupMirror, sniffMime } from './backupMirror.ts';
+import { BackupMirror, DirBackend, GcsBackend, sniffMime, type BackupBackend } from './backupMirror.ts';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -37,6 +37,8 @@ export interface StartServerOptions {
   host?: string;
   dataDir?: string;
   backupDir?: string;
+  /** Tests only: use this backup backend instead of picking one from the environment. */
+  backupBackend?: BackupBackend;
   skipVite?: boolean;
 }
 
@@ -110,29 +112,50 @@ interface SerializedRoom {
   lastActiveAt: number;
 }
 
-/** Opens the backup mirror if BACKUP_DIR is set. Returns null (and logs) if unset or unusable. */
-function openBackupMirror(backupDir: string, store: RoomStore): BackupMirror | null {
-  if (!backupDir) {
+/**
+ * Production backup bucket. It lives in code, not in an env var or volume mount, because AI Studio's
+ * Deploy button replaces the Cloud Run service config (env vars, volumes) on every publish.
+ */
+const DEFAULT_BACKUP_BUCKET = 'allaboard-data';
+
+/**
+ * Picks where rooms are backed up. First match wins:
+ *   1. options.backupBackend (tests only)
+ *   2. BACKUP_DIR is set → plain files in that folder (local dev, or a bucket mounted as a volume)
+ *   3. BACKUP_BUCKET is set → that bucket (set it to "off" to disable backups)
+ *   4. Running on Cloud Run in production (K_SERVICE set, NODE_ENV=production) → DEFAULT_BACKUP_BUCKET
+ * Probes the backend once. Returns null and logs if nothing applies or the backend is unusable.
+ * Never throws: a broken backup must not stop the server from starting.
+ */
+async function openBackupMirror(store: RoomStore, options: StartServerOptions): Promise<BackupMirror | null> {
+  const dir = options.backupDir ?? process.env.BACKUP_DIR ?? '';
+  const onCloudRun = Boolean(process.env.K_SERVICE) && process.env.NODE_ENV === 'production';
+  const bucket = process.env.BACKUP_BUCKET ?? (onCloudRun ? DEFAULT_BACKUP_BUCKET : '');
+
+  let backend: BackupBackend | null = options.backupBackend ?? null;
+  if (!backend && dir) backend = new DirBackend(dir);
+  if (!backend && bucket && bucket !== 'off') backend = new GcsBackend(bucket);
+  if (!backend) {
     if (process.env.NODE_ENV === 'production') {
-      console.warn('BACKUP_DIR is not set: rooms will NOT survive a cold start or redeploy.');
+      console.warn('Backups are OFF: rooms will NOT survive a cold start or redeploy.');
     }
     return null;
   }
   try {
-    const mirror = new BackupMirror(backupDir, (hash) => store.getAsset(hash)?.bytes ?? null);
-    console.log(`Backing up rooms to "${backupDir}".`);
-    return mirror;
+    await backend.probe();
   } catch (err) {
-    console.error(`BACKUP_DIR "${backupDir}" is unusable; running WITHOUT backups:`, err);
+    console.error(`Backups are OFF: ${backend.label} is unusable:`, err);
     return null;
   }
+  console.log(`Backing up rooms to ${backend.label}.`);
+  return new BackupMirror(backend, (hash) => store.getAsset(hash)?.bytes ?? null);
 }
 
 export async function startServer(options: StartServerOptions = {}) {
   const dataDir = options.dataDir || process.env.DATA_DIR || path.join(process.cwd(), '.data');
   const legacyStoreFile = path.join(dataDir, 'rooms-store.json');
   const store = new RoomStore(path.join(dataDir, 'allaboard.db'));
-  const backup = openBackupMirror(options.backupDir ?? process.env.BACKUP_DIR ?? '', store);
+  const backup = await openBackupMirror(store, options);
   const portToBind = options.port !== undefined ? options.port : Number(process.env.PORT) || 3000;
   const hostToBind = options.host || '0.0.0.0';
 
@@ -313,11 +336,11 @@ export async function startServer(options: StartServerOptions = {}) {
   }
 
   /** Cold start: copy rooms from the backup into the local SQLite store. */
-  function restoreFromBackup() {
+  async function restoreFromBackup() {
     if (!backup) return;
     try {
       let restored = 0;
-      for (const { roomId, state, lastActiveAt } of backup.loadAllRoomsSync()) {
+      for (const { roomId, state, lastActiveAt } of await backup.loadAllRooms()) {
         const room = hydrateRoom({ ...state, id: roomId, lastActiveAt });
         if (!room) {
           backup.deleteRoom(roomId); // expired
@@ -404,7 +427,7 @@ export async function startServer(options: StartServerOptions = {}) {
   }
 
   migrateLegacyJsonStore();
-  restoreFromBackup();
+  await restoreFromBackup();
   const housekeepingInterval = setInterval(runHousekeeping, HOUSEKEEPING_INTERVAL_MS);
   housekeepingInterval.unref();
 
