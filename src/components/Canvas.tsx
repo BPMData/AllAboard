@@ -39,6 +39,13 @@ import {
 } from '../lib/worksheetLoader';
 import type { PageRange } from '../lib/pageRange';
 import { parseSnapshotText, snapshotFileName } from '../lib/roomSnapshot';
+import { isGoogleDriveConfigured } from '../lib/googleConfig';
+import {
+  GoogleError,
+  downloadDriveFile,
+  friendlyGoogleError,
+  pickDriveFile,
+} from '../lib/googleDrive';
 import { exportAllBoardsToPdf } from '../lib/batchPdfExport';
 import {
   LiveGridOverview,
@@ -121,6 +128,7 @@ import {
   RotateCcw,
   FileSpreadsheet,
   PanelLeftOpen,
+  HardDrive,
 } from 'lucide-react';
 import { cn } from '../lib/utils';
 
@@ -721,6 +729,7 @@ export default function Canvas({
   const worksheetInputRef = useRef<HTMLInputElement>(null);
   const [isUploadingWorksheet, setIsUploadingWorksheet] = useState(false);
   const [worksheetError, setWorksheetError] = useState<string | null>(null);
+  const [driveBusy, setDriveBusy] = useState<string | null>(null);
   const [pendingPdfRange, setPendingPdfRange] = useState<{ file: File; totalPages: number } | null>(null);
   const [showTemplateModal, setShowTemplateModal] = useState(false);
   const [selectedTemplateId, setSelectedTemplateId] = useState<BuiltInTemplateId>('checkin-columns');
@@ -1951,6 +1960,26 @@ export default function Canvas({
     if (!file) return;
     e.target.value = '';
     await startWorksheetImport(file);
+  };
+
+  const handleWorksheetFromDrive = async () => {
+    setWorksheetError(null);
+    setDriveBusy('Opening Google Drive...');
+    try {
+      const doc = await pickDriveFile('worksheet'); // calls getAccessToken first, inside the click
+      if (!doc) return;
+      setDriveBusy('Importing from Drive...');
+      const file = await downloadDriveFile(doc);
+      await startWorksheetImport(file); // same path as local upload, including the page-range modal
+    } catch (err: any) {
+      setWorksheetError(
+        err instanceof GoogleError
+          ? friendlyGoogleError(err.code)
+          : err?.message || 'Could not import from Drive.'
+      );
+    } finally {
+      setDriveBusy(null);
+    }
   };
 
   const handleExportPNG = () => {
@@ -4196,6 +4225,19 @@ export default function Canvas({
                   : 'Upload (.JPG / .PNG / .PDF)'}
               </span>
             </button>
+
+            {isGoogleDriveConfigured() && (
+              <button
+                type="button"
+                disabled={isUploadingWorksheet || Boolean(driveBusy)}
+                onClick={handleWorksheetFromDrive}
+                className="flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium bg-white text-slate-800 border border-amber-300 hover:bg-amber-100/60 transition-colors whitespace-nowrap shrink-0 cursor-pointer disabled:opacity-50"
+                title="Import a Google Slides deck or PDF from your Google Drive"
+              >
+                <HardDrive size={13} className="text-emerald-600" />
+                <span>{driveBusy || 'From Drive'}</span>
+              </button>
+            )}
 
             {/* Active Background Worksheet Controls */}
             {background && (
