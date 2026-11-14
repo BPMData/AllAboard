@@ -22,6 +22,16 @@ into board pages. It all runs in the browser, with no server changes.
   third-party OAuth apps, so sign-in fails with "app blocked by your administrator" until IT allowlists the
   client ID. That's unlikely for an `ai.studio` domain. Personal Gmail accounts would work immediately.
   Worth trying anyway, and worth asking IT if it ever looks valuable enough.
+- **Shortcut: AI Studio's built-in Google Workspace integration.** Instead of the manual setup above, ask AI
+  Studio to add a Drive/Slides (or Classroom) feature. It provisions Firebase Auth plus an OAuth client for
+  the applet's origins and writes `firebase-applet-config.json` (in-repo, so it survives Publish). In React:
+  `signInWithPopup(auth, provider)` with `provider.addScope('https://www.googleapis.com/auth/drive.file')`,
+  then `GoogleAuthProvider.credentialFromResult(result).accessToken` as the Bearer token for Picker/Drive.
+  - Does **not** fix the school-IT blocker above. Workspace admins can still block the client.
+  - The access token lasts ~1 hour and can't be refreshed client-side. Re-run the popup on a 401.
+  - Picker still needs the API key and `.setAppId(<project number>)`, or `drive.file` won't unlock the picked file.
+  - Same pattern covers Classroom (`classroom.courses.readonly`, `classroom.courseworkmaterials` to post a
+    `?room=` link). Roster scopes (`classroom.rosters.readonly`) need Google verification for a public app.
 - **Other gotchas:**
   - Drive caps exports at **10 MB**. Show a clear error that suggests File → Download → PDF.
   - Decks often exceed the importer's 10-page cap (`MAX_PDF_PAGES`). Ship this with a slide/page picker (below).
