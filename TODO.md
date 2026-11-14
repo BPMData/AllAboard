@@ -140,6 +140,29 @@ into board pages. It all runs in the browser, with no server changes.
   - **Stretch:** **"Group by quadrant."** After a Four Corners vote on main, auto-assign students to groups (or to
     one of several prepared rounds) based on which quadrant their name stamp is in. The server already knows each
     stamp's position and owner (once the `userId` spoofing fix below lands).
+    - **Mapping:** each region maps to a prepared round or group, e.g. top-left → Round A; top-right and
+      bottom-right → Round B. It's saved in the lesson pack. Works for any template with labeled regions (number
+      line, agree/disagree spectrum, Venn diagram), not just Four Corners.
+    - **Preconfigured "unassigned" destination:** students who never stamped go to a room the teacher chose in
+      advance (e.g. a catch-up or "come see me" board) instead of a manual list. Manual placement stays as an option.
+    - **Preview before launch:** "8 → A, 11 → B, 6 → C, 3 → unassigned", with drag-to-adjust before anyone moves.
+    - If a student stamped more than once (setting below is off), use their **most recent** stamp.
+
+### "One name stamp per student" setting
+- [ ] **Teacher toggle: each student's name stamp can exist at most once** (per board). It makes votes like Four
+      Corners clean.
+  - **Student UX:**
+    - After placing their name stamp, the name-stamp option **disappears or greys out** for that student.
+    - If they **delete their own stamp**, the option comes back.
+    - Also let them **drag their own stamp** to a different quadrant. That's usually what a student who
+      "messed up" actually wants, and the existing owner-or-teacher check on `element-update` already allows it.
+  - **Client:** derive availability from the board's elements: "does an element with `stamp === 'username'` and
+    `userId === me` exist on this board?" There's no extra state to sync, and it updates automatically when the
+    stamp is deleted.
+  - **Server (the real enforcement):** in `element-start` and `elements-batch-add`, if the setting is on and the
+    sender already has a `username` stamp on that board, **reject** the new one. Depends on the `userId` spoofing
+    fix, otherwise a student could dodge the limit by claiming to be someone else. Teachers are exempt.
+  - Store the flag in room settings (persisted and backed up), and include it in lesson packs.
 
 ### Lesson packs: a whole lesson in one file, shareable between teachers
 - [ ] **Export/import a "lesson pack"**: one file with everything needed to run a lesson, minus student data:
