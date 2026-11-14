@@ -30,6 +30,7 @@ export interface PendingSnapshotData {
   background?: RoomBackground | null;
   subBoards?: Record<string, SubBoardData>;
   breakoutConfig?: BreakoutConfig;
+  assets?: Record<string, string>;
 }
 
 interface LiveGridOverviewProps {
