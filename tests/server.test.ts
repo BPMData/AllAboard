@@ -1113,6 +1113,19 @@ describe('AllAboard server & Socket.IO integration tests', () => {
       assert.equal((await fetch(`http://127.0.0.1:${srv.port}/healthz`)).status, 200);
     });
 
+    it('B6 – a stale BACKUP_DIR (env var kept, mount gone) falls back to the bucket API', async () => {
+      const blocker = path.join(tmpDir, 'no-mount');
+      fs.writeFileSync(blocker, 'x');
+      const fake = createFakeGcs('allaboard-data');
+      await srv.close();
+      srv = await startServer({
+        port: 0, host: '127.0.0.1', dataDir: tmpDir, skipVite: true,
+        backupDir: path.join(blocker, 'backup'),
+        backupBackend: new GcsBackend('allaboard-data', { fetchImpl: fake.fetch, apiBase: 'https://gcs.test', getToken: async () => 'test-token' }),
+      });
+      assert.match(srv.backup!.backend.label, /gs:\/\/allaboard-data/);
+    });
+
     it('B2 – an unusable DATA_DIR falls back instead of crashing', async () => {
       const blocker = path.join(tmpDir, 'not-a-dir');
       fs.writeFileSync(blocker, 'x');
