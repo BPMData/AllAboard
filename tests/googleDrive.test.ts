@@ -1,7 +1,11 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  DRIVE_FILE_KEY_PREFIX,
+  DRIVE_LAST_FOLDER_KEY,
+  DRIVE_SAVE_KEY_PREFIX,
+  MY_DRIVE,
+  normalizeJsonFileName,
+  replacesLastSave,
   DRIVE_SCOPE,
   GoogleError,
   JSON_MIME,
@@ -49,7 +53,8 @@ describe('googleConfig (node environment)', () => {
 describe('googleDrive pure helpers', () => {
   it('exports expected constants and GoogleError', () => {
     assert.equal(DRIVE_SCOPE, 'https://www.googleapis.com/auth/drive.file');
-    assert.equal(DRIVE_FILE_KEY_PREFIX, 'drawchat_drive_file_');
+    assert.equal(DRIVE_SAVE_KEY_PREFIX, 'drawchat_drive_save_');
+    assert.equal(DRIVE_LAST_FOLDER_KEY, 'drawchat_drive_last_folder');
     const err = new GoogleError('popup_closed', 'cancelled');
     assert.ok(err instanceof Error);
     assert.equal(err.code, 'popup_closed');
@@ -86,5 +91,22 @@ describe('googleDrive pure helpers', () => {
     assert.match(friendlyGoogleError('exportSizeLimitExceeded'), /10 MB limit/);
     assert.match(friendlyGoogleError('not_found'), /Pick it again from Drive/);
     assert.equal(friendlyGoogleError('something_unexpected'), 'Google Drive request failed. Local upload still works.');
+  });
+
+  it('normalizeJsonFileName trims, strips slashes, falls back and adds .json once', () => {
+    assert.equal(normalizeJsonFileName('  period 3 notes ', 'x.json'), 'period 3 notes.json');
+    assert.equal(normalizeJsonFileName('room.JSON', 'x.json'), 'room.JSON');
+    assert.equal(normalizeJsonFileName('a/b\\c', 'x.json'), 'a-b-c.json');
+    assert.equal(normalizeJsonFileName('   ', 'allaboard-room-math-2026-11-15.json'), 'allaboard-room-math-2026-11-15.json');
+  });
+
+  it('replacesLastSave only when name and folder both match the last save', () => {
+    const last = { fileId: 'f1', fileName: 'room.json', folder: { id: 'fold-1', name: 'Period 3' } };
+    assert.equal(replacesLastSave(null, 'room.json', MY_DRIVE), false);
+    assert.equal(replacesLastSave(last, 'room.json', { id: 'fold-1', name: 'Period 3' }), true);
+    assert.equal(replacesLastSave(last, 'room-v2.json', { id: 'fold-1', name: 'Period 3' }), false);
+    assert.equal(replacesLastSave(last, 'room.json', MY_DRIVE), false);
+    const inRoot = { fileId: 'f2', fileName: 'room.json', folder: MY_DRIVE };
+    assert.equal(replacesLastSave(inRoot, 'room.json', { id: null, name: 'My Drive' }), true);
   });
 });

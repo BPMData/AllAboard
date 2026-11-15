@@ -3,11 +3,31 @@ import { joinRoom, uniqueRoom } from './helpers';
 
 const EXPORT_MOD = '/src/lib/batchPdfExport.ts';
 
+interface FakeDoc {
+  id: string;
+  name: string;
+  mimeType: string;
+}
+
 interface FakeGoogleOptions {
   omitGsi?: boolean;
   pickerAction?: 'picked' | 'cancel';
-  pickerDoc?: { id: string; name: string; mimeType: string };
+  pickerDoc?: FakeDoc;
 }
+
+/** What one opened Picker was given: its title and each tab's view id and method calls. */
+interface PickerLogEntry {
+  title: string | null;
+  views: Array<{ viewId: string; calls: Record<string, unknown[]> }>;
+}
+
+const pickerLog = (page: Page) => page.evaluate(() => (window as any).__PICKER_LOG__ as PickerLogEntry[]);
+
+/** Queue the next Picker result (used before the default pickerDoc). */
+const queuePick = (page: Page, doc: FakeDoc | 'cancel') =>
+  page.evaluate((d) => (window as any).__FAKE_PICKER_QUEUE__.push(d), doc);
+
+const todayFileName = (room: string) => `allaboard-room-${room}-${new Date().toISOString().slice(0, 10)}.json`;
 
 async function makePdfBuffer(page: Page, pageCount: number): Promise<Buffer> {
   const b64 = await page.evaluate(
@@ -55,18 +75,37 @@ async function installFakeGoogle(page: Page, opts: FakeGoogleOptions = {}) {
       load: (_name: string, cb: () => void) => cb(),
     };
 
+    (window as any).__PICKER_LOG__ = [];
+    (window as any).__FAKE_PICKER_QUEUE__ = [];
+
     class FakeDocsView {
-      setIncludeFolders() { return this; }
-      setSelectFolderEnabled() { return this; }
-      setMimeTypes() { return this; }
+      viewId: string;
+      calls: Record<string, unknown[]> = {};
+      constructor(viewId: string) {
+        this.viewId = viewId;
+      }
+      private rec(name: string, args: unknown[]) {
+        this.calls[name] = args;
+        return this;
+      }
+      setIncludeFolders(...a: unknown[]) { return this.rec('setIncludeFolders', a); }
+      setSelectFolderEnabled(...a: unknown[]) { return this.rec('setSelectFolderEnabled', a); }
+      setMimeTypes(...a: unknown[]) { return this.rec('setMimeTypes', a); }
+      setLabel(...a: unknown[]) { return this.rec('setLabel', a); }
+      setOwnedByMe(...a: unknown[]) { return this.rec('setOwnedByMe', a); }
+      setParent(...a: unknown[]) { return this.rec('setParent', a); }
+      setMode(...a: unknown[]) { return this.rec('setMode', a); }
     }
 
     class FakePickerBuilder {
       private cb: ((data: any) => void) | null = null;
+      private title: string | null = null;
+      private views: FakeDocsView[] = [];
       setOAuthToken() { return this; }
       setDeveloperKey() { return this; }
       setAppId() { return this; }
-      addView() { return this; }
+      setTitle(t: string) { this.title = t; return this; }
+      addView(v: FakeDocsView) { this.views.push(v); return this; }
       setOrigin() { return this; }
       setCallback(cb: (data: any) => void) {
         this.cb = cb;
@@ -74,16 +113,21 @@ async function installFakeGoogle(page: Page, opts: FakeGoogleOptions = {}) {
       }
       build() {
         const cb = this.cb;
+        (window as any).__PICKER_LOG__.push({
+          title: this.title,
+          views: this.views.map((v) => ({ viewId: v.viewId, calls: v.calls })),
+        });
         return {
           setVisible: (visible: boolean) => {
             if (!visible || !cb) return;
-            const action = (window as any).__FAKE_PICKER_ACTION__;
-            if (action === 'cancel') {
+            const queued = (window as any).__FAKE_PICKER_QUEUE__.shift();
+            const next = queued ?? ((window as any).__FAKE_PICKER_ACTION__ === 'cancel' ? 'cancel' : null);
+            if (next === 'cancel') {
               cb({ action: 'cancel' });
             } else {
               cb({
                 action: 'picked',
-                docs: [(window as any).__FAKE_PICKER_DOC__],
+                docs: [next ?? (window as any).__FAKE_PICKER_DOC__],
               });
             }
           },
@@ -102,7 +146,8 @@ async function installFakeGoogle(page: Page, opts: FakeGoogleOptions = {}) {
         },
       },
       picker: {
-        ViewId: { DOCS: 'DOCS' },
+        ViewId: { DOCS: 'DOCS', PRESENTATIONS: 'PRESENTATIONS', PDFS: 'PDFS', FOLDERS: 'FOLDERS' },
+        DocsViewMode: { LIST: 'list', GRID: 'grid' },
         Action: { PICKED: 'picked', CANCEL: 'cancel' },
         DocsView: FakeDocsView,
         PickerBuilder: FakePickerBuilder,
@@ -124,12 +169,12 @@ test.describe('Google Drive integration (stubbed Google)', () => {
       (window as any).__ALLABOARD_GOOGLE_CONFIG__ = { clientId: '', apiKey: '', appId: '' };
     });
     await joinRoom(page, uniqueRoom('gd-empty'), 'Ms T', '4829');
-    await expect(page.getByRole('button', { name: 'From Drive', exact: true })).toHaveCount(0);
-    await expect(page.getByRole('button', { name: 'Save to Drive', exact: true })).toHaveCount(0);
-    await expect(page.getByRole('button', { name: 'Open from Drive', exact: true })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: 'Slides / PDF from Drive', exact: true })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: 'Save Room to Drive', exact: true })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: 'Open Room from Drive', exact: true })).toHaveCount(0);
   });
 
-  test('From Drive imports a PDF worksheet onto the board', async ({ page }) => {
+  test('Slides / PDF from Drive imports a PDF worksheet onto the board', async ({ page }) => {
     await page.goto('/');
     const pdfBuf = await makePdfBuffer(page, 2);
 
@@ -154,14 +199,27 @@ test.describe('Google Drive integration (stubbed Google)', () => {
     });
 
     await joinRoom(page, uniqueRoom('gd-pdf'), 'Ms T', '4829');
-    await page.getByRole('button', { name: 'From Drive', exact: true }).click();
+    await page.getByRole('button', { name: 'Slides / PDF from Drive', exact: true }).click();
 
     await expect(page.getByTitle('Remove background worksheet from this board')).toBeVisible();
     await expect(page.getByRole('button', { name: 'Side-by-Side' })).toBeVisible();
     expect(requestedUrls).toContain('https://www.googleapis.com/drive/v3/files/pdf-1?alt=media');
+
+    // Three tabs: Slides and PDFs as flat lists, then folder browsing filtered to Slides + PDFs.
+    const [log] = await pickerLog(page);
+    expect(log.views.map((v) => [v.viewId, v.calls.setLabel?.[0]])).toEqual([
+      ['PRESENTATIONS', 'Slides'],
+      ['PDFS', 'PDFs'],
+      ['DOCS', 'Browse Drive'],
+    ]);
+    expect(log.views[0].calls.setIncludeFolders).toEqual([false]);
+    expect(log.views[2].calls.setIncludeFolders).toEqual([true]);
+    expect(log.views[2].calls.setMimeTypes).toEqual([
+      'application/vnd.google-apps.presentation,application/pdf',
+    ]);
   });
 
-  test('From Drive exports a Google Slides deck via /export?mimeType=application%2Fpdf', async ({ page }) => {
+  test('Slides / PDF from Drive exports a Google Slides deck via /export?mimeType=application%2Fpdf', async ({ page }) => {
     await page.goto('/');
     const pdfBuf = await makePdfBuffer(page, 2);
 
@@ -189,7 +247,7 @@ test.describe('Google Drive integration (stubbed Google)', () => {
     });
 
     await joinRoom(page, uniqueRoom('gd-slides'), 'Ms T', '4829');
-    await page.getByRole('button', { name: 'From Drive', exact: true }).click();
+    await page.getByRole('button', { name: 'Slides / PDF from Drive', exact: true }).click();
 
     await expect(page.getByTitle('Remove background worksheet from this board')).toBeVisible();
     expect(requestedUrls).toContain(
@@ -197,7 +255,7 @@ test.describe('Google Drive integration (stubbed Google)', () => {
     );
   });
 
-  test('From Drive opens the page-range modal for a >10 page PDF', async ({ page }) => {
+  test('Slides / PDF from Drive opens the page-range modal for a >10 page PDF', async ({ page }) => {
     await page.goto('/');
     const pdfBuf = await makePdfBuffer(page, 12);
 
@@ -214,7 +272,7 @@ test.describe('Google Drive integration (stubbed Google)', () => {
     });
 
     await joinRoom(page, uniqueRoom('gd-12'), 'Ms T', '4829');
-    await page.getByRole('button', { name: 'From Drive', exact: true }).click();
+    await page.getByRole('button', { name: 'Slides / PDF from Drive', exact: true }).click();
 
     await expect(page.getByText('Choose Pages to Import')).toBeVisible();
     await page.getByLabel('From').fill('3');
@@ -229,9 +287,9 @@ test.describe('Google Drive integration (stubbed Google)', () => {
     await installFakeGoogle(page, { pickerAction: 'cancel' });
 
     await joinRoom(page, uniqueRoom('gd-cancel'), 'Ms T', '4829');
-    await page.getByRole('button', { name: 'From Drive', exact: true }).click();
+    await page.getByRole('button', { name: 'Slides / PDF from Drive', exact: true }).click();
 
-    await expect(page.getByRole('button', { name: 'From Drive', exact: true })).toBeEnabled();
+    await expect(page.getByRole('button', { name: 'Slides / PDF from Drive', exact: true })).toBeEnabled();
     await expect(page.getByTitle('Remove background worksheet from this board')).toBeHidden();
     await expect(page.getByText(/Could not import from Drive|Google Drive request failed/)).toHaveCount(0);
   });
@@ -241,7 +299,7 @@ test.describe('Google Drive integration (stubbed Google)', () => {
     await page.route('https://accounts.google.com/**', (route) => route.abort());
 
     await joinRoom(page, uniqueRoom('gd-blocked'), 'Ms T', '4829');
-    await page.getByRole('button', { name: 'From Drive', exact: true }).click();
+    await page.getByRole('button', { name: 'Slides / PDF from Drive', exact: true }).click();
 
     await expect(
       page.getByText("Couldn't reach Google. Your network may block it. Local upload still works.")
@@ -263,7 +321,7 @@ test.describe('Google Drive integration (stubbed Google)', () => {
     await expect(page.getByTitle('Remove background worksheet from this board')).toBeVisible();
   });
 
-  test('Open from Drive opens the Restore Room Snapshot modal and restores on confirm', async ({ page }) => {
+  test('Open Room from Drive opens the Restore Room Snapshot modal and restores on confirm', async ({ page }) => {
     await installFakeGoogle(page, {
       pickerDoc: { id: 'snap-1', name: 'saved-room.json', mimeType: 'application/json' },
     });
@@ -309,7 +367,7 @@ test.describe('Google Drive integration (stubbed Google)', () => {
     });
 
     await joinRoom(page, uniqueRoom('gd-open'), 'Ms T', '4829');
-    await page.getByRole('button', { name: 'Open from Drive' }).click();
+    await page.getByRole('button', { name: 'Open Room from Drive' }).click();
 
     await expect(page.getByText('Restore Room Snapshot (.JSON)')).toBeVisible();
     await expect(page.getByText('saved-room.json')).toBeVisible();
@@ -322,136 +380,158 @@ test.describe('Google Drive integration (stubbed Google)', () => {
 
     await page.getByRole('button', { name: 'Restore Room Snapshot' }).click();
     await expect(page.getByText('Welcome back from Drive!')).toBeVisible();
+
+    // First tab lists only my .json files, flat (no folders), in list mode.
+    const [log] = await pickerLog(page);
+    expect(log.views.map((v) => v.calls.setLabel?.[0])).toEqual(['My room saves', 'Browse Drive']);
+    expect(log.views[0].calls.setMimeTypes).toEqual(['application/json']);
+    expect(log.views[0].calls.setOwnedByMe).toEqual([true]);
+    expect(log.views[0].calls.setIncludeFolders).toEqual([false]);
+    expect(log.views[0].calls.setMode).toEqual(['list']);
   });
 
-  test('Save to Drive creates a file on first save and PATCHes it on second save', async ({ page }) => {
-    await installFakeGoogle(page);
-
-    const requests: Array<{ method: string; url: string; body: string | null }> = [];
-    let sessionCount = 0;
-
+  /** Fakes Drive's resumable upload. Records each request; the PUT returns the name from the metadata. */
+  async function fakeDriveUploads(page: Page, opts: { notFoundId?: string } = {}) {
+    const requests: Array<{ method: string; url: string; meta: any }> = [];
+    let session = 0;
+    let lastName = '';
     await page.route('https://www.googleapis.com/**', async (route) => {
       const req = route.request();
       const url = req.url();
       const method = req.method();
-      const body = req.postData();
-      requests.push({ method, url, body });
-
-      if (url === 'https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable' && method === 'POST') {
-        sessionCount += 1;
+      if (url.includes('/upload/drive/v3/files') && (method === 'POST' || method === 'PATCH')) {
+        const meta = JSON.parse(req.postData() || '{}');
+        requests.push({ method, url, meta });
+        if (opts.notFoundId && method === 'PATCH' && url.includes(`/files/${opts.notFoundId}?`)) {
+          await route.fulfill({
+            status: 404,
+            contentType: 'application/json',
+            body: JSON.stringify({ error: { code: 404, errors: [{ reason: 'notFound' }] } }),
+          });
+          return;
+        }
+        lastName = meta.name;
+        session += 1;
         await route.fulfill({
           status: 200,
           headers: {
-            Location: `https://www.googleapis.com/upload/drive/v3/upload-session-${sessionCount}`,
+            Location: `https://www.googleapis.com/upload/drive/v3/upload-session-${session}`,
             'access-control-expose-headers': 'Location',
           },
           body: '',
         });
         return;
       }
-
-      if (
-        url === 'https://www.googleapis.com/upload/drive/v3/files/drive-file-42?uploadType=resumable' &&
-        method === 'PATCH'
-      ) {
-        sessionCount += 1;
-        await route.fulfill({
-          status: 200,
-          headers: {
-            Location: `https://www.googleapis.com/upload/drive/v3/upload-session-${sessionCount}`,
-            'access-control-expose-headers': 'Location',
-          },
-          body: '',
-        });
-        return;
-      }
-
-      if (url.startsWith('https://www.googleapis.com/upload/drive/v3/upload-session-') && method === 'PUT') {
-        const parsed = JSON.parse(body || '{}');
+      if (url.includes('/upload/drive/v3/upload-session-') && method === 'PUT') {
+        requests.push({ method, url, meta: JSON.parse(req.postData() || '{}') });
         await route.fulfill({
           status: 200,
           contentType: 'application/json',
-          body: JSON.stringify({
-            id: 'drive-file-42',
-            name: `allaboard-room-${parsed.roomId}-saved.json`,
-          }),
+          body: JSON.stringify({ id: 'drive-file-42', name: lastName }),
         });
         return;
       }
-
       await route.abort();
     });
+    return requests;
+  }
 
+  test('Save Room to Drive asks for a name and folder, then replaces the same file on the next save', async ({ page }) => {
+    await installFakeGoogle(page);
+    const requests = await fakeDriveUploads(page);
     const room = uniqueRoom('gd-save');
     await joinRoom(page, room, 'Ms T', '4829');
 
-    await page.getByRole('button', { name: 'Save to Drive' }).click();
-    await expect(page.getByText(/Saved .* to Google Drive/)).toBeVisible();
+    // First save: dialog with the usual file name, in My Drive.
+    await page.getByRole('button', { name: 'Save Room to Drive', exact: true }).click();
+    await expect(page.getByText('Save Room to Google Drive')).toBeVisible();
+    await expect(page.getByLabel('File name')).toHaveValue(todayFileName(room));
+    await expect(page.getByTestId('drive-save-folder')).toHaveText('My Drive');
+    await expect(page.getByText('Saves a new file in My Drive.')).toBeVisible();
+    await page.getByRole('button', { name: 'Save', exact: true }).click();
+    await expect(page.getByText(`Saved ${todayFileName(room)} to My Drive`)).toBeVisible();
+    await expect(page.getByText('Save Room to Google Drive')).toBeHidden();
 
-    await page.getByRole('button', { name: 'Save to Drive' }).click();
-    await expect(page.getByText(/Saved .* to Google Drive/)).toBeVisible();
+    expect(requests[0].method).toBe('POST');
+    expect(requests[0].meta).toEqual({ name: todayFileName(room), mimeType: 'application/json' });
+    expect(requests[1].method).toBe('PUT');
+    expect(requests[1].meta.version).toBe(2);
+    expect(requests[1].meta.roomId).toBe(room);
 
-    expect(requests.map((r) => r.method)).toEqual(['POST', 'PUT', 'PATCH', 'PUT']);
-    const uploadedSnapshot = JSON.parse(requests[3].body || '{}');
-    expect(uploadedSnapshot.version).toBe(2);
-    expect(uploadedSnapshot.roomId).toBe(room);
-
-    const storedId = await page.evaluate((r) => localStorage.getItem(`drawchat_drive_file_${r}`), room);
-    expect(storedId).toBe('drive-file-42');
+    // Second save, same name and folder: offers to replace, and PATCHes the same file.
+    await page.getByRole('button', { name: 'Save Room to Drive', exact: true }).click();
+    await expect(page.getByText('Replaces the copy of this room you saved earlier in My Drive.')).toBeVisible();
+    await page.getByRole('button', { name: 'Replace', exact: true }).click();
+    await expect(page.getByText(`Saved ${todayFileName(room)} to My Drive`)).toBeVisible();
+    expect(requests[2].method).toBe('PATCH');
+    expect(requests[2].url).toContain('/files/drive-file-42?uploadType=resumable');
   });
 
-  test('Save to Drive creates a new file with POST when previously saved file returns 404 notFound', async ({ page }) => {
+  test('Save Room to Drive saves a renamed file into a chosen folder, and remembers that folder', async ({ page }) => {
     await installFakeGoogle(page);
+    const requests = await fakeDriveUploads(page);
+    const room = uniqueRoom('gd-folder');
+    await joinRoom(page, room, 'Ms T', '4829');
 
-    const methods: string[] = [];
-    await page.route('https://www.googleapis.com/**', async (route) => {
-      const req = route.request();
-      const url = req.url();
-      const method = req.method();
-      methods.push(method);
+    await page.getByRole('button', { name: 'Save Room to Drive', exact: true }).click();
+    await page.getByLabel('File name').fill('Period 3 review');
+    await queuePick(page, { id: 'fold-9', name: 'Period 3', mimeType: 'application/vnd.google-apps.folder' });
+    await page.getByRole('button', { name: 'Change...' }).click();
+    await expect(page.getByTestId('drive-save-folder')).toHaveText('Period 3');
+    await page.getByRole('button', { name: 'Save', exact: true }).click();
+    await expect(page.getByText('Saved Period 3 review.json to Period 3')).toBeVisible();
 
-      if (url.includes('/files/stale-id?uploadType=resumable') && method === 'PATCH') {
-        await route.fulfill({
-          status: 404,
-          contentType: 'application/json',
-          body: JSON.stringify({ error: { code: 404, errors: [{ reason: 'notFound' }] } }),
-        });
-        return;
-      }
-
-      if (url === 'https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable' && method === 'POST') {
-        await route.fulfill({
-          status: 200,
-          headers: {
-            Location: 'https://www.googleapis.com/upload/drive/v3/upload-session-new',
-            'access-control-expose-headers': 'Location',
-          },
-          body: '',
-        });
-        return;
-      }
-
-      if (url === 'https://www.googleapis.com/upload/drive/v3/upload-session-new' && method === 'PUT') {
-        await route.fulfill({
-          status: 200,
-          contentType: 'application/json',
-          body: JSON.stringify({ id: 'drive-file-99', name: 'recovered.json' }),
-        });
-        return;
-      }
-
-      await route.abort();
+    expect(requests[0].method).toBe('POST');
+    expect(requests[0].meta).toEqual({
+      name: 'Period 3 review.json',
+      mimeType: 'application/json',
+      parents: ['fold-9'],
     });
 
+    // The folder picker offered folders only, with folder selection on, starting at My Drive.
+    const [folderPicker] = await pickerLog(page);
+    expect(folderPicker.views[0].viewId).toBe('FOLDERS');
+    expect(folderPicker.views[0].calls.setSelectFolderEnabled).toEqual([true]);
+    expect(folderPicker.views[0].calls.setParent).toBeUndefined();
+
+    // Next time, the dialog starts in Period 3, and Change... opens inside it.
+    await page.getByRole('button', { name: 'Save Room to Drive', exact: true }).click();
+    await expect(page.getByTestId('drive-save-folder')).toHaveText('Period 3');
+    await queuePick(page, 'cancel');
+    await page.getByRole('button', { name: 'Change...' }).click();
+    await expect(page.getByTestId('drive-save-folder')).toHaveText('Period 3');
+    const log = await pickerLog(page);
+    expect(log[1].views[0].calls.setParent).toEqual(['fold-9']);
+
+    // Open Room from Drive's Browse tab also starts in the last save folder.
+    await page.getByRole('button', { name: 'Cancel' }).click();
+    await queuePick(page, 'cancel');
+    await page.getByRole('button', { name: 'Open Room from Drive', exact: true }).click();
+    await expect.poll(async () => (await pickerLog(page)).length).toBe(3);
+    const openLog = (await pickerLog(page))[2];
+    expect(openLog.views[1].calls.setParent).toEqual(['fold-9']);
+  });
+
+  test('Save Room to Drive makes a new file when the earlier one was deleted (404)', async ({ page }) => {
+    await installFakeGoogle(page);
+    const requests = await fakeDriveUploads(page, { notFoundId: 'stale-id' });
     const room = uniqueRoom('gd-404');
     await joinRoom(page, room, 'Ms T', '4829');
-    await page.evaluate((r) => localStorage.setItem(`drawchat_drive_file_${r}`, 'stale-id'), room);
+    await page.evaluate(
+      ({ r, name }) =>
+        localStorage.setItem(
+          `drawchat_drive_save_${r}`,
+          JSON.stringify({ fileId: 'stale-id', fileName: name, folder: { id: null, name: 'My Drive' } })
+        ),
+      { r: room, name: todayFileName(room) }
+    );
 
-    await page.getByRole('button', { name: 'Save to Drive' }).click();
-    await expect(page.getByText('Saved recovered.json to Google Drive')).toBeVisible();
-    expect(methods).toEqual(['PATCH', 'POST', 'PUT']);
+    await page.getByRole('button', { name: 'Save Room to Drive', exact: true }).click();
+    await page.getByRole('button', { name: 'Replace', exact: true }).click();
+    await expect(page.getByText(`Saved ${todayFileName(room)} to My Drive`)).toBeVisible();
+    expect(requests.map((r) => r.method)).toEqual(['PATCH', 'POST', 'PUT']);
 
-    const storedId = await page.evaluate((r) => localStorage.getItem(`drawchat_drive_file_${r}`), room);
-    expect(storedId).toBe('drive-file-99');
+    const stored = await page.evaluate((r) => JSON.parse(localStorage.getItem(`drawchat_drive_save_${r}`) || '{}'), room);
+    expect(stored.fileId).toBe('drive-file-42');
   });
 });

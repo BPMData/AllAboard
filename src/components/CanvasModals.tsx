@@ -19,7 +19,13 @@ import {
   generateTemplateBackground,
 } from '../lib/worksheetLoader';
 import { clampPageRange, type PageRange } from '../lib/pageRange';
-import { AlertCircle, Check, Download, Shuffle, X } from 'lucide-react';
+import {
+  normalizeJsonFileName,
+  replacesLastSave,
+  type DriveFolder,
+  type DriveSaveRecord,
+} from '../lib/googleDrive';
+import { AlertCircle, Check, Download, FolderOpen, Shuffle, X } from 'lucide-react';
 import { cn } from '../lib/utils';
 
 export type { PendingSnapshotData };
@@ -1168,6 +1174,131 @@ export function PdfPageRangeModal({
           </button>
         </div>
       </div>
+    </div>
+  );
+}
+
+interface DriveSaveModalProps {
+  defaultFileName: string;
+  folder: DriveFolder;
+  lastSave: DriveSaveRecord | null;
+  busy: 'saving' | 'choosing-folder' | null;
+  error: string | null;
+  onChangeFolder: () => void;
+  onSave: (fileName: string) => void;
+  onCancel: () => void;
+}
+
+/**
+ * Teacher "Save Room to Drive" dialog: an editable file name plus the destination folder,
+ * which opens Google's folder picker. Starts in the last folder the teacher saved to.
+ */
+export function DriveSaveModal({
+  defaultFileName,
+  folder,
+  lastSave,
+  busy,
+  error,
+  onChangeFolder,
+  onSave,
+  onCancel,
+}: DriveSaveModalProps) {
+  const [nameText, setNameText] = useState(defaultFileName);
+  const finalName = normalizeJsonFileName(nameText, defaultFileName);
+  const willReplace = replacesLastSave(lastSave, finalName, folder);
+
+  const submit = (e?: React.FormEvent) => {
+    e?.preventDefault();
+    if (busy) return;
+    onSave(finalName);
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-xs flex items-center justify-center p-4 select-text">
+      <form
+        onSubmit={submit}
+        className="bg-white border border-slate-200 rounded-2xl shadow-xl w-full max-w-md p-6 space-y-5"
+      >
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <h3 className="font-display text-lg font-bold text-slate-900">Save Room to Google Drive</h3>
+            <p className="text-xs text-slate-500 mt-1">
+              Saves drawings, chat, worksheets and breakout boards as a .json file you can open again later.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={onCancel}
+            aria-label="Close"
+            className="p-1 text-slate-400 hover:text-slate-700 rounded-lg cursor-pointer"
+          >
+            <X size={18} />
+          </button>
+        </div>
+
+        <div className="space-y-4">
+          <div>
+            <label htmlFor="drive-save-name" className="block text-xs font-semibold text-slate-700 mb-1.5">
+              File name
+            </label>
+            <input
+              id="drive-save-name"
+              type="text"
+              value={nameText}
+              onChange={(e) => setNameText(e.target.value)}
+              autoFocus
+              onFocus={(e) => {
+                const dot = e.target.value.toLowerCase().lastIndexOf('.json');
+                e.target.setSelectionRange(0, dot > 0 ? dot : e.target.value.length);
+              }}
+              maxLength={200}
+              className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-sm text-slate-900 focus:bg-white focus:border-blue-600 focus:outline-none"
+            />
+          </div>
+
+          <div>
+            <span className="block text-xs font-semibold text-slate-700 mb-1.5">Folder</span>
+            <div className="flex items-center gap-2">
+              <div className="flex-1 min-w-0 flex items-center gap-2 px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-900">
+                <FolderOpen size={15} className="text-slate-400 shrink-0" />
+                <span className="truncate" data-testid="drive-save-folder">{folder.name}</span>
+              </div>
+              <button
+                type="button"
+                onClick={onChangeFolder}
+                disabled={Boolean(busy)}
+                className="px-3 py-2.5 rounded-xl text-xs font-medium border border-slate-300 text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer disabled:opacity-50 shrink-0"
+              >
+                {busy === 'choosing-folder' ? 'Opening...' : 'Change...'}
+              </button>
+            </div>
+          </div>
+
+          <p className="text-xs text-slate-600">
+            {willReplace
+              ? `Replaces the copy of this room you saved earlier in ${folder.name}.`
+              : `Saves a new file in ${folder.name}.`}
+          </p>
+          {error && <p className="text-xs text-red-600 font-medium">{error}</p>}
+        </div>
+
+        <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
+          <button
+            type="button"
+            onClick={onCancel}
+            className="px-4 py-2 rounded-lg text-xs font-medium text-slate-600 hover:bg-slate-100 transition-colors cursor-pointer"
+          >
+            Cancel
+          </button>
+          <button
+            type="submit"
+            disabled={Boolean(busy)}
+            className="px-4 py-2 rounded-lg text-xs font-semibold bg-blue-600 text-white hover:bg-blue-500 transition-colors cursor-pointer disabled:opacity-60"
+          >
+            {busy === 'saving' ? 'Saving...' : willReplace ? 'Replace' : 'Save'}
+          </button>
+        </div>
+      </form>
     </div>
   );
 }
