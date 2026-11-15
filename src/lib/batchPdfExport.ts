@@ -8,14 +8,12 @@ import {
   getNoteBox,
   computeNotesGone,
 } from './inkCore';
-
 import {
   STUDENT_STAMP_SYMBOLS,
   getTeacherStampAppearance,
   getTeacherStampDimensions,
 } from './stamps';
-
-const PAGE_GAP = 32;
+import { DEFAULT_PAGE_GAP, layoutPages } from './worksheetLayout';
 
 export interface BoardExportEntry {
   boardId: string;
@@ -55,18 +53,8 @@ export function computeBoardWorldBounds(
   };
 
   if (background && background.pages && background.pages.length > 0) {
-    const scale = background.scale || 1;
-    let offsetX = background.x || 0;
-    let offsetY = background.y || 0;
-    for (const page of background.pages) {
-      const w = page.width * scale;
-      const h = page.height * scale;
-      expand(offsetX, offsetY, offsetX + w, offsetY + h);
-      if (background.layout === 'row') {
-        offsetX += w + PAGE_GAP * scale;
-      } else {
-        offsetY += h + PAGE_GAP * scale;
-      }
+    for (const rect of layoutPages(background, DEFAULT_PAGE_GAP)) {
+      expand(rect.x, rect.y, rect.x + rect.width, rect.y + rect.height);
     }
   }
 
@@ -357,26 +345,19 @@ async function renderBoardPageJpeg(
 
   // 3. Draw Background Worksheet Pages
   if (entry.background && entry.background.pages?.length > 0) {
-    const bgScale = entry.background.scale || 1;
-    let curX = entry.background.x || 0;
-    let curY = entry.background.y || 0;
+    const rects = layoutPages(entry.background, DEFAULT_PAGE_GAP);
 
     ctx.save();
     ctx.translate(offsetX, offsetY);
     ctx.scale(scale, scale);
     ctx.globalAlpha = entry.background.opacity ?? 1;
 
-    for (const page of entry.background.pages) {
-      const pw = page.width * bgScale;
-      const ph = page.height * bgScale;
+    for (let i = 0; i < entry.background.pages.length; i++) {
+      const page = entry.background.pages[i];
+      const rect = rects[i];
       const img = await loadImage(page.dataUrl);
       if (img) {
-        ctx.drawImage(img, curX, curY, pw, ph);
-      }
-      if (entry.background.layout === 'row') {
-        curX += pw + PAGE_GAP * bgScale;
-      } else {
-        curY += ph + PAGE_GAP * bgScale;
+        ctx.drawImage(img, rect.x, rect.y, rect.width, rect.height);
       }
     }
     ctx.restore();
