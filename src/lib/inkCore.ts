@@ -1,4 +1,5 @@
 import { CanvasElement, HollowShapeKind } from '../types';
+import { getTeacherStampAppearance, getTeacherStampDimensions } from './stamps';
 
 /**
  * OverBoard-derived ink, smoothing, highlighter/cover, and editable text-note core logic
@@ -545,6 +546,16 @@ export function getElementBounds(el: CanvasElement): [number, number, number, nu
   if (el.tool === 'stamp') {
     const cx = el.x || 0;
     const cy = el.y || 0;
+    const teacherMeta = getTeacherStampAppearance(el.stamp, el.text, el.color);
+    if (teacherMeta) {
+      const dims = getTeacherStampDimensions(teacherMeta.text, el.strokeWidth || 6);
+      const rad = (teacherMeta.rotationDeg * Math.PI) / 180;
+      const cos = Math.abs(Math.cos(rad));
+      const sin = Math.abs(Math.sin(rad));
+      const halfW = (dims.width / 2) * cos + (dims.height / 2) * sin;
+      const halfH = (dims.width / 2) * sin + (dims.height / 2) * cos;
+      return [cx - halfW, cy - halfH, cx + halfW, cy + halfH];
+    }
     if (el.stamp === 'username') {
       const label = el.userName || 'Student';
       const fontSize = Math.max(13, Math.round((el.strokeWidth || 6) * 1.1 + 10));

@@ -24,6 +24,7 @@ import {
 } from './src/lib/breakoutRounds.ts';
 import { RoomStore, internBackground, isValidAssetHash } from './roomStore.ts';
 import { BackupMirror, DirBackend, GcsBackend, sniffMime, type BackupBackend } from './backupMirror.ts';
+import { isTeacherStampKind } from './src/lib/stamps.ts';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -1455,18 +1456,28 @@ export async function startServer(options: StartServerOptions = {}) {
       if (room.isCanvasLocked && !senderRecord?.isTeacher) {
         return;
       }
+      if (element.tool === 'stamp' && isTeacherStampKind(element.stamp) && !senderRecord?.isTeacher) {
+        return;
+      }
 
       const boardId = element.boardId || 'main';
       const targetElements = getBoardElements(room, boardId);
       if (!targetElements) return;
 
-      const exists = targetElements.some((el) => el.id === element.id);
+      const authoredElement = {
+        ...element,
+        boardId,
+        userId: meta.userId,
+        userName: senderRecord?.name || element.userName,
+      };
+
+      const exists = targetElements.some((el) => el.id === authoredElement.id);
       if (!exists) {
-        targetElements.push(element);
+        targetElements.push(authoredElement);
       }
       room.lastActiveAt = Date.now();
       scheduleSaveToDisk(room);
-      socket.to(room.id).emit('element-start', { ...element, boardId });
+      socket.to(room.id).emit('element-start', authoredElement);
     });
 
     socket.on('element-append-points', ({ id, boardId = 'main', newPoints }) => {
@@ -1507,7 +1518,10 @@ export async function startServer(options: StartServerOptions = {}) {
       if (idx !== -1) {
         const existing = targetElements[idx];
         if (existing.userId !== meta.userId && !senderRecord?.isTeacher) return;
-        const { bringToFront, userId: _ignoreUserId, ...cleanPatch } = patch;
+        const { bringToFront, userId: _ignoreUserId, userName: _ignoreUserName, ...cleanPatch } = patch;
+        if (!senderRecord?.isTeacher && cleanPatch.stamp !== undefined && isTeacherStampKind(cleanPatch.stamp)) {
+          delete cleanPatch.stamp;
+        }
         const updated = { ...existing, ...cleanPatch };
         if (bringToFront) {
           targetElements.splice(idx, 1);
@@ -1551,7 +1565,10 @@ export async function startServer(options: StartServerOptions = {}) {
         const el = targetElements[i];
         const patch = updateMap.get(el.id);
         if (patch && (el.userId === meta.userId || senderRecord?.isTeacher)) {
-          const { bringToFront: _ignored, ...cleanPatch } = patch;
+          const { bringToFront: _ignored, userId: _ignoreUserId, userName: _ignoreUserName, ...cleanPatch } = patch;
+          if (!senderRecord?.isTeacher && cleanPatch.stamp !== undefined && isTeacherStampKind(cleanPatch.stamp)) {
+            delete cleanPatch.stamp;
+          }
           const merged = { ...el, ...cleanPatch };
           appliedUpdates.push(cleanPatch);
           if (bringToFront) {
@@ -1599,6 +1616,8 @@ export async function startServer(options: StartServerOptions = {}) {
               ...el,
               id: Math.random().toString(36).substring(2, 11) + '_' + Math.random().toString(36).substring(2, 5),
               boardId: sb.id,
+              userId: meta.userId,
+              userName: senderRecord.name || el.userName,
               timestamp: Date.now(),
             };
             sb.elements.push(cloned);
@@ -1619,12 +1638,19 @@ export async function startServer(options: StartServerOptions = {}) {
       const existingIds = new Set(targetElements.map((e) => e.id));
       const added: any[] = [];
       for (const el of newElements) {
-        if (el && el.id && !existingIds.has(el.id)) {
-          const normalized = { ...el, boardId };
-          targetElements.push(normalized);
-          existingIds.add(el.id);
-          added.push(normalized);
+        if (!el || !el.id || existingIds.has(el.id)) continue;
+        if (el.tool === 'stamp' && isTeacherStampKind(el.stamp) && !senderRecord?.isTeacher) {
+          continue;
         }
+        const normalized = {
+          ...el,
+          boardId,
+          userId: meta.userId,
+          userName: senderRecord?.name || el.userName,
+        };
+        targetElements.push(normalized);
+        existingIds.add(el.id);
+        added.push(normalized);
       }
 
       if (added.length > 0) {

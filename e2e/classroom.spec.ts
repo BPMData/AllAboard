@@ -411,6 +411,45 @@ test.describe('kick or ban contribution purge modal', () => {
     await disruptor.context.close();
     await peer.context.close();
   });
+
+  test('teacher sees Teacher stamps bar and can place feedback stamps while students cannot', async ({ browser }) => {
+    const room = uniqueRoom('t-stamps');
+    const teacher = await newUser(browser);
+    const student = await newUser(browser);
+    await joinRoom(teacher.page, room, 'Ms T', PIN);
+    await joinRoom(student.page, room, 'Sam');
+
+    // Switch both to Stamp tool
+    await teacher.page.getByRole('button', { name: /Quick Stamp Tool/i }).click();
+    await student.page.getByRole('button', { name: /Quick Stamp Tool/i }).click();
+
+    // Teacher sees Teacher stamps group; student only sees student stamps
+    const teacherGroup = teacher.page.getByTestId('teacher-stamps-group');
+    await expect(teacherGroup).toBeVisible();
+    await expect(teacherGroup.getByRole('button', { name: 'APPROVED', exact: true })).toBeVisible();
+    await expect(teacherGroup.getByRole('button', { name: 'DENIED', exact: true })).toBeVisible();
+    await expect(teacherGroup.getByRole('button', { name: 'NEEDS WORK', exact: true })).toBeVisible();
+    await expect(teacherGroup.getByRole('button', { name: 'INCOMPLETE', exact: true })).toBeVisible();
+    await expect(teacherGroup.getByRole('button', { name: 'LATE', exact: true })).toBeVisible();
+    await expect(student.page.getByTestId('teacher-stamps-group')).toHaveCount(0);
+
+    // Teacher places an APPROVED stamp and a CUSTOM rubber stamp
+    await teacherGroup.getByRole('button', { name: 'APPROVED', exact: true }).click();
+    const box = await teacher.page.locator('canvas').first().boundingBox();
+    expect(box).not.toBeNull();
+    await teacher.page.mouse.click(box!.x + 180, box!.y + 180);
+
+    await teacherGroup.getByRole('button', { name: 'CUSTOM', exact: true }).click();
+    await teacher.page.getByLabel('Custom teacher stamp text').fill('great graph');
+    await teacher.page.mouse.click(box!.x + 340, box!.y + 220);
+
+    // Both stamps recorded on teacher's contribution row (2 items)
+    const tRow = await rosterRow(teacher.page, 'Ms T');
+    await expect(tRow).toContainText('2 items');
+
+    await teacher.context.close();
+    await student.context.close();
+  });
 });
 
 test.describe('room name display', () => {

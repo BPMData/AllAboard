@@ -9,15 +9,13 @@ import {
   computeNotesGone,
 } from './inkCore';
 
-const PAGE_GAP = 32;
+import {
+  STUDENT_STAMP_SYMBOLS,
+  getTeacherStampAppearance,
+  getTeacherStampDimensions,
+} from './stamps';
 
-const STAMP_SYMBOLS: Record<string, string> = {
-  check: '✓',
-  question: '?',
-  star: '★',
-  thumbsup: '👍',
-  heart: '♥',
-};
+const PAGE_GAP = 32;
 
 export interface BoardExportEntry {
   boardId: string;
@@ -85,7 +83,13 @@ export function computeBoardWorldBounds(
     } else if (el.tool === 'stamp') {
       const sx = el.x || 0;
       const sy = el.y || 0;
-      expand(sx - 90, sy - 45, sx + 90, sy + 45);
+      const teacherMeta = getTeacherStampAppearance(el.stamp, el.text, el.color);
+      if (teacherMeta) {
+        const dims = getTeacherStampDimensions(teacherMeta.text, el.strokeWidth || 6);
+        expand(sx - dims.width * 0.65, sy - dims.height * 0.65, sx + dims.width * 0.65, sy + dims.height * 0.65);
+      } else {
+        expand(sx - 90, sy - 45, sx + 90, sy + 45);
+      }
     } else if (el.points && el.points.length >= 2) {
       for (let i = 0; i < el.points.length; i += 2) {
         expand(
@@ -137,7 +141,40 @@ function drawElementOnContext(
   if (el.tool === 'stamp') {
     const cx = el.x || 0;
     const cy = el.y || 0;
-    if (el.stamp === 'username') {
+    const teacherMeta = getTeacherStampAppearance(el.stamp, el.text, el.color);
+    if (teacherMeta) {
+      const dims = getTeacherStampDimensions(teacherMeta.text, el.strokeWidth || 6);
+      ctx.translate(cx, cy);
+      ctx.rotate((teacherMeta.rotationDeg * Math.PI) / 180);
+
+      ctx.globalAlpha = 0.94;
+      ctx.beginPath();
+      ctx.roundRect(-dims.width / 2, -dims.height / 2, dims.width, dims.height, dims.cornerRadius);
+      ctx.fillStyle = teacherMeta.fill;
+      ctx.fill();
+      ctx.lineWidth = dims.borderWidth;
+      ctx.strokeStyle = teacherMeta.color;
+      ctx.stroke();
+
+      ctx.globalAlpha = 0.45;
+      ctx.beginPath();
+      ctx.roundRect(
+        -dims.width / 2 + dims.innerInset,
+        -dims.height / 2 + dims.innerInset,
+        dims.width - dims.innerInset * 2,
+        dims.height - dims.innerInset * 2,
+        Math.max(2, dims.cornerRadius - 2)
+      );
+      ctx.lineWidth = Math.max(1, dims.borderWidth * 0.4);
+      ctx.stroke();
+
+      ctx.globalAlpha = 1;
+      ctx.fillStyle = teacherMeta.color;
+      ctx.font = `800 ${dims.fontSize}px "Plus Jakarta Sans", sans-serif`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(teacherMeta.text, 0, 1);
+    } else if (el.stamp === 'username') {
       const label = el.userName || 'Student';
       const fontSize = Math.max(13, Math.round(el.strokeWidth * 1.1 + 10));
       const padX = Math.round(fontSize * 0.85);
@@ -159,7 +196,7 @@ function drawElementOnContext(
       ctx.textBaseline = 'middle';
       ctx.fillText(label, cx, cy);
     } else {
-      const symbol = STAMP_SYMBOLS[el.stamp || 'check'] || '✓';
+      const symbol = STUDENT_STAMP_SYMBOLS[el.stamp || 'check'] || '✓';
       const radius = Math.max(16, el.strokeWidth * 1.8 + 10);
       const fontSize = Math.round(radius * 1.15);
 

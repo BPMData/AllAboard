@@ -1,4 +1,17 @@
-export type StampKind = 'check' | 'question' | 'star' | 'thumbsup' | 'heart' | 'username';
+export type StudentStampKind = 'check' | 'question' | 'star' | 'thumbsup' | 'heart' | 'username';
+
+export type TeacherStampKind =
+  | 'approved'
+  | 'denied'
+  | 'needs-work'
+  | 'incomplete'
+  | 'late'
+  | 'redo'
+  | 'see-me'
+  | 'excellent'
+  | 'teacher-custom';
+
+export type StampKind = StudentStampKind | TeacherStampKind;
 
 export type HollowShapeKind = 'circle' | 'square' | 'triangle' | 'diamond' | 'star';
 
