@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   BreakoutConfig,
   BreakoutGroupDraft,
@@ -17,6 +17,8 @@ import {
   BUILT_IN_TEMPLATES,
   BuiltInTemplateId,
   generateTemplateBackground,
+  openPdfForThumbnails,
+  type PdfThumbnailHandle,
 } from '../lib/worksheetLoader';
 import { clampPageRange, type PageRange } from '../lib/pageRange';
 import {
@@ -1064,6 +1066,7 @@ export function RestoreSnapshotModal({
 }
 
 interface PdfPageRangeModalProps {
+  file: File;
   fileName: string;
   totalPages: number;
   maxPages: number;
@@ -1075,6 +1078,7 @@ interface PdfPageRangeModalProps {
  * Teacher modal for picking up to `maxPages` pages when importing a long PDF worksheet.
  */
 export function PdfPageRangeModal({
+  file,
   fileName,
   totalPages,
   maxPages,
@@ -1083,8 +1087,92 @@ export function PdfPageRangeModal({
 }: PdfPageRangeModalProps) {
   const [firstText, setFirstText] = useState('1');
   const [lastText, setLastText] = useState(String(Math.min(maxPages, totalPages)));
+  const [thumbs, setThumbs] = useState<Record<number, string>>({});
+  const gridRef = useRef<HTMLDivElement | null>(null);
 
   const clamped = clampPageRange(Number(firstText), Number(lastText), totalPages, maxPages);
+
+  useEffect(() => {
+    setThumbs({});
+    const gridEl = gridRef.current;
+    let cancelled = false;
+    let pdfHandle: PdfThumbnailHandle | null = null;
+    const visiblePages = new Set<number>();
+    const renderedPages = new Set<number>();
+    let processing = false;
+
+    const drainQueue = async () => {
+      if (processing || cancelled || !pdfHandle) return;
+      processing = true;
+      try {
+        while (!cancelled && pdfHandle) {
+          const nextPage = Array.from(visiblePages)
+            .filter((p) => !renderedPages.has(p))
+            .sort((a, b) => a - b)[0];
+          if (!nextPage) break;
+          renderedPages.add(nextPage);
+          visiblePages.delete(nextPage);
+          try {
+            const dataUrl = await pdfHandle.renderThumb(nextPage, 120);
+            if (cancelled) break;
+            setThumbs((prev) => ({ ...prev, [nextPage]: dataUrl }));
+          } catch {
+            /* ignore thumbnail errors if dialog closed */
+          }
+        }
+      } finally {
+        processing = false;
+      }
+    };
+
+    const observer =
+      gridEl && typeof IntersectionObserver !== 'undefined'
+        ? new IntersectionObserver(
+            (entries) => {
+              for (const entry of entries) {
+                const pageNum = Number((entry.target as HTMLElement).dataset.page);
+                if (!pageNum) continue;
+                if (entry.isIntersecting) {
+                  if (!renderedPages.has(pageNum)) {
+                    visiblePages.add(pageNum);
+                  }
+                } else {
+                  visiblePages.delete(pageNum);
+                }
+              }
+              void drainQueue();
+            },
+            { root: gridEl, rootMargin: '400px' }
+          )
+        : null;
+
+    if (gridEl && observer) {
+      gridEl.querySelectorAll<HTMLElement>('[data-page]').forEach((el) => observer.observe(el));
+    } else {
+      for (let p = 1; p <= Math.min(totalPages, maxPages); p++) {
+        visiblePages.add(p);
+      }
+    }
+
+    openPdfForThumbnails(file)
+      .then((handle) => {
+        if (cancelled) {
+          void handle.destroy();
+          return;
+        }
+        pdfHandle = handle;
+        void drainQueue();
+      })
+      .catch(() => {
+        /* ignore thumbnail load failure; From/To numeric inputs still work */
+      });
+
+    return () => {
+      cancelled = true;
+      observer?.disconnect();
+      void pdfHandle?.destroy();
+    };
+  }, [file, totalPages, maxPages]);
 
   const handleBlur = () => {
     const next = clampPageRange(Number(firstText), Number(lastText), totalPages, maxPages);
@@ -1092,9 +1180,24 @@ export function PdfPageRangeModal({
     setLastText(String(next.last));
   };
 
+  const handleThumbClick = (pageNum: number, shiftKey: boolean) => {
+    if (shiftKey) {
+      const currentFrom = clamped.first;
+      if (pageNum >= currentFrom) {
+        const next = clampPageRange(currentFrom, pageNum, totalPages, maxPages);
+        setFirstText(String(next.first));
+        setLastText(String(next.last));
+      }
+      return;
+    }
+    const nextLast = Math.min(pageNum + maxPages - 1, totalPages);
+    setFirstText(String(pageNum));
+    setLastText(String(nextLast));
+  };
+
   return (
     <div className="fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-xs flex items-center justify-center p-4 select-text">
-      <div className="bg-white border border-slate-200 rounded-2xl shadow-xl w-full max-w-md p-6 space-y-5">
+      <div className="bg-white border border-slate-200 rounded-2xl shadow-xl w-full max-w-3xl p-6 space-y-5">
         <div className="flex items-start justify-between gap-4">
           <div>
             <h3 className="font-display text-lg font-bold text-slate-900">
@@ -1152,9 +1255,63 @@ export function PdfPageRangeModal({
               />
             </div>
           </div>
-          <p className="text-xs text-slate-600">
-            Importing pages {clamped.first}&ndash;{clamped.last}.
-          </p>
+          <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-slate-600">
+            <span>Importing pages {clamped.first}&ndash;{clamped.last}.</span>
+            <span className="text-[11px] text-slate-500">
+              Click a page to start there; Shift-click to set the end.
+            </span>
+          </div>
+
+          <div
+            ref={gridRef}
+            data-testid="pdf-thumb-grid"
+            className="max-h-[50vh] overflow-y-auto rounded-xl border border-slate-200 bg-slate-50/60 p-2.5"
+          >
+            <div
+              className="grid gap-2.5"
+              style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(120px, 1fr))' }}
+            >
+              {Array.from({ length: totalPages }, (_, idx) => {
+                const pageNum = idx + 1;
+                const inRange = pageNum >= clamped.first && pageNum <= clamped.last;
+                const thumbUrl = thumbs[pageNum];
+                return (
+                  <button
+                    key={pageNum}
+                    type="button"
+                    data-testid={`pdf-thumb-${pageNum}`}
+                    data-page={pageNum}
+                    data-in-range={inRange ? 'true' : 'false'}
+                    onClick={(e) => handleThumbClick(pageNum, e.shiftKey)}
+                    className={cn(
+                      'flex flex-col items-center gap-1.5 p-1.5 rounded-lg border transition-all cursor-pointer select-none',
+                      inRange
+                        ? 'border-blue-500 bg-blue-50 ring-1 ring-blue-500/40'
+                        : 'border-slate-200 bg-white opacity-60 hover:opacity-100 hover:border-slate-300'
+                    )}
+                  >
+                    {thumbUrl ? (
+                      <img
+                        src={thumbUrl}
+                        alt={`Page ${pageNum}`}
+                        className="w-full h-24 object-contain rounded bg-white"
+                      />
+                    ) : (
+                      <div className="w-full h-24 rounded bg-slate-100 border border-slate-200/80" />
+                    )}
+                    <span
+                      className={cn(
+                        'text-[11px] font-medium tabular-nums',
+                        inRange ? 'text-blue-700 font-semibold' : 'text-slate-600'
+                      )}
+                    >
+                      {pageNum}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
         </div>
 
         <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">

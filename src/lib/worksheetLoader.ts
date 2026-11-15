@@ -302,6 +302,91 @@ export function isPdfFile(file: File): boolean {
   return file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
 }
 
+export interface PdfThumbnailHandle {
+  numPages: number;
+  renderThumb: (pageNumber: number, width?: number) => Promise<string>;
+  destroy: () => Promise<void>;
+}
+
+/**
+ * Opens a PDF once and returns a sequential thumbnail renderer so callers can
+ * render only visible pages on demand without overwhelming Chromebooks.
+ */
+export async function openPdfForThumbnails(file: File): Promise<PdfThumbnailHandle> {
+  const loadingTask = pdfjsLib.getDocument({ data: await file.arrayBuffer() });
+  const pdf = await loadingTask.promise;
+  let destroyed = false;
+  let queue: Promise<unknown> = Promise.resolve();
+
+  const renderThumb = (pageNumber: number, width = 120): Promise<string> => {
+    const task = queue.then(async () => {
+      if (destroyed) {
+        throw new Error('PDF thumbnail loader destroyed.');
+      }
+      const page = await pdf.getPage(pageNumber);
+      try {
+        const unscaledViewport = page.getViewport({ scale: 1 });
+        const scale = width / Math.max(unscaledViewport.width, 1);
+        const viewport = page.getViewport({ scale });
+
+        const canvas = document.createElement('canvas');
+        const targetW = Math.max(1, Math.round(viewport.width));
+        const targetH = Math.max(1, Math.round(viewport.height));
+        canvas.width = targetW;
+        canvas.height = targetH;
+
+        const ctx = canvas.getContext('2d');
+        if (!ctx) {
+          throw new Error('Canvas context unavailable.');
+        }
+
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(0, 0, targetW, targetH);
+
+        await page.render({
+          canvasContext: ctx,
+          viewport,
+          canvas,
+        } as any).promise;
+
+        return canvas.toDataURL('image/jpeg', 0.7);
+      } finally {
+        page.cleanup();
+      }
+    });
+    queue = task.catch(() => undefined);
+    return task;
+  };
+
+  return {
+    numPages: pdf.numPages,
+    renderThumb,
+    destroy: async () => {
+      if (destroyed) return;
+      destroyed = true;
+      await loadingTask.destroy();
+    },
+  };
+}
+
+export async function renderPdfThumbnails(
+  file: File,
+  opts: { width: number; onThumb: (pageNumber: number, dataUrl: string) => void; signal?: AbortSignal }
+): Promise<void> {
+  if (opts.signal?.aborted) return;
+  const doc = await openPdfForThumbnails(file);
+  try {
+    for (let pageNumber = 1; pageNumber <= doc.numPages; pageNumber++) {
+      if (opts.signal?.aborted) break;
+      const dataUrl = await doc.renderThumb(pageNumber, opts.width);
+      if (opts.signal?.aborted) break;
+      opts.onThumb(pageNumber, dataUrl);
+    }
+  } finally {
+    await doc.destroy();
+  }
+}
+
 export async function getPdfPageCount(file: File): Promise<number> {
   const pdf = await pdfjsLib.getDocument({ data: await file.arrayBuffer() }).promise;
   return pdf.numPages;

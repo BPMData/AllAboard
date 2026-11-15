@@ -314,4 +314,97 @@ test.describe('worksheet UI', () => {
     expect(saved.background.fileName).toBe('twelve.pdf (pp. 3–12)');
     expect(saved.background.pages).toHaveLength(10);
   });
+
+  test('PDF page-range modal shows thumbnails, click & shift-click selection, and imports selected range', async ({ page }) => {
+    await joinRoom(page, uniqueRoom('pdf12thumbs'), 'Ms T', '4829');
+
+    const pdfBase64 = await page.evaluate(async (exporter) => {
+      const { buildMultiPagePdfFromJpegs } = await import(/* @vite-ignore */ exporter);
+      const pages = Array.from({ length: 12 }, (_, i) => {
+        const c = document.createElement('canvas');
+        c.width = 400;
+        c.height = 283;
+        const ctx = c.getContext('2d')!;
+        ctx.fillStyle = `hsl(${i * 30}, 80%, 50%)`;
+        ctx.fillRect(0, 0, c.width, c.height);
+        const b64 = c.toDataURL('image/jpeg', 0.9).split(',')[1];
+        const bytes = Uint8Array.from(atob(b64), (ch) => ch.charCodeAt(0));
+        return { jpegBytes: bytes, widthPx: c.width, heightPx: c.height };
+      });
+      const pdfBlob = buildMultiPagePdfFromJpegs(pages);
+      const pdfBytes = new Uint8Array(await pdfBlob.arrayBuffer());
+      let binary = '';
+      for (let i = 0; i < pdfBytes.length; i++) binary += String.fromCharCode(pdfBytes[i]);
+      return btoa(binary);
+    }, EXPORT);
+
+    await page
+      .locator('input[type="file"][accept*="application/pdf"]')
+      .setInputFiles({ name: 'twelve.pdf', mimeType: 'application/pdf', buffer: Buffer.from(pdfBase64, 'base64') });
+
+    await expect(page.getByText('Choose Pages to Import')).toBeVisible();
+    for (let p = 1; p <= 12; p++) {
+      await expect(page.getByTestId(`pdf-thumb-${p}`)).toBeVisible();
+    }
+    await expect(page.getByTestId('pdf-thumb-1').locator('img')).toBeVisible();
+
+    await page.getByTestId('pdf-thumb-3').click();
+    await expect(page.getByLabel('From')).toHaveValue('3');
+    await expect(page.getByLabel('To')).toHaveValue('12');
+
+    await page.getByTestId('pdf-thumb-5').click({ modifiers: ['Shift'] });
+    await expect(page.getByLabel('From')).toHaveValue('3');
+    await expect(page.getByLabel('To')).toHaveValue('5');
+    await expect(page.getByText('Importing pages 3–5.')).toBeVisible();
+
+    await page.getByRole('button', { name: 'Import pages' }).click();
+    await expect(page.getByTitle('Remove background worksheet from this board')).toBeVisible();
+
+    const downloadPromise = page.waitForEvent('download');
+    await page.getByRole('button', { name: 'Save .JSON' }).click();
+    const download = await downloadPromise;
+    const fs = await import('node:fs/promises');
+    const saved = JSON.parse(await fs.readFile((await download.path())!, 'utf8'));
+    expect(saved.background.fileName).toBe('twelve.pdf (pp. 3–5)');
+    expect(saved.background.pages).toHaveLength(3);
+  });
+
+  test('PDF page-range modal lazily renders thumbnails only when scrolled into view', async ({ page }) => {
+    await joinRoom(page, uniqueRoom('pdf40lazy'), 'Ms T', '4829');
+
+    const pdfBase64 = await page.evaluate(async (exporter) => {
+      const { buildMultiPagePdfFromJpegs } = await import(/* @vite-ignore */ exporter);
+      const c = document.createElement('canvas');
+      c.width = 200;
+      c.height = 260;
+      const ctx = c.getContext('2d')!;
+      ctx.fillStyle = '#e2e8f0';
+      ctx.fillRect(0, 0, c.width, c.height);
+      const b64 = c.toDataURL('image/jpeg', 0.7).split(',')[1];
+      const bytes = Uint8Array.from(atob(b64), (ch) => ch.charCodeAt(0));
+      const pages = Array.from({ length: 40 }, () => ({ jpegBytes: bytes, widthPx: c.width, heightPx: c.height }));
+      const pdfBlob = buildMultiPagePdfFromJpegs(pages);
+      const pdfBytes = new Uint8Array(await pdfBlob.arrayBuffer());
+      let binary = '';
+      for (let i = 0; i < pdfBytes.length; i++) binary += String.fromCharCode(pdfBytes[i]);
+      return btoa(binary);
+    }, EXPORT);
+
+    await page
+      .locator('input[type="file"][accept*="application/pdf"]')
+      .setInputFiles({ name: 'forty.pdf', mimeType: 'application/pdf', buffer: Buffer.from(pdfBase64, 'base64') });
+
+    await expect(page.getByText('Choose Pages to Import')).toBeVisible();
+    await expect(page.getByTestId('pdf-thumb-1').locator('img')).toBeVisible();
+    await page.waitForTimeout(300);
+
+    const renderedBeforeScroll = await page.getByTestId('pdf-thumb-grid').locator('img').count();
+    expect(renderedBeforeScroll).toBeGreaterThan(0);
+    expect(renderedBeforeScroll).toBeLessThan(40);
+
+    await page.getByTestId('pdf-thumb-grid').evaluate((el) => {
+      el.scrollTop = el.scrollHeight;
+    });
+    await expect(page.getByTestId('pdf-thumb-40').locator('img')).toBeVisible();
+  });
 });

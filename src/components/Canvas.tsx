@@ -4679,6 +4679,7 @@ export default function Canvas({
       {/* Teacher PDF Page Range Modal */}
       {pendingPdfRange && (
         <PdfPageRangeModal
+          file={pendingPdfRange.file}
           fileName={pendingPdfRange.file.name}
           totalPages={pendingPdfRange.totalPages}
           maxPages={MAX_PDF_PAGES}
