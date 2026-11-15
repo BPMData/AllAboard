@@ -38,6 +38,13 @@ import {
   BuiltInTemplateId,
 } from '../lib/worksheetLoader';
 import type { PageRange } from '../lib/pageRange';
+import {
+  STAMP_OPTIONS,
+  TEACHER_STAMP_OPTIONS,
+  getTeacherStampAppearance,
+  getTeacherStampDimensions,
+  isTeacherStampKind,
+} from '../lib/stamps';
 import { parseSnapshotText, snapshotFileName } from '../lib/roomSnapshot';
 import { isGoogleDriveConfigured } from '../lib/googleConfig';
 import {
@@ -199,15 +206,6 @@ interface CanvasProps {
   unreadChatCount?: number;
   onShowChat?: () => void;
 }
-
-const STAMP_OPTIONS: Array<{ kind: StampKind; symbol: string; label: string }> = [
-  { kind: 'check', symbol: '✓', label: 'Got It (Check)' },
-  { kind: 'question', symbol: '?', label: 'Confused (Question)' },
-  { kind: 'star', symbol: '★', label: 'Star' },
-  { kind: 'thumbsup', symbol: '👍', label: 'Thumbs Up' },
-  { kind: 'heart', symbol: '♥', label: 'Heart' },
-  { kind: 'username', symbol: 'ID', label: 'Stamp Your Username Badge' },
-];
 
 const MIN_SCALE = 0.1;
 const MAX_SCALE = 5.0;
@@ -623,6 +621,7 @@ export default function Canvas({
 
   const [tool, setTool] = useState<ToolType>('solid');
   const [stampKind, setStampKind] = useState<StampKind>('check');
+  const [customTeacherStampText, setCustomTeacherStampText] = useState<string>('CHECK THIS');
   const [gridMode, setGridMode] = useState<GridMode>(() =>
     readLocalGridMode('allaboard-grid-mode', 'dots')
   );
@@ -2448,14 +2447,26 @@ export default function Canvas({
 
     // One-click Stamp placement (when not using palm eraser)
     if (strokeTool === 'stamp') {
+      const effectiveStampKind: StampKind =
+        !isTeacher && isTeacherStampKind(stampKind) ? 'check' : stampKind;
+      const customText =
+        effectiveStampKind === 'teacher-custom'
+          ? customTeacherStampText.trim().slice(0, 24) || 'FEEDBACK'
+          : undefined;
+      const teacherMeta = getTeacherStampAppearance(
+        effectiveStampKind,
+        customText,
+        color === '#ffffff' ? '#7c3aed' : color
+      );
       const stampElement: CanvasElement = {
         id,
         boardId: activeBoardId,
         userId,
         userName,
         tool: 'stamp',
-        stamp: stampKind,
-        color: color === '#ffffff' ? userColor : color,
+        stamp: effectiveStampKind,
+        ...(customText ? { text: customText } : {}),
+        color: teacherMeta ? teacherMeta.color : color === '#ffffff' ? userColor : color,
         strokeWidth,
         x: world.x,
         y: world.y,
@@ -3004,6 +3015,52 @@ export default function Canvas({
 
     const renderBase = () => {
       if (el.tool === 'stamp') {
+        const teacherMeta = getTeacherStampAppearance(el.stamp, el.text, el.color);
+        if (teacherMeta) {
+          const dims = getTeacherStampDimensions(teacherMeta.text, el.strokeWidth);
+          return (
+            <Group x={el.x || 0} y={el.y || 0} rotation={teacherMeta.rotationDeg}>
+              <Rect
+                x={-dims.width / 2}
+                y={-dims.height / 2}
+                width={dims.width}
+                height={dims.height}
+                cornerRadius={dims.cornerRadius}
+                fill={teacherMeta.fill}
+                opacity={0.94}
+                stroke={teacherMeta.color}
+                strokeWidth={dims.borderWidth}
+                shadowColor="#0f172a"
+                shadowBlur={4}
+                shadowOpacity={0.14}
+                shadowOffsetY={1}
+              />
+              <Rect
+                x={-dims.width / 2 + dims.innerInset}
+                y={-dims.height / 2 + dims.innerInset}
+                width={dims.width - dims.innerInset * 2}
+                height={dims.height - dims.innerInset * 2}
+                cornerRadius={Math.max(2, dims.cornerRadius - 2)}
+                stroke={teacherMeta.color}
+                strokeWidth={Math.max(1, dims.borderWidth * 0.4)}
+                opacity={0.45}
+              />
+              <KonvaText
+                x={-dims.width / 2}
+                y={-dims.fontSize * 0.46}
+                width={dims.width}
+                align="center"
+                text={teacherMeta.text}
+                fill={teacherMeta.color}
+                fontSize={dims.fontSize}
+                fontFamily="Plus Jakarta Sans, sans-serif"
+                fontStyle="800"
+                letterSpacing={1.2}
+              />
+            </Group>
+          );
+        }
+
         if (el.stamp === 'username') {
           const label = el.userName || 'Student';
           const fontSize = Math.max(13, Math.round(el.strokeWidth * 1.1 + 10));
@@ -3653,24 +3710,72 @@ export default function Canvas({
 
         {/* Inline Stamp Selector when Stamp Tool is Active */}
         {tool === 'stamp' && canDraw && (
-          <div className="flex items-center gap-1 bg-blue-50/80 px-2 py-1 rounded-lg border border-blue-200/80">
-            <span className="text-[11px] font-medium text-blue-800 mr-1">Stamp:</span>
-            {STAMP_OPTIONS.map((st) => (
-              <button
-                key={st.kind}
-                type="button"
-                onClick={() => setStampKind(st.kind)}
-                className={cn(
-                  "px-2 h-6 rounded flex items-center justify-center text-xs font-bold transition-colors cursor-pointer whitespace-nowrap",
-                  stampKind === st.kind
-                    ? "bg-blue-600 text-white shadow-xs"
-                    : "bg-white text-slate-700 hover:bg-blue-100"
-                )}
-                title={st.label}
+          <div className="flex flex-wrap items-center gap-1.5">
+            <div className="flex items-center gap-1 bg-blue-50/80 px-2 py-1 rounded-lg border border-blue-200/80">
+              <span className="text-[11px] font-medium text-blue-800 mr-1">Stamp:</span>
+              {STAMP_OPTIONS.map((st) => (
+                <button
+                  key={st.kind}
+                  type="button"
+                  onClick={() => setStampKind(st.kind)}
+                  className={cn(
+                    "px-2 h-6 rounded flex items-center justify-center text-xs font-bold transition-colors cursor-pointer whitespace-nowrap",
+                    stampKind === st.kind
+                      ? "bg-blue-600 text-white shadow-xs"
+                      : "bg-white text-slate-700 hover:bg-blue-100"
+                  )}
+                  title={st.label}
+                >
+                  {st.kind === 'username' ? `[ ${userName} ]` : st.symbol}
+                </button>
+              ))}
+            </div>
+
+            {isTeacher && (
+              <div
+                className="flex flex-wrap items-center gap-1 bg-amber-50/90 px-2 py-1 rounded-lg border border-amber-300/80"
+                data-testid="teacher-stamps-group"
               >
-                {st.kind === 'username' ? `[ ${userName} ]` : st.symbol}
-              </button>
-            ))}
+                <span className="text-[11px] font-semibold text-amber-900 mr-1">Teacher stamps:</span>
+                {TEACHER_STAMP_OPTIONS.map((st) => {
+                  const isSelected = stampKind === st.kind;
+                  return (
+                    <button
+                      key={st.kind}
+                      type="button"
+                      onClick={() => setStampKind(st.kind)}
+                      style={
+                        isSelected
+                          ? { backgroundColor: st.color, color: '#ffffff', borderColor: st.color }
+                          : { color: st.color, borderColor: st.color }
+                      }
+                      className={cn(
+                        "px-2 h-6 rounded border text-[11px] font-extrabold tracking-wide transition-colors cursor-pointer whitespace-nowrap",
+                        isSelected ? "shadow-xs" : "bg-white hover:bg-slate-50"
+                      )}
+                      title={
+                        st.kind === 'teacher-custom'
+                          ? 'Place a custom rubber-stamp label'
+                          : `Place ${st.label} teacher stamp`
+                      }
+                    >
+                      {st.label}
+                    </button>
+                  );
+                })}
+                {stampKind === 'teacher-custom' && (
+                  <input
+                    type="text"
+                    value={customTeacherStampText}
+                    onChange={(e) => setCustomTeacherStampText(e.target.value.slice(0, 24))}
+                    aria-label="Custom teacher stamp text"
+                    placeholder="Custom label"
+                    maxLength={24}
+                    className="h-6 w-28 px-2 text-[11px] font-bold uppercase bg-white border border-amber-300 rounded text-slate-800 focus:outline-none focus:ring-1 focus:ring-amber-500"
+                  />
+                )}
+              </div>
+            )}
           </div>
         )}
 

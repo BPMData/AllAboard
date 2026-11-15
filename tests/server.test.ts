@@ -1235,5 +1235,183 @@ describe('AllAboard server & Socket.IO integration tests', () => {
     });
   });
 
+  describe('element authorship and teacher-only feedback stamps', () => {
+    it('overwrites client-supplied userId and userName on element-start and elements-batch-add', async () => {
+      const roomId = 'auth-overwrite';
+      const teacher = (await joinTracked({ roomId, userId: 'teacher', name: 'Ms T' })).socket;
+      await emitAck(teacher, 'teacher:auth', { pin: '1234' });
+      const student = await joinTracked({ roomId, userId: 'stu-1', name: 'Real Student' });
+
+      // Student tries to spoof userId = teacher and userName = 'Ms T' via element-start
+      const startBroadcast = waitForEvent<any>(teacher, 'element-start');
+      student.socket.emit('element-start', {
+        id: 'spoof-1',
+        boardId: 'main',
+        userId: 'teacher',
+        userName: 'Ms T',
+        tool: 'text',
+        text: 'hi',
+        x: 10,
+        y: 10,
+      });
+      const seenStart = await startBroadcast;
+      assert.equal(seenStart.userId, 'stu-1');
+      assert.equal(seenStart.userName, 'Real Student');
+
+      // Same for elements-batch-add
+      const batchBroadcast = waitForEvent<any>(teacher, 'elements-batch-added');
+      student.socket.emit('elements-batch-add', {
+        boardId: 'main',
+        elements: [
+          {
+            id: 'spoof-2',
+            userId: 'teacher',
+            userName: 'Ms T',
+            tool: 'rect',
+            x: 20,
+            y: 20,
+            width: 30,
+            height: 30,
+            color: '#000',
+            strokeWidth: 4,
+          },
+        ],
+      });
+      const seenBatch = await batchBroadcast;
+      assert.equal(seenBatch.elements.length, 1);
+      assert.equal(seenBatch.elements[0].userId, 'stu-1');
+      assert.equal(seenBatch.elements[0].userName, 'Real Student');
+
+      // Persisted state also has real student identity
+      const late = await joinTracked({ roomId, userId: 'late-1', name: 'Latecomer' });
+      const byId = new Map((late.init.elements as any[]).map((e) => [e.id, e]));
+      assert.equal(byId.get('spoof-1')?.userId, 'stu-1');
+      assert.equal(byId.get('spoof-2')?.userId, 'stu-1');
+    });
+
+    it('rejects teacher stamp kinds from non-teachers on add and update', async () => {
+      const roomId = 'stamp-reject';
+      const teacher = (await joinTracked({ roomId, userId: 'teacher', name: 'Ms T' })).socket;
+      await emitAck(teacher, 'teacher:auth', { pin: '1234' });
+      const student = await joinTracked({ roomId, userId: 'stu-1', name: 'Stu' });
+
+      // Student attempts to place approved / teacher-custom via element-start and elements-batch-add
+      student.socket.emit('element-start', {
+        id: 'forged-1',
+        boardId: 'main',
+        userId: 'teacher',
+        userName: 'Ms T',
+        tool: 'stamp',
+        stamp: 'approved',
+        color: '#15803d',
+        strokeWidth: 6,
+        x: 50,
+        y: 50,
+      });
+      student.socket.emit('elements-batch-add', {
+        boardId: 'main',
+        elements: [
+          {
+            id: 'forged-2',
+            userId: 'teacher',
+            userName: 'Ms T',
+            tool: 'stamp',
+            stamp: 'teacher-custom',
+            text: 'EXCUSED',
+            color: '#7c3aed',
+            strokeWidth: 6,
+            x: 70,
+            y: 70,
+          },
+          {
+            id: 'ok-student-stamp',
+            userId: 'stu-1',
+            userName: 'Stu',
+            tool: 'stamp',
+            stamp: 'check',
+            color: '#2563eb',
+            strokeWidth: 6,
+            x: 90,
+            y: 90,
+          },
+        ],
+      });
+
+      const batchSeen = await waitForEvent<any>(teacher, 'elements-batch-added');
+      assert.deepEqual(
+        batchSeen.elements.map((e: any) => e.id),
+        ['ok-student-stamp']
+      );
+
+      // Student also cannot mutate their own stamp into a teacher stamp via element-update or batch-update
+      const updateSeen = waitForEvent<any>(teacher, 'element-update');
+      student.socket.emit('element-update', {
+        id: 'ok-student-stamp',
+        boardId: 'main',
+        stamp: 'denied',
+        x: 95,
+      });
+      const updated = await updateSeen;
+      assert.equal(updated.x, 95);
+      assert.equal(updated.stamp, undefined);
+
+      const batchUpdateSeen = waitForEvent<any>(teacher, 'elements-batch-updated');
+      student.socket.emit('elements-batch-update', {
+        boardId: 'main',
+        updates: [{ id: 'ok-student-stamp', stamp: 'late', y: 99 }],
+      });
+      const batchUpdated = await batchUpdateSeen;
+      assert.equal(batchUpdated.updates[0].y, 99);
+      assert.equal(batchUpdated.updates[0].stamp, undefined);
+
+      const verify = await joinTracked({ roomId, userId: 'v', name: 'V' });
+      const ids = (verify.init.elements as any[]).map((e) => e.id);
+      assert.deepEqual(ids, ['ok-student-stamp']);
+      assert.equal(verify.init.elements[0].stamp, 'check');
+    });
+
+    it('lets teachers place teacher stamps and blocks students from moving or deleting them', async () => {
+      const roomId = 'teacher-stamp-protect';
+      const teacher = (await joinTracked({ roomId, userId: 'teacher', name: 'Ms T' })).socket;
+      await emitAck(teacher, 'teacher:auth', { pin: '1234' });
+      const student = await joinTracked({ roomId, userId: 'stu-1', name: 'Stu' });
+
+      const stampSeen = waitForEvent<any>(student.socket, 'element-start');
+      teacher.emit('element-start', {
+        id: 't-approved-1',
+        boardId: 'main',
+        userId: 'fake-client-id',
+        userName: 'Teacher',
+        tool: 'stamp',
+        stamp: 'approved',
+        color: '#15803d',
+        strokeWidth: 6,
+        x: 120,
+        y: 140,
+      });
+      const delivered = await stampSeen;
+      assert.equal(delivered.stamp, 'approved');
+      assert.equal(delivered.userId, 'teacher');
+
+      // Student tries every mutation/deletion channel against the teacher's stamp
+      student.socket.emit('element-update', { id: 't-approved-1', boardId: 'main', x: 999, y: 999 });
+      student.socket.emit('elements-batch-update', {
+        boardId: 'main',
+        updates: [{ id: 't-approved-1', x: 888 }],
+      });
+      student.socket.emit('element-remove', { id: 't-approved-1', boardId: 'main' });
+      student.socket.emit('elements-batch-remove', { boardId: 'main', ids: ['t-approved-1'] });
+
+      await delay(80);
+
+      const verify = await joinTracked({ roomId, userId: 'v', name: 'V' });
+      const found = (verify.init.elements as any[]).find((e) => e.id === 't-approved-1');
+      assert.ok(found, 'teacher stamp must remain present');
+      assert.equal(found.x, 120);
+      assert.equal(found.y, 140);
+      assert.equal(found.stamp, 'approved');
+    });
+  });
+
 });
 
