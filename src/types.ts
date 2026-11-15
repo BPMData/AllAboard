@@ -72,7 +72,7 @@ export interface RoomBackground {
   x: number;
   y: number;
   scale: number;
-  layout: 'row' | 'stack';
+  layout: 'row' | 'stack' | 'grid';
   opacity: number;
 }
 

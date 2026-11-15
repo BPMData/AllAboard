@@ -6,7 +6,7 @@
  * import() and calls it inside page.evaluate().
  */
 import { expect, test } from '@playwright/test';
-import { joinRoom, uniqueRoom } from './helpers';
+import { drawStroke, joinRoom, uniqueRoom } from './helpers';
 
 const LOADER = '/src/lib/worksheetLoader.ts';
 const EXPORT = '/src/lib/batchPdfExport.ts';
@@ -316,7 +316,7 @@ test.describe('worksheet UI', () => {
     await page.getByRole('button', { name: 'Import pages' }).click();
 
     await expect(page.getByTitle('Remove background worksheet from this board')).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Side-by-Side' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Grid', exact: true })).toHaveAttribute('aria-pressed', 'true');
 
     const downloadPromise = page.waitForEvent('download');
     await page.getByRole('button', { name: 'Save .JSON' }).click();
@@ -418,5 +418,86 @@ test.describe('worksheet UI', () => {
       el.scrollTop = el.scrollHeight;
     });
     await expect(page.getByTestId('pdf-thumb-40').locator('img')).toBeVisible();
+  });
+
+  test('6-page PDF defaults to Grid, switches to Row without confirm when empty, and fits all pages', async ({ page }) => {
+    await joinRoom(page, uniqueRoom('layout6'), 'Ms T', '4829');
+
+    const pdfBase64 = await page.evaluate(async (exporter) => {
+      const { buildMultiPagePdfFromJpegs } = await import(/* @vite-ignore */ exporter);
+      const pages = Array.from({ length: 6 }, (_, i) => {
+        const c = document.createElement('canvas');
+        c.width = 400;
+        c.height = 283;
+        const ctx = c.getContext('2d')!;
+        ctx.fillStyle = `hsl(${i * 55}, 85%, 50%)`;
+        ctx.fillRect(0, 0, c.width, c.height);
+        const b64 = c.toDataURL('image/jpeg', 0.9).split(',')[1];
+        const bytes = Uint8Array.from(atob(b64), (ch) => ch.charCodeAt(0));
+        return { jpegBytes: bytes, widthPx: c.width, heightPx: c.height };
+      });
+      const pdfBlob = buildMultiPagePdfFromJpegs(pages);
+      const pdfBytes = new Uint8Array(await pdfBlob.arrayBuffer());
+      let binary = '';
+      for (let i = 0; i < pdfBytes.length; i++) binary += String.fromCharCode(pdfBytes[i]);
+      return btoa(binary);
+    }, EXPORT);
+
+    await page
+      .locator('input[type="file"][accept*="application/pdf"]')
+      .setInputFiles({ name: 'six.pdf', mimeType: 'application/pdf', buffer: Buffer.from(pdfBase64, 'base64') });
+
+    const gridBtn = page.getByRole('button', { name: 'Grid', exact: true });
+    const rowBtn = page.getByRole('button', { name: 'Row', exact: true });
+    const colBtn = page.getByRole('button', { name: 'Column', exact: true });
+
+    await expect(gridBtn).toHaveAttribute('aria-pressed', 'true');
+    await expect(rowBtn).toHaveAttribute('aria-pressed', 'false');
+    await expect(colBtn).toHaveAttribute('aria-pressed', 'false');
+
+    // Empty board: switching layout does not show a confirm dialog
+    let confirmCount = 0;
+    page.on('dialog', async (d) => {
+      confirmCount += 1;
+      await d.dismiss();
+    });
+
+    await rowBtn.click();
+    await expect(rowBtn).toHaveAttribute('aria-pressed', 'true');
+    expect(confirmCount).toBe(0);
+
+    // Fit All keeps every page in the 6-page Row layout visible inside the stage
+    await page.getByRole('button', { name: 'Fit All' }).click();
+    await expect
+      .poll(async () => {
+        return page.evaluate(() => {
+          const canvas = document.querySelector('.konvajs-content canvas') as HTMLCanvasElement | null;
+          if (!canvas) return { leftColored: false, rightColored: false };
+          const ctx = canvas.getContext('2d');
+          if (!ctx) return { leftColored: false, rightColored: false };
+          const w = canvas.width;
+          const h = canvas.height;
+          const hasNonBg = (x0: number, x1: number) => {
+            const data = ctx.getImageData(x0, Math.floor(h * 0.25), Math.max(1, x1 - x0), Math.floor(h * 0.5)).data;
+            for (let i = 0; i < data.length; i += 4) {
+              if (data[i + 3] > 20 && (data[i] < 235 || data[i + 1] < 235 || data[i + 2] < 235)) {
+                return true;
+              }
+            }
+            return false;
+          };
+          return {
+            leftColored: hasNonBg(Math.floor(w * 0.05), Math.floor(w * 0.25)),
+            rightColored: hasNonBg(Math.floor(w * 0.75), Math.floor(w * 0.95)),
+          };
+        });
+      })
+      .toEqual({ leftColored: true, rightColored: true });
+
+    // Once ink exists on the board, changing layout prompts before moving pages
+    await drawStroke(page, { x: 600, y: 400 }, { x: 750, y: 450 });
+    await colBtn.click();
+    await expect.poll(() => confirmCount).toBe(1);
+    await expect(rowBtn).toHaveAttribute('aria-pressed', 'true');
   });
 });

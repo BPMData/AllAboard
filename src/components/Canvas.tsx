@@ -45,6 +45,7 @@ import {
   getTeacherStampDimensions,
   isTeacherStampKind,
 } from '../lib/stamps';
+import { DEFAULT_PAGE_GAP, layoutPages } from '../lib/worksheetLayout';
 import { parseSnapshotText, snapshotFileName } from '../lib/roomSnapshot';
 import { isGoogleDriveConfigured } from '../lib/googleConfig';
 import {
@@ -211,7 +212,7 @@ interface CanvasProps {
 
 const MIN_SCALE = 0.1;
 const MAX_SCALE = 5.0;
-const PAGE_GAP = 32;
+const PAGE_GAP = DEFAULT_PAGE_GAP;
 const PALM_ERASER_SCREEN_PX = 56;
 
 function readLocalNum(key: string, fallback: number, min: number, max: number): number {
@@ -1561,32 +1562,16 @@ export default function Canvas({
     if (!background || !Array.isArray(background.pages) || background.pages.length === 0) {
       return [];
     }
-    const sc = background.scale || 1;
-    let offsetX = background.x || 0;
-    let offsetY = background.y || 0;
-
-    return background.pages.map((p, index) => {
-      const w = p.width * sc;
-      const h = p.height * sc;
-      const pageX = offsetX;
-      const pageY = offsetY;
-
-      if (background.layout === 'row') {
-        offsetX += w + PAGE_GAP * sc;
-      } else {
-        offsetY += h + PAGE_GAP * sc;
-      }
-
-      return {
-        key: `${background.id}_page_${index}`,
-        dataUrl: p.dataUrl,
-        x: pageX,
-        y: pageY,
-        width: w,
-        height: h,
-        opacity: background.opacity ?? 1,
-      };
-    });
+    const rects = layoutPages(background, PAGE_GAP);
+    return background.pages.map((p, index) => ({
+      key: `${background.id}_page_${index}`,
+      dataUrl: p.dataUrl,
+      x: rects[index].x,
+      y: rects[index].y,
+      width: rects[index].width,
+      height: rects[index].height,
+      opacity: background.opacity ?? 1,
+    }));
   }, [background]);
 
   const screenToWorld = useCallback(
@@ -1880,21 +1865,11 @@ export default function Canvas({
       let maxY = -Infinity;
 
       if (targetBg && Array.isArray(targetBg.pages) && targetBg.pages.length > 0) {
-        const sc = targetBg.scale || 1;
-        let ox = targetBg.x || 0;
-        let oy = targetBg.y || 0;
-        for (const p of targetBg.pages) {
-          const w = p.width * sc;
-          const h = p.height * sc;
-          if (ox < minX) minX = ox;
-          if (oy < minY) minY = oy;
-          if (ox + w > maxX) maxX = ox + w;
-          if (oy + h > maxY) maxY = oy + h;
-          if (targetBg.layout === 'row') {
-            ox += w + PAGE_GAP * sc;
-          } else {
-            oy += h + PAGE_GAP * sc;
-          }
+        for (const rect of layoutPages(targetBg, PAGE_GAP)) {
+          if (rect.x < minX) minX = rect.x;
+          if (rect.y < minY) minY = rect.y;
+          if (rect.x + rect.width > maxX) maxX = rect.x + rect.width;
+          if (rect.y + rect.height > maxY) maxY = rect.y + rect.height;
         }
       }
 
@@ -1970,7 +1945,7 @@ export default function Canvas({
         x: startX,
         y: startY,
         scale: 1,
-        layout: pages.length > 1 ? 'row' : 'stack',
+        layout: pages.length >= 3 ? 'grid' : pages.length === 2 ? 'row' : 'stack',
         opacity: 1,
       };
 
@@ -4575,18 +4550,54 @@ export default function Canvas({
                 {background.pages.length > 1 && (
                   <>
                     <span className="text-slate-300" aria-hidden="true">|</span>
-                    <button
-                      type="button"
-                      onClick={() =>
-                        onTeacherUpdateBackground({
-                          layout: background.layout === 'row' ? 'stack' : 'row',
-                        })
-                      }
-                      className="flex items-center gap-1 px-1.5 py-0.5 rounded hover:bg-slate-100 text-[11px] font-medium cursor-pointer whitespace-nowrap"
-                    >
-                      {background.layout === 'row' ? <Columns size={12} /> : <Rows size={12} />}
-                      <span>{background.layout === 'row' ? 'Side-by-Side' : 'Stacked'}</span>
-                    </button>
+                    <div className="flex items-center gap-1" role="group" aria-label="Worksheet page layout">
+                      <span className="text-[11px] font-medium text-slate-500">Layout:</span>
+                      <div className="flex items-center bg-slate-100 rounded p-0.5 border border-slate-200/80">
+                        {(
+                          [
+                            { value: 'row', label: 'Row', title: 'Pages side by side', Icon: Columns },
+                            { value: 'stack', label: 'Column', title: 'Pages top to bottom', Icon: Rows },
+                            { value: 'grid', label: 'Grid', title: 'Pages in a grid', Icon: LayoutGrid },
+                          ] as const
+                        ).map(({ value, label, title, Icon }) => {
+                          const activeLayout =
+                            background.layout === 'stack' || background.layout === 'grid'
+                              ? background.layout
+                              : 'row';
+                          const isActive = activeLayout === value;
+                          return (
+                            <button
+                              key={value}
+                              type="button"
+                              aria-pressed={isActive}
+                              title={title}
+                              onClick={() => {
+                                if (isActive) return;
+                                const hasInkOrStamps = elements.some((el) => el.tool !== 'eraser');
+                                if (
+                                  hasInkOrStamps &&
+                                  !window.confirm(
+                                    'Changing the layout moves the pages but not the ink already on them. Continue?'
+                                  )
+                                ) {
+                                  return;
+                                }
+                                onTeacherUpdateBackground({ layout: value });
+                              }}
+                              className={cn(
+                                'flex items-center gap-1 px-1.5 py-0.5 rounded text-[11px] font-medium transition-colors cursor-pointer whitespace-nowrap',
+                                isActive
+                                  ? 'bg-white text-blue-700 shadow-xs'
+                                  : 'text-slate-600 hover:text-slate-900'
+                              )}
+                            >
+                              <Icon size={11} />
+                              <span>{label}</span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
                   </>
                 )}
 

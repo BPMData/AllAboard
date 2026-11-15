@@ -202,7 +202,7 @@ test.describe('Google Drive integration (stubbed Google)', () => {
     await page.getByRole('button', { name: 'Slides / PDF from Drive', exact: true }).click();
 
     await expect(page.getByTitle('Remove background worksheet from this board')).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Side-by-Side' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Row', exact: true })).toHaveAttribute('aria-pressed', 'true');
     expect(requestedUrls).toContain('https://www.googleapis.com/drive/v3/files/pdf-1?alt=media');
 
     // Three tabs: Slides and PDFs as flat lists, then folder browsing filtered to Slides + PDFs.
@@ -280,7 +280,7 @@ test.describe('Google Drive integration (stubbed Google)', () => {
     await page.getByRole('button', { name: 'Import pages' }).click();
 
     await expect(page.getByTitle('Remove background worksheet from this board')).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Side-by-Side' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Grid', exact: true })).toHaveAttribute('aria-pressed', 'true');
   });
 
   test('hanging Slides export shows live timer and Cancel aborts cleanly with no error', async ({ page }) => {
