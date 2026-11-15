@@ -112,7 +112,17 @@ async function installFakeGoogle(page: Page, opts: FakeGoogleOptions = {}) {
 }
 
 test.describe('Google Drive integration (stubbed Google)', () => {
+  test.beforeEach(async ({ page }) => {
+    // Safety net: ensure stubbed Drive tests never contact real Google endpoints.
+    await page.route('https://accounts.google.com/**', (route) => route.abort());
+    await page.route('https://apis.google.com/**', (route) => route.abort());
+    await page.route('https://www.googleapis.com/**', (route) => route.abort());
+  });
+
   test('hides Drive buttons when googleConfig is empty', async ({ page }) => {
+    await page.addInitScript(() => {
+      (window as any).__ALLABOARD_GOOGLE_CONFIG__ = { clientId: '', apiKey: '', appId: '' };
+    });
     await joinRoom(page, uniqueRoom('gd-empty'), 'Ms T', '4829');
     await expect(page.getByRole('button', { name: 'From Drive', exact: true })).toHaveCount(0);
     await expect(page.getByRole('button', { name: 'Save to Drive', exact: true })).toHaveCount(0);

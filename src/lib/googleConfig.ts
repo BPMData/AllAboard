@@ -1,8 +1,8 @@
 // Public, non-secret values from Phase 0. Hardcoded on purpose: AI Studio Publish rewrites env vars (CLAUDE.md rule 1).
 const DEFAULTS = {
-  clientId: '', // OAuth 2.0 Web client ID
-  apiKey: '',   // Browser API key restricted to the Picker API
-  appId: '',    // Google Cloud project NUMBER
+  clientId: '606573080592-qtfiemip0l022q25monfj5hbhl6kamap.apps.googleusercontent.com', // OAuth 2.0 Web client ID
+  apiKey: 'AIzaSyDj4vCWgF3I8dQm7yh1u2ExeZOVjHwpGCo', // Browser API key restricted to the Picker API
+  appId: '606573080592', // Google Cloud project NUMBER
 };
 
 export interface GoogleConfig {

@@ -18,10 +18,31 @@ import {
 } from '../src/lib/googleConfig';
 
 describe('googleConfig (node environment)', () => {
-  it('defaults to empty config and false configured flags', () => {
-    assert.deepEqual(getGoogleConfig(), { clientId: '', apiKey: '', appId: '' });
-    assert.equal(isGoogleSignInConfigured(), false);
-    assert.equal(isGoogleDriveConfigured(), false);
+  it('provides non-empty public Google defaults and supports window override', () => {
+    const cfg = getGoogleConfig();
+    assert.ok(cfg.clientId.endsWith('.apps.googleusercontent.com'));
+    assert.ok(cfg.apiKey.length > 0);
+    assert.ok(/^\d+$/.test(cfg.appId));
+    assert.equal(isGoogleSignInConfigured(), true);
+    assert.equal(isGoogleDriveConfigured(), true);
+
+    const prevWindow = (globalThis as any).window;
+    try {
+      (globalThis as any).window = {
+        __ALLABOARD_GOOGLE_CONFIG__: { clientId: '', apiKey: '', appId: '' },
+      };
+      assert.equal(isGoogleSignInConfigured(), false);
+      assert.equal(isGoogleDriveConfigured(), false);
+
+      (globalThis as any).window = {
+        __ALLABOARD_GOOGLE_CONFIG__: { clientId: 'test', apiKey: 'test', appId: '1' },
+      };
+      assert.deepEqual(getGoogleConfig(), { clientId: 'test', apiKey: 'test', appId: '1' });
+      assert.equal(isGoogleDriveConfigured(), true);
+    } finally {
+      if (prevWindow === undefined) delete (globalThis as any).window;
+      else (globalThis as any).window = prevWindow;
+    }
   });
 });
 
