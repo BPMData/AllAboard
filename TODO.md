@@ -6,13 +6,35 @@
 Slides / PDF from Drive, Open Room from Drive and Save Room to Drive are live. See `PLANS_GOOGLE_DRIVE.md`.
 School Google Workspace accounts may still need their IT admin to allow the app (by OAuth client ID).
 
-### Next up: worksheet polish (ready for an agent; do them in this order)
+### Next up: room name + worksheet polish (ready for an agent; do them in this order)
 
 Ground rules for all three:
 - Read `CLAUDE.md` and `docs/ARCHITECTURE.md` first. **No server changes are needed for any of these.**
 - Run `npm run lint`, `npm test`, `npm run test:e2e`, and
   `node -e "import('./server.ts').then(() => console.log('OK'))"` before each commit. All must pass.
 - One PR per task. Plain-language commit messages. Don't add npm dependencies.
+
+#### 0. Show the room name clearly at the top of the sidebar
+**Today:** the room code is in the sidebar's room bar (`src/components/Chat.tsx`, the block commented
+`{/* Room Code Bar + Custom or Random "New Room" Controls */}`) as small grey `Room:` + monospace text **on the
+same row as Copy Link and New Room**, so anything longer than ~7 characters is cut off (`math-m…`). When the
+sidebar is hidden, the room name isn't on screen at all. Students and teachers don't think to check the URL.
+
+- [ ] **Give the room name its own row** at the top of that bar:
+      - a small label, `ROOM` (`text-[10px] uppercase tracking-wide text-slate-500`), and under it
+      - the room code in **large, bold** text (`text-lg font-bold font-mono text-slate-900`), **wrapping instead of
+        truncating** (`break-all`; room codes are at most 24 characters), still a button that opens the
+        change-room box exactly like today (keep its `title="Click to enter a different room code"`).
+      - Copy Link · New Room move to a **second row** under it, unchanged.
+- [ ] **When the sidebar is hidden:** in `Canvas.tsx`, next to the **Chat** button shown when `isChatHidden`
+      (search `title="Show chat sidebar"`), add a read-only chip: `Room: <code>` (`font-mono font-semibold`), with
+      `data-testid="room-chip"`. Pass `roomId` in if Canvas doesn't already have it (it does: `roomId` prop).
+- [ ] **Browser tab title:** set `document.title` to `<room code> · AllAboard` while in a room, and back to
+      `AllAboard` on the lobby/welcome screen (a `useEffect` on `roomId` + joined state in `src/App.tsx`).
+      Teachers with several rooms open in tabs can then tell them apart.
+- [ ] **Tests** (`e2e/classroom.spec.ts`): after joining room `period-3-biology-lab`, the sidebar shows the full code
+      (not truncated: the element's `scrollWidth <= clientWidth`), the tab title is `period-3-biology-lab · AllAboard`,
+      and after hiding the sidebar `room-chip` shows the code.
 
 #### 1. "Remove worksheet" button: clearer name, and a second tap to confirm
 **Today:** the worksheet controls (Move · − 100% + · Side-by-Side · **Remove**) live in the teacher bar
