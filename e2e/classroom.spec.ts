@@ -412,3 +412,24 @@ test.describe('kick or ban contribution purge modal', () => {
     await peer.context.close();
   });
 });
+
+test.describe('room name display', () => {
+  test('shows full room code in sidebar, tab title, and hidden-sidebar chip', async ({ page }) => {
+    const room = 'period-3-biology-lab';
+    await joinRoom(page, room, 'Ms T');
+
+    await expect(page).toHaveTitle(`#${room} · AllAboard`);
+
+    const roomButton = page.getByTitle('Click to enter a different room code');
+    await expect(roomButton).toHaveText(room);
+    const fitsWithoutTruncation = await roomButton.evaluate((el) => el.scrollWidth <= el.clientWidth);
+    expect(fitsWithoutTruncation).toBe(true);
+
+    await expect(page.getByTestId('room-chip')).toHaveCount(0);
+    await page.getByRole('button', { name: 'Hide chat sidebar' }).click();
+
+    const chip = page.getByTestId('room-chip');
+    await expect(chip).toBeVisible();
+    await expect(chip).toContainText(`Room: ${room}`);
+  });
+});

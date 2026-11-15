@@ -3229,24 +3229,32 @@ export default function Canvas({
         className="px-4 py-2 border-b border-slate-200 flex flex-wrap items-center gap-2.5 bg-white z-20"
       >
         {isChatHidden && onShowChat && (
-          <button
-            type="button"
-            onClick={onShowChat}
-            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-slate-100 hover:bg-slate-200/80 text-slate-700 hover:text-slate-900 border border-slate-200/80 transition-colors whitespace-nowrap shrink-0 cursor-pointer"
-            title="Show chat sidebar"
-            aria-label="Show chat sidebar"
-          >
-            <PanelLeftOpen size={15} />
-            <span>Chat</span>
-            {unreadChatCount > 0 && (
-              <span
-                aria-label={`${unreadChatCount} unread messages`}
-                className="px-1.5 py-0.5 rounded-full bg-blue-600 text-white text-[10px] font-mono tabular-nums leading-none"
-              >
-                {unreadChatCount > 99 ? '99+' : unreadChatCount}
-              </span>
-            )}
-          </button>
+          <div className="flex items-center gap-1.5 shrink-0">
+            <button
+              type="button"
+              onClick={onShowChat}
+              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-slate-100 hover:bg-slate-200/80 text-slate-700 hover:text-slate-900 border border-slate-200/80 transition-colors whitespace-nowrap shrink-0 cursor-pointer"
+              title="Show chat sidebar"
+              aria-label="Show chat sidebar"
+            >
+              <PanelLeftOpen size={15} />
+              <span>Chat</span>
+              {unreadChatCount > 0 && (
+                <span
+                  aria-label={`${unreadChatCount} unread messages`}
+                  className="px-1.5 py-0.5 rounded-full bg-blue-600 text-white text-[10px] font-mono tabular-nums leading-none"
+                >
+                  {unreadChatCount > 99 ? '99+' : unreadChatCount}
+                </span>
+              )}
+            </button>
+            <span
+              data-testid="room-chip"
+              className="px-2.5 py-1.5 rounded-lg text-xs bg-slate-100 text-slate-700 border border-slate-200/80 whitespace-nowrap"
+            >
+              Room: <span className="font-mono font-semibold text-slate-900">{roomId}</span>
+            </span>
+          </div>
         )}
 
         {/* Navigation & Brush Tools */}
