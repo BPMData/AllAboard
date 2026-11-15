@@ -734,6 +734,26 @@ export default function Canvas({
   // Confirmation States
   const [confirmClearAll, setConfirmClearAll] = useState(false);
   const [confirmClearMine, setConfirmClearMine] = useState(false);
+  const [confirmRemoveWorksheet, setConfirmRemoveWorksheet] = useState(false);
+  const removeWorksheetTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (removeWorksheetTimerRef.current) {
+        clearTimeout(removeWorksheetTimerRef.current);
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!background) {
+      if (removeWorksheetTimerRef.current) {
+        clearTimeout(removeWorksheetTimerRef.current);
+        removeWorksheetTimerRef.current = null;
+      }
+      setConfirmRemoveWorksheet(false);
+    }
+  }, [background]);
 
   // Worksheet Upload & Built-In Templates State (Teacher Only)
   const worksheetInputRef = useRef<HTMLInputElement>(null);
@@ -4470,13 +4490,34 @@ export default function Canvas({
                 <button
                   type="button"
                   onClick={() => {
+                    if (!confirmRemoveWorksheet) {
+                      setConfirmRemoveWorksheet(true);
+                      if (removeWorksheetTimerRef.current) {
+                        clearTimeout(removeWorksheetTimerRef.current);
+                      }
+                      removeWorksheetTimerRef.current = setTimeout(() => {
+                        setConfirmRemoveWorksheet(false);
+                        removeWorksheetTimerRef.current = null;
+                      }, 3000);
+                      return;
+                    }
+                    if (removeWorksheetTimerRef.current) {
+                      clearTimeout(removeWorksheetTimerRef.current);
+                      removeWorksheetTimerRef.current = null;
+                    }
+                    setConfirmRemoveWorksheet(false);
                     onTeacherSetBackground(null);
                     if (tool === 'move-bg') setTool('solid');
                   }}
-                  className="text-red-600 hover:bg-red-50 px-1.5 py-0.5 rounded text-[11px] font-medium cursor-pointer whitespace-nowrap"
-                  title="Remove background worksheet from this board"
+                  className={cn(
+                    'px-1.5 py-0.5 rounded text-[11px] cursor-pointer whitespace-nowrap transition-colors',
+                    confirmRemoveWorksheet
+                      ? 'bg-red-50 text-red-700 font-bold'
+                      : 'text-red-600 hover:bg-red-50 font-medium'
+                  )}
+                  title="Remove background worksheet from this board. Ink stays."
                 >
-                  Remove
+                  {confirmRemoveWorksheet ? 'Tap again to remove' : 'Remove worksheet'}
                 </button>
               </div>
             )}
