@@ -2,29 +2,241 @@
 
 ## Worksheet import
 
-### Google Slides import (Drive picker), blocked on school IT, try eventually
-**Idea:** an "Import from Google Slides" button. The teacher signs in with Google, picks a deck in Google's
-file picker, the browser exports it as a PDF through the Drive API, and the existing PDF importer turns it
-into board pages. It all runs in the browser, with no server changes.
+### ✅ Done: Google Drive import/save (PRs #23, #25)
+Slides / PDF from Drive, Open Room from Drive and Save Room to Drive are live. See `PLANS_GOOGLE_DRIVE.md`.
+School Google Workspace accounts may still need their IT admin to allow the app (by OAuth client ID).
 
-- **Approach:**
-  - Google Identity Services token client with scope `drive.file` (only the files the teacher picks; non-sensitive, no Google app review).
-  - Google Picker API to choose the deck.
-  - Drive `files.export` with `mimeType=application/pdf`.
-  - Feed the result into `processWorksheetFile()` in `src/lib/worksheetLoader.ts`.
-- **One-time Google Cloud setup (project `loyal-rookery-403218`):**
-  - Enable the Drive API and the Picker API.
-  - OAuth consent screen, published to "In production".
-  - OAuth Client ID (Web) with origins `https://allaboard.ai.studio` and the AI Studio dev URL.
-  - An API key restricted to the same origins.
-  - The client ID and API key are public values. Put them **in code, not Cloud Run env vars** (see `docs/DEPLOYMENT.md`, rule R1).
-- **⚠️ Blocker: school Google Workspace accounts will almost certainly block it.** District admins restrict
-  third-party OAuth apps, so sign-in fails with "app blocked by your administrator" until IT allowlists the
-  client ID. That's unlikely for an `ai.studio` domain. Personal Gmail accounts would work immediately.
-  Worth trying anyway, and worth asking IT if it ever looks valuable enough.
-- **Other gotchas:**
-  - Drive caps exports at **10 MB**. Show a clear error that suggests File → Download → PDF.
-  - Decks often exceed the importer's 10-page cap (`MAX_PDF_PAGES`). Ship this with a slide/page picker (below).
+### Next up: room name, worksheet polish, Drive follow-ups (ready for an agent)
+
+**Order:** task 4 first (it's a bug), then 0, 1, 2, 3, 5, 6, 7.
+
+Ground rules for every task:
+- Read `CLAUDE.md` and `docs/ARCHITECTURE.md` first. **No server changes are needed for any of these.**
+- Run `npm run lint`, `npm test`, `npm run test:e2e`, and
+  `node -e "import('./server.ts').then(() => console.log('OK'))"` before each commit. All must pass.
+- One PR per task. Plain-language commit messages. Don't add npm dependencies.
+- **Never use a sensitive or restricted Google OAuth scope** (rule 6 in `CLAUDE.md`). Everything below works with
+  the `drive.file` permission AllAboard already has. If something turns out to need a sensitive or restricted
+  scope, drop that part and write down why.
+
+#### 0. Show the room name clearly at the top of the sidebar
+**Today:** the room code is in the sidebar's room bar (`src/components/Chat.tsx`, the block commented
+`{/* Room Code Bar + Custom or Random "New Room" Controls */}`) as small grey `Room:` + monospace text **on the
+same row as Copy Link and New Room**, so anything longer than ~7 characters is cut off (`math-m…`). When the
+sidebar is hidden, the room name isn't on screen at all. Students and teachers don't think to check the URL.
+
+- [ ] **Give the room name its own row** at the top of that bar:
+      - a small label, `ROOM` (`text-[10px] uppercase tracking-wide text-slate-500`), and under it
+      - the room code in **large, bold** text (`text-lg font-bold font-mono text-slate-900`), **wrapping instead of
+        truncating** (`break-all`; room codes are at most 24 characters), still a button that opens the
+        change-room box exactly like today (keep its `title="Click to enter a different room code"`).
+      - Copy Link · New Room move to a **second row** under it, unchanged.
+- [ ] **When the sidebar is hidden:** in `Canvas.tsx`, next to the **Chat** button shown when `isChatHidden`
+      (search `title="Show chat sidebar"`), add a read-only chip: `Room: <code>` (`font-mono font-semibold`), with
+      `data-testid="room-chip"`. Pass `roomId` in if Canvas doesn't already have it (it does: `roomId` prop).
+- [ ] **Browser tab title: put the room first.** `src/App.tsx` (~line 263) sets
+      `` `AllAboard — #${effectiveRoomId}` ``; narrow tabs cut off the room part. Change it to
+      `` `#${effectiveRoomId} · AllAboard` `` (keep plain `AllAboard` for the `main` room), so teachers with
+      several rooms open can tell the tabs apart.
+- [ ] **Tests** (`e2e/classroom.spec.ts`): after joining room `period-3-biology-lab`, the sidebar shows the full code
+      (not truncated: the element's `scrollWidth <= clientWidth`), the tab title is `#period-3-biology-lab · AllAboard`,
+      and after hiding the sidebar `room-chip` shows the code.
+
+#### 1. "Remove worksheet" button: clearer name, and a second tap to confirm
+**Today:** the worksheet controls (Move · − 100% + · Side-by-Side · **Remove**) live in the teacher bar
+in `src/components/Canvas.tsx`, in the block commented `{/* Active Background Worksheet Controls */}`.
+**Remove** works (`onTeacherSetBackground(null)`), but the label doesn't say *what* it removes, and one
+misclick wipes the worksheet with no undo.
+
+- [ ] Change the label to **Remove worksheet**. Keep the existing `title="Remove background worksheet from this
+      board"`; e2e tests look for it.
+- [ ] **Tap twice to confirm:** the first click changes the label to **Tap again to remove** (still red, bold) for
+      3 seconds; a second click within 3 s removes it; otherwise it resets. Use local state + a timeout that is
+      cleared on unmount. (Same pattern OverBoard uses for Clear all.)
+- [ ] Ink on the board is **not** removed. Say so in the tooltip: "Removes the worksheet from this board. Ink stays."
+      (Update the `title` only if you also update the e2e selectors that use it.)
+- [ ] **Test** (`e2e/worksheets.spec.ts`): upload a worksheet → one click on Remove worksheet → worksheet still
+      there and the button reads "Tap again to remove" → second click → worksheet gone. And: one click, wait
+      3.5 s, the label resets and the worksheet is still there.
+
+#### 2. Page thumbnails in the "Choose Pages to Import" dialog
+**Today:** a PDF (or Slides deck) with more than `MAX_PDF_PAGES` (10) pages opens `PdfPageRangeModal`
+(`src/components/CanvasModals.tsx`) with only **From / To** number boxes. Teachers can't see which page is which.
+
+- [ ] **Loader** (`src/lib/worksheetLoader.ts`): add
+      `export async function renderPdfThumbnails(file: File, opts: { width: number; onThumb: (pageNumber: number, dataUrl: string) => void; signal?: AbortSignal }): Promise<void>`.
+      - Open the PDF **once** with pdf.js (same `pdfjsLib.getDocument({ data })` call `getPdfPageCount` uses).
+      - Render each page at a scale that makes it `opts.width` px wide (use **120**), to a canvas, then
+        `toDataURL('image/jpeg', 0.7)`, and call `onThumb` as each page finishes, **in order, one at a time**
+        (don't render all pages in parallel; big textbooks will freeze a Chromebook).
+      - Stop early if `signal.aborted` (the dialog was closed). Call `pdf.destroy()` at the end.
+      - **No page cap, but render lazily:** decks of 300+ pages are real (a teacher tried 370). Keep one open
+        pdf.js document for the dialog's lifetime and render a page's thumbnail only when its placeholder
+        scrolls into view (`IntersectionObserver` on the grid, `rootMargin: '400px'`), still one at a time
+        through a small queue. So the API is better as
+        `openPdfForThumbnails(file) → { numPages, renderThumb(pageNumber, width): Promise<string>, destroy() }`.
+- [ ] **Dialog:** pass the `File` into `PdfPageRangeModal` (new prop `file`; `Canvas.tsx` already has it in
+      `pendingPdfRange.file`). Under the From/To boxes, show a scrollable grid of thumbnails (max height ~50vh,
+      `grid-template-columns: repeat(auto-fill, minmax(120px, 1fr))`), each with its page number under it and
+      `data-testid="pdf-thumb-<n>"`. Show a light grey placeholder box until a thumbnail arrives.
+      - Pages inside the current From–To range get a **blue border and a light blue background**; others are
+        slightly faded.
+      - **Click a page:** From = that page, To = min(page + 9, total). (Starts a 10-page range there.)
+      - **Shift-click a page:** To = that page (if it's after From), clamped with `clampPageRange` so the range is
+        never more than 10 pages.
+      - Typing in From/To still works and updates the highlight.
+      - Start rendering in a `useEffect` when the dialog opens; abort it in the cleanup.
+- [ ] Widen the dialog to `max-w-3xl` so ~5 thumbnails fit per row.
+- [ ] **Tests:**
+      - Thumbnails off-screen are not rendered: with a 40-page PDF, fewer than 40 `<img>` thumbnails exist
+        before scrolling the grid to the bottom.
+      - `e2e/worksheets.spec.ts`: a 12-page PDF (reuse the in-browser PDF builder used there) shows 12
+        thumbnails; click page 3 → From = 3, To = 12; shift-click page 5 → To = 5; Import pages → 3 pages on the board.
+      - `e2e/googleDrive.spec.ts` "page-range modal for a >10 page PDF" must still pass.
+
+#### 3. Page layout: Row / Column / Grid, with a sensible default
+**Today:** multi-page worksheets default to `layout: 'row'` (all pages side by side). Ten slides in a row is a
+very long strip that's tiny when you Fit All. There *is* a toggle, but it shows the **current** layout
+("Side-by-Side" / "Stacked") instead of an action, so it doesn't look like a button.
+
+⚠️ **Changing the layout moves the pages but not the ink.** Ink is stored in world coordinates, so ink
+written on page 3 stays where it was while page 3 moves. This is true of the existing toggle too.
+
+- [ ] **One layout function, used everywhere.** The page-placement loop is copied in four places:
+      `Canvas.tsx` (the `backgroundPages` memo, ~line 1545, and the Fit All bounds, ~line 1865) and
+      `src/lib/batchPdfExport.ts` (~lines 60 and 335). Replace all four with a new pure module
+      `src/lib/worksheetLayout.ts`:
+      `export function layoutPages(bg: Pick<RoomBackground, 'pages' | 'x' | 'y' | 'scale' | 'layout'>, gap = 32): Array<{ x: number; y: number; width: number; height: number }>`.
+      Add `tests/worksheetLayout.test.ts` covering row, stack and grid.
+- [ ] **Add `'grid'`** to `RoomBackground.layout` in `src/types.ts` (`'row' | 'stack' | 'grid'`). Grid places
+      pages left to right, wrapping into rows. **Columns:** pick the column count `c` (1…n) whose overall block
+      (c × widest page) by (rows × tallest page) is closest to a **16:9** board. That gives ~3 columns for 10
+      landscape slides and ~4 for 10 portrait worksheets. Export `gridColumns(pages, targetAspect = 16 / 9)`
+      and unit-test it. Unknown layout values (old snapshots) fall back to `'row'`.
+- [ ] **Default for new imports** (`importWorksheetFile` in `Canvas.tsx`, where it sets
+      `layout: pages.length > 1 ? 'row' : 'stack'`): 1 page → `'stack'`; 2 pages → `'row'`; **3 or more → `'grid'`**.
+- [ ] **Replace the toggle** with a small labeled segmented control in the same spot:
+      **Layout: Row | Column | Grid** (lucide icons `Columns`, `Rows`, `LayoutGrid`), current one highlighted,
+      each with a tooltip ("Pages side by side", "Pages top to bottom", "Pages in a grid"). Only shown when the
+      worksheet has 2+ pages.
+- [ ] **Protect ink:** if the board has any ink or stamps (any element besides erasers), changing layout first asks
+      with `window.confirm`: "Changing the layout moves the pages but not the ink already on them. Continue?"
+      If the board is empty, switch without asking.
+- [ ] **Server:** no change needed. `teacher:update-background` already accepts any `layout` in the patch.
+      Double-check that snapshot import (`teacher:import-room`) passes `'grid'` through.
+- [ ] **Tests:** unit tests above; an e2e test that imports a 6-page PDF, sees **Grid** selected, switches to
+      **Row** on an empty board (no confirm), and Fit All still shows every page (`e2e/worksheets.spec.ts`).
+      Update existing tests that click `'Side-by-Side'`.
+
+#### 4. Big Slides decks hang on "Importing from Drive..." forever (bug; do this one first)
+**What happened:** picking a **370-slide** Google Slides deck in *Slides / PDF from Drive* never reached the
+"Choose Pages to Import" dialog. The button stayed greyed out on **Importing from Drive...** forever.
+
+**Why (from the code):** `downloadDriveFile` → `driveFetch` (`src/lib/googleDrive.ts`) has **no timeout**, and
+`handleWorksheetFromDrive` (`Canvas.tsx`) only clears `driveBusy` when that promise settles. Google's
+`files.export` is also **limited to 10 MB** of output
+([files.export reference](https://developers.google.com/workspace/drive/api/reference/rest/v3/files/export)):
+a big deck either takes minutes to convert or fails with `exportSizeLimitExceeded`. There is **no official way
+around the 10 MB limit**. The `exportLinks` / `docs.google.com/.../export` URLs some forums mention aren't part of
+the API and aren't usable from the browser (no CORS), so **don't try them**.
+
+- [ ] **Timeout and Cancel.** Give `driveFetch` an optional `{ timeoutMs, signal }`. Use an `AbortController`;
+      for downloads/exports use **120 s**. While importing, show a small **Cancel** link next to the busy button
+      that aborts. Always clear `driveBusy` in `finally`. On timeout, throw `GoogleError('timeout')`.
+- [ ] **Show progress** instead of a frozen label: read the response with `res.body.getReader()` and update the
+      button text, e.g. `Downloading from Drive... 4.2 MB`. If Google is still converting (no bytes yet), show
+      `Google is converting the deck... 0:35` with a running timer.
+- [ ] **Clear messages** (add to `friendlyGoogleError`):
+      - `timeout`: "Google took too long to convert this deck. For big decks, open it in Google Slides, use
+        File → Download → PDF, then use Upload (.JPG / .PNG / .PDF). Big PDFs work fine that way."
+      - `exportSizeLimitExceeded`: already exists; make sure the same advice shows.
+- [ ] **Make sure the local-PDF path handles huge files** (it's the fallback we tell teachers to use): a 370-page
+      PDF must reach the page dialog. `getPdfPageCount` only reads the page count, which is fine; the thumbnail
+      work in task 2 must stay lazy.
+- [ ] **Tests** (`e2e/googleDrive.spec.ts`): a fake export that never responds → the busy label shows a timer,
+      Cancel brings the button back with no error; a fake export that answers 403 `exportSizeLimitExceeded` →
+      the friendly message. Use a short `timeoutMs` in the test via a test-only override (e.g.
+      `window.__ALLABOARD_DRIVE_TIMEOUT_MS__`), not a 2-minute wait.
+- [ ] **Optional, verify before building:** the **Slides API** can return a deck's slide count and per-slide
+      thumbnails (`presentations.get?fields=slides.objectId`, `presentations.pages.getThumbnail`), which would
+      let a teacher pick slides *before* the 10 MB export. It's unconfirmed whether these accept our `drive.file`
+      token. Try one call **with the existing token only**. If Google answers 403 / insufficient scope, **drop this
+      item entirely**. Never request `presentations` / `presentations.readonly`: they're sensitive scopes
+      (rule 6 in `CLAUDE.md`). Also note `getThumbnail` counts as an "expensive read" for quota.
+
+#### 5. Switch Google account (and show which one is connected)
+**What happened:** the first Drive click shows Google's account chooser (and a district Workspace account
+**worked**). After that, AllAboard silently reuses that account. If you picked the wrong one, there's no way back.
+
+**Why:** `getAccessToken` keeps the token in memory for ~1 hour and asks Google with `prompt: ''`, which skips the
+chooser once you've consented.
+
+- [ ] In `src/lib/googleDrive.ts` add `switchGoogleAccount()`: `clearAccessToken()`, then
+      `tokenClient.requestAccessToken({ prompt: 'select_account' })`
+      ([GIS token client reference](https://developers.google.com/identity/oauth2/web/reference/js-reference)).
+      Must run directly in a click handler (popup rules). **Don't** call `google.accounts.oauth2.revoke` for a
+      plain switch: that removes consent and makes the teacher click through the consent screen again.
+- [ ] Add `getDriveAccount()`: `GET https://www.googleapis.com/drive/v3/about?fields=user(displayName,emailAddress)`
+      ([about.get](https://developers.google.com/workspace/drive/api/reference/rest/v3/about/get); the current
+      reference lists `drive.file` as an accepted scope, so **no new scope**). Cache it with the token; clear it
+      when the token is cleared. If the call fails, just don't show an email.
+- [ ] **UI:** once connected, show a quiet line in the teacher bar next to the Drive buttons:
+      `Drive: ms.t@school.org · Switch`. **Switch** calls `switchGoogleAccount()`, then refreshes the email.
+      Also add **Switch account** as a small link in the Save Room to Drive dialog, under the folder.
+- [ ] **Remembered folders/files belong to one account.** Key `drawchat_drive_last_folder` and
+      `drawchat_drive_save_<room>` by account email (e.g. `drawchat_drive_last_folder:<email>`), falling back to
+      the un-keyed values when no email is known. Otherwise, after switching, the dialog offers a folder the new
+      account can't see.
+- [ ] **Tests:** with the fake GIS, Switch calls `requestAccessToken` with `prompt: 'select_account'`; the
+      email line updates; the Save dialog starts in the new account's last folder (or My Drive).
+
+#### 6. "New folder" when saving a room
+**Ask:** create a Drive folder without leaving AllAboard.
+
+**Finding:** Google's Picker has **no "create folder" option** (none in the
+[DocsView reference](https://developers.google.com/workspace/drive/picker/reference/picker.docsview)), so it
+can't go *inside* the Open Room / folder picker. But AllAboard can create one itself with the Drive API under the
+existing `drive.file` scope (an app can always create files and folders, and keeps access to what it creates).
+**No new permission.**
+
+- [ ] In the **Save Room to Drive** dialog (`DriveSaveModal`, `CanvasModals.tsx`), add **New folder...** next to
+      **Change...**. It shows an inline name box (default `AllAboard rooms`) with Create / Cancel.
+- [ ] `createDriveFolder(name, parent: DriveFolder)` in `googleDrive.ts`:
+      `POST https://www.googleapis.com/drive/v3/files?fields=id,name` with
+      `{ name, mimeType: 'application/vnd.google-apps.folder', parents: [parent.id] }` (omit `parents` for My Drive).
+      Call `getAccessToken()` first inside the click.
+- [ ] The new folder becomes the dialog's folder (and so the remembered last folder after saving).
+- [ ] **Tests:** fake the POST; after Create, the folder row shows the new name; Save sends `parents: [<new id>]`.
+
+#### 7. PowerPoint (.pptx) files picked from Drive
+**What happened:** the **Slides** tab of the picker also lists `.pptx` files uploaded to Drive (Google treats them as
+presentations), but importing one fails: `files.export` only works on Google-format files, and a `.pptx`
+downloaded as-is isn't a PDF.
+
+**Plan: convert it through Google, then treat it like a Slides deck. No new permission.**
+- [ ] When the picked file's `mimeType` is
+      `application/vnd.openxmlformats-officedocument.presentationml.presentation` (or `application/vnd.ms-powerpoint`):
+      1. Download the bytes (`files/<id>?alt=media`; we have access because the teacher picked it).
+      2. **Upload a temporary converted copy:** multipart `POST https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id`
+         with metadata `{ name: '<original name> (AllAboard temp)', mimeType: 'application/vnd.google-apps.presentation' }`
+         and the .pptx bytes as the media part. Setting a Google `mimeType` on create is how Drive's API imports
+         (converts) Office files. **Use create, not `files.copy`:** community reports say `copy` doesn't convert.
+      3. Export the temp copy as PDF (same as Slides, same 10 MB limit and timeout from task 4).
+      4. **Delete the temp copy** (`DELETE https://www.googleapis.com/drive/v3/files/<tempId>`) in a `finally`,
+         even if the export fails. AllAboard created it, so `drive.file` allows deleting it.
+      5. Continue into the normal page dialog (thumbnails, 10-page range).
+- [ ] Busy text: `Converting PowerPoint...`, then the usual steps.
+- [ ] **If conversion fails** (Google rejects it, or the file is over ~100 MB), show: "This PowerPoint file couldn't
+      be converted. Open it in Google Slides (or save it as PDF in PowerPoint) and try again." Keep a separate
+      message for plain unsupported types: "Please choose a Google Slides presentation or a PDF."
+- [ ] **Verify first:** run the conversion once by hand with a real .pptx and the real token before building the UI.
+      If Drive won't convert under `drive.file`, skip the conversion, filter `.pptx` out of the Slides tab with
+      `setMimeTypes('application/vnd.google-apps.presentation')`, and show the message above if one still gets
+      through Browse Drive.
+- [ ] **Privacy policy:** if conversion ships, add one line to `privacy.html` in the `BPMData.github.io` repo:
+      "To import a PowerPoint file, AllAboard briefly saves a converted copy in your Drive and deletes it right after."
+- [ ] **Tests:** fake download → multipart create (assert the metadata `mimeType` is the Slides type) → export →
+      DELETE of the temp id, in that order; and DELETE still happens when the export fails.
 
 ### PDF import improvements
 - [ ] **Import PDFs bigger, with a user-set multiplier (default 3×).** Today a page is rendered at ~1224–1400 px
@@ -40,7 +252,7 @@ into board pages. It all runs in the browser, with no server changes.
   - **Cost check:** a Letter page at 3× is ~1836×2376 px, roughly 0.5–1 MB as JPEG. That's fine: assets are
     deduplicated and stored once (`/api/assets/<hash>`).
   - Make sure templates/built-ins and the PDF export (`batchPdfExport.ts`) still line up at the new sizes.
-- [ ] **Page picker** ("use pages 3–5") instead of silently keeping only the first 10 pages (`MAX_PDF_PAGES = 10`).
+- [x] **Page picker** ("use pages 3–5") instead of silently keeping only the first 10 pages (`MAX_PDF_PAGES = 10`). Done in #23; thumbnails are task 2 above.
 - [ ] **Progress/feedback** while large PDFs render in the browser.
 - [ ] Optionally render sharper (currently ~1400 px wide JPEG, which is soft on dense text).
 

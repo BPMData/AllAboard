@@ -437,6 +437,10 @@ Drive, save again → a new file is created. Open from Drive → Replace/Merge m
 
 ## Phase 5 — Optional name autofill (Welcome screen)
 
+> **Allowed, optional.** Sign In With Google shares only the user's name and email (`openid`/`profile`/`email`),
+> which are **non-sensitive** scopes: no sensitive-scope review (rule 6 in `CLAUDE.md`). The sign-in screen will
+> mention name and email. Build it only when the owner asks; it isn't scheduled.
+
 Only if the human still wants it after Phases 1–4 ship. Render only when `isGoogleSignInConfigured()`.
 
 - In `src/App.tsx`, directly above the `Your Display Name` label (around line 1561):
