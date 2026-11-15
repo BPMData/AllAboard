@@ -215,7 +215,7 @@ test.describe('Google Drive integration (stubbed Google)', () => {
     expect(log.views[0].calls.setIncludeFolders).toEqual([false]);
     expect(log.views[2].calls.setIncludeFolders).toEqual([true]);
     expect(log.views[2].calls.setMimeTypes).toEqual([
-      'application/vnd.google-apps.presentation,application/pdf',
+      'application/vnd.google-apps.presentation,application/pdf,application/vnd.openxmlformats-officedocument.presentationml.presentation,application/vnd.ms-powerpoint',
     ]);
   });
 
@@ -281,6 +281,127 @@ test.describe('Google Drive integration (stubbed Google)', () => {
 
     await expect(page.getByTitle('Remove background worksheet from this board')).toBeVisible();
     await expect(page.getByRole('button', { name: 'Side-by-Side' })).toBeVisible();
+  });
+
+  test('hanging Slides export shows live timer and Cancel aborts cleanly with no error', async ({ page }) => {
+    await installFakeGoogle(page, {
+      pickerDoc: {
+        id: 'slides-hang',
+        name: 'Huge 370-Slide Deck',
+        mimeType: 'application/vnd.google-apps.presentation',
+      },
+    });
+
+    await page.route('https://www.googleapis.com/**', async () => {
+      // Intentionally never respond to simulate a stalled Slides export.
+    });
+
+    await joinRoom(page, uniqueRoom('gd-hang-cancel'), 'Ms T', '4829');
+    await page.getByRole('button', { name: 'Slides / PDF from Drive', exact: true }).click();
+
+    await expect(page.getByRole('button', { name: /Google is converting the deck\.\.\. 0:0[0-9]/ })).toBeVisible();
+    await expect(page.getByRole('button', { name: /Google is converting the deck\.\.\. 0:0[1-9]/ })).toBeVisible({
+      timeout: 3000,
+    });
+
+    await page.getByRole('button', { name: 'Cancel', exact: true }).click();
+
+    await expect(page.getByRole('button', { name: 'Slides / PDF from Drive', exact: true })).toBeEnabled();
+    await expect(page.getByRole('button', { name: 'Cancel', exact: true })).toHaveCount(0);
+    await expect(page.getByText(/Could not import from Drive|Google took too long|Google Drive request failed/)).toHaveCount(0);
+  });
+
+  test('hanging Slides export times out with Download-as-PDF advice', async ({ page }) => {
+    await page.addInitScript(() => {
+      (window as any).__ALLABOARD_DRIVE_TIMEOUT_MS__ = 350;
+    });
+    await installFakeGoogle(page, {
+      pickerDoc: {
+        id: 'slides-timeout',
+        name: 'Huge Deck',
+        mimeType: 'application/vnd.google-apps.presentation',
+      },
+    });
+
+    await page.route('https://www.googleapis.com/**', async () => {
+      // Intentionally never respond so the timeout fires.
+    });
+
+    await joinRoom(page, uniqueRoom('gd-timeout'), 'Ms T', '4829');
+    await page.getByRole('button', { name: 'Slides / PDF from Drive', exact: true }).click();
+
+    await expect(
+      page.getByText(
+        'Google took too long to convert this deck. For big decks, open it in Google Slides, use File → Download → PDF, then use Upload (.JPG / .PNG / .PDF). Big PDFs work fine that way.'
+      )
+    ).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Slides / PDF from Drive', exact: true })).toBeEnabled();
+    await expect(page.getByRole('button', { name: 'Cancel', exact: true })).toHaveCount(0);
+  });
+
+  test('403 exportSizeLimitExceeded shows friendly Download-as-PDF advice', async ({ page }) => {
+    await installFakeGoogle(page, {
+      pickerDoc: {
+        id: 'slides-too-big',
+        name: '370 Slides',
+        mimeType: 'application/vnd.google-apps.presentation',
+      },
+    });
+
+    await page.route('https://www.googleapis.com/**', async (route) => {
+      await route.fulfill({
+        status: 403,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          error: {
+            code: 403,
+            errors: [{ reason: 'exportSizeLimitExceeded', message: 'This file is too large to be exported.' }],
+          },
+        }),
+      });
+    });
+
+    await joinRoom(page, uniqueRoom('gd-403-limit'), 'Ms T', '4829');
+    await page.getByRole('button', { name: 'Slides / PDF from Drive', exact: true }).click();
+
+    await expect(
+      page.getByText(/This deck is too big for Google to convert \(10 MB limit\).*Download → PDF/)
+    ).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Slides / PDF from Drive', exact: true })).toBeEnabled();
+  });
+
+  test('local Upload handles a 370-page PDF and opens the page-range modal', async ({ page }) => {
+    await joinRoom(page, uniqueRoom('gd-local-370'), 'Ms T', '4829');
+
+    const b64 = await page.evaluate(async (exporter) => {
+      const { buildMultiPagePdfFromJpegs } = await import(/* @vite-ignore */ exporter);
+      const c = document.createElement('canvas');
+      c.width = 40;
+      c.height = 30;
+      const ctx = c.getContext('2d')!;
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(0, 0, c.width, c.height);
+      const jpgB64 = c.toDataURL('image/jpeg', 0.7).split(',')[1];
+      const bytes = Uint8Array.from(atob(jpgB64), (ch) => ch.charCodeAt(0));
+      const pages = Array.from({ length: 370 }, () => ({ jpegBytes: bytes, widthPx: c.width, heightPx: c.height }));
+      const blob = buildMultiPagePdfFromJpegs(pages);
+      const out = new Uint8Array(await blob.arrayBuffer());
+      let binary = '';
+      for (let i = 0; i < out.length; i++) binary += String.fromCharCode(out[i]);
+      return btoa(binary);
+    }, EXPORT_MOD);
+
+    await page
+      .locator('input[type="file"][accept*="application/pdf"]')
+      .setInputFiles({ name: 'textbook-370.pdf', mimeType: 'application/pdf', buffer: Buffer.from(b64, 'base64') });
+
+    await expect(page.getByText('Choose Pages to Import')).toBeVisible();
+    await expect(page.getByText(/370 pages/)).toBeVisible();
+    await page.getByLabel('From').fill('1');
+    await page.getByLabel('To').fill('2');
+    await page.getByRole('button', { name: 'Import pages' }).click();
+
+    await expect(page.getByTitle('Remove background worksheet from this board')).toBeVisible();
   });
 
   test('cancelling the Drive picker does nothing and shows no error', async ({ page }) => {
@@ -533,5 +654,133 @@ test.describe('Google Drive integration (stubbed Google)', () => {
 
     const stored = await page.evaluate((r) => JSON.parse(localStorage.getItem(`drawchat_drive_save_${r}`) || '{}'), room);
     expect(stored.fileId).toBe('drive-file-42');
+  });
+
+  test('Slides / PDF from Drive converts a .pptx via temporary Slides file and deletes the temp copy', async ({ page }) => {
+    await page.goto('/');
+    const pdfBuf = await makePdfBuffer(page, 2);
+    const pptxMime = 'application/vnd.openxmlformats-officedocument.presentationml.presentation';
+    const slidesMime = 'application/vnd.google-apps.presentation';
+
+    await installFakeGoogle(page, {
+      pickerDoc: { id: 'pptx-1', name: 'Lesson.pptx', mimeType: pptxMime },
+    });
+
+    const steps: string[] = [];
+    let uploadedMetadata: any = null;
+
+    await page.route('https://www.googleapis.com/**', async (route) => {
+      const req = route.request();
+      const url = req.url();
+      const method = req.method();
+      if (method === 'GET' && url.includes('/drive/v3/files/pptx-1?alt=media')) {
+        steps.push('download');
+        await route.fulfill({
+          status: 200,
+          contentType: pptxMime,
+          body: Buffer.from('PK\x03\x04fake-pptx'),
+        });
+        return;
+      }
+      if (method === 'POST' && url.includes('/upload/drive/v3/files?uploadType=multipart')) {
+        steps.push('multipart-create');
+        const bodyText = req.postDataBuffer()?.toString('utf8') || '';
+        const jsonMatch = bodyText.match(/\{[^\r\n]*mimeType[^\r\n]*\}/);
+        uploadedMetadata = jsonMatch ? JSON.parse(jsonMatch[0]) : null;
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({ id: 'temp-slide-99' }),
+        });
+        return;
+      }
+      if (method === 'GET' && url.includes('/drive/v3/files/temp-slide-99/export?mimeType=application%2Fpdf')) {
+        steps.push('export');
+        await route.fulfill({ status: 200, contentType: 'application/pdf', body: pdfBuf });
+        return;
+      }
+      if (method === 'DELETE' && url.includes('/drive/v3/files/temp-slide-99')) {
+        steps.push('delete');
+        await route.fulfill({ status: 204, body: '' });
+        return;
+      }
+      await route.abort();
+    });
+
+    await joinRoom(page, uniqueRoom('gd-pptx'), 'Ms T', '4829');
+    await page.getByRole('button', { name: 'Slides / PDF from Drive', exact: true }).click();
+
+    await expect(page.getByTitle('Remove background worksheet from this board')).toBeVisible();
+    await expect.poll(() => steps).toEqual(['download', 'multipart-create', 'export', 'delete']);
+    expect(uploadedMetadata).toEqual({
+      name: 'Lesson.pptx (AllAboard temp)',
+      mimeType: slidesMime,
+    });
+  });
+
+  test('Slides / PDF from Drive still deletes temporary Slides copy when export fails on .pptx', async ({ page }) => {
+    const pptxMime = 'application/vnd.openxmlformats-officedocument.presentationml.presentation';
+    await installFakeGoogle(page, {
+      pickerDoc: { id: 'pptx-bad', name: 'Broken.pptx', mimeType: pptxMime },
+    });
+
+    const steps: string[] = [];
+    await page.route('https://www.googleapis.com/**', async (route) => {
+      const req = route.request();
+      const url = req.url();
+      const method = req.method();
+      if (method === 'GET' && url.includes('/drive/v3/files/pptx-bad?alt=media')) {
+        steps.push('download');
+        await route.fulfill({ status: 200, contentType: pptxMime, body: Buffer.from('fake-pptx') });
+        return;
+      }
+      if (method === 'POST' && url.includes('/upload/drive/v3/files?uploadType=multipart')) {
+        steps.push('multipart-create');
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({ id: 'temp-slide-err' }),
+        });
+        return;
+      }
+      if (method === 'GET' && url.includes('/drive/v3/files/temp-slide-err/export')) {
+        steps.push('export-fail');
+        await route.fulfill({
+          status: 500,
+          contentType: 'application/json',
+          body: JSON.stringify({ error: { code: 500, errors: [{ reason: 'internalError' }] } }),
+        });
+        return;
+      }
+      if (method === 'DELETE' && url.includes('/drive/v3/files/temp-slide-err')) {
+        steps.push('delete');
+        await route.fulfill({ status: 204, body: '' });
+        return;
+      }
+      await route.abort();
+    });
+
+    await joinRoom(page, uniqueRoom('gd-pptx-err'), 'Ms T', '4829');
+    await page.getByRole('button', { name: 'Slides / PDF from Drive', exact: true }).click();
+
+    await expect(
+      page.getByText(
+        "This PowerPoint file couldn't be converted. Open it in Google Slides (or save it as PDF in PowerPoint) and try again."
+      )
+    ).toBeVisible();
+    await expect.poll(() => steps).toEqual(['download', 'multipart-create', 'export-fail', 'delete']);
+  });
+
+  test('Slides / PDF from Drive shows friendly error for unsupported file types', async ({ page }) => {
+    await installFakeGoogle(page, {
+      pickerDoc: {
+        id: 'docx-1',
+        name: 'Notes.docx',
+        mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      },
+    });
+    await joinRoom(page, uniqueRoom('gd-unsupported'), 'Ms T', '4829');
+    await page.getByRole('button', { name: 'Slides / PDF from Drive', exact: true }).click();
+    await expect(page.getByText('Please choose a Google Slides presentation or a PDF.')).toBeVisible();
   });
 });

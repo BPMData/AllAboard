@@ -43,10 +43,12 @@ import { isGoogleDriveConfigured } from '../lib/googleConfig';
 import {
   GoogleError,
   downloadDriveFile,
+  formatDownloadProgress,
   friendlyGoogleError,
   getAccessToken,
   getLastDriveFolder,
   getRoomDriveSave,
+  isWorksheetMime,
   pickDriveFile,
   pickDriveFolder,
   saveJsonToDrive,
@@ -738,6 +740,8 @@ export default function Canvas({
   const [isUploadingWorksheet, setIsUploadingWorksheet] = useState(false);
   const [worksheetError, setWorksheetError] = useState<string | null>(null);
   const [driveBusy, setDriveBusy] = useState<string | null>(null);
+  const [driveCanCancel, setDriveCanCancel] = useState(false);
+  const driveAbortRef = useRef<AbortController | null>(null);
   const [pendingPdfRange, setPendingPdfRange] = useState<{ file: File; totalPages: number } | null>(null);
   const [showTemplateModal, setShowTemplateModal] = useState(false);
   const [selectedTemplateId, setSelectedTemplateId] = useState<BuiltInTemplateId>('checkin-columns');
@@ -1987,22 +1991,54 @@ export default function Canvas({
     await startWorksheetImport(file);
   };
 
+  useEffect(() => {
+    return () => {
+      driveAbortRef.current?.abort();
+    };
+  }, []);
+
+  const handleCancelDriveImport = () => {
+    driveAbortRef.current?.abort();
+  };
+
   const handleWorksheetFromDrive = async () => {
     setWorksheetError(null);
     setDriveBusy('Opening Google Drive...');
+    setDriveCanCancel(false);
+    const controller = new AbortController();
+    driveAbortRef.current = controller;
     try {
       const doc = await pickDriveFile('worksheet'); // calls getAccessToken first, inside the click
-      if (!doc) return;
-      setDriveBusy('Importing from Drive...');
-      const file = await downloadDriveFile(doc);
+      if (!doc || controller.signal.aborted) return;
+      if (!isWorksheetMime(doc.mimeType)) {
+        throw new GoogleError('unsupported_worksheet_type', friendlyGoogleError('unsupported_worksheet_type'));
+      }
+      setDriveCanCancel(true);
+      const file = await downloadDriveFile(doc, {
+        signal: controller.signal,
+        onProgress: (progress) => {
+          if (!controller.signal.aborted) {
+            setDriveBusy(formatDownloadProgress(doc, progress));
+          }
+        },
+      });
+      if (controller.signal.aborted) return;
+      setDriveBusy('Opening worksheet...');
       await startWorksheetImport(file); // same path as local upload, including the page-range modal
     } catch (err: any) {
+      if (controller.signal.aborted || err?.name === 'AbortError') {
+        return;
+      }
       setWorksheetError(
         err instanceof GoogleError
           ? friendlyGoogleError(err.code)
           : err?.message || 'Could not import from Drive.'
       );
     } finally {
+      if (driveAbortRef.current === controller) {
+        driveAbortRef.current = null;
+      }
+      setDriveCanCancel(false);
       setDriveBusy(null);
     }
   };
@@ -4332,16 +4368,27 @@ export default function Canvas({
             </button>
 
             {isGoogleDriveConfigured() && (
-              <button
-                type="button"
-                disabled={isUploadingWorksheet || Boolean(driveBusy)}
-                onClick={handleWorksheetFromDrive}
-                className="flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium bg-white text-slate-800 border border-amber-300 hover:bg-amber-100/60 transition-colors whitespace-nowrap shrink-0 cursor-pointer disabled:opacity-50"
-                title="Import a Google Slides deck or PDF from your Google Drive as a worksheet"
-              >
-                <HardDrive size={13} className="text-emerald-600" />
-                <span>{driveBusy || 'Slides / PDF from Drive'}</span>
-              </button>
+              <div className="flex items-center gap-1.5 shrink-0">
+                <button
+                  type="button"
+                  disabled={isUploadingWorksheet || Boolean(driveBusy)}
+                  onClick={handleWorksheetFromDrive}
+                  className="flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium bg-white text-slate-800 border border-amber-300 hover:bg-amber-100/60 transition-colors whitespace-nowrap shrink-0 cursor-pointer disabled:opacity-50"
+                  title="Import a Google Slides deck or PDF from your Google Drive as a worksheet"
+                >
+                  <HardDrive size={13} className="text-emerald-600" />
+                  <span>{driveBusy || 'Slides / PDF from Drive'}</span>
+                </button>
+                {driveCanCancel && (
+                  <button
+                    type="button"
+                    onClick={handleCancelDriveImport}
+                    className="text-xs font-medium text-amber-900 underline hover:text-red-700 cursor-pointer whitespace-nowrap"
+                  >
+                    Cancel
+                  </button>
+                )}
+              </div>
             )}
 
             {/* Active Background Worksheet Controls */}

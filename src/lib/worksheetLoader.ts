@@ -303,8 +303,13 @@ export function isPdfFile(file: File): boolean {
 }
 
 export async function getPdfPageCount(file: File): Promise<number> {
-  const pdf = await pdfjsLib.getDocument({ data: await file.arrayBuffer() }).promise;
-  return pdf.numPages;
+  const loadingTask = pdfjsLib.getDocument({ data: await file.arrayBuffer() });
+  try {
+    const pdf = await loadingTask.promise;
+    return pdf.numPages;
+  } finally {
+    await loadingTask.destroy();
+  }
 }
 
 export async function processWorksheetFile(file: File, range?: PageRange): Promise<BackgroundPage[]> {
