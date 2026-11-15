@@ -48,6 +48,7 @@ import {
   getAccessToken,
   getLastDriveFolder,
   getRoomDriveSave,
+  isWorksheetMime,
   pickDriveFile,
   pickDriveFolder,
   saveJsonToDrive,
@@ -2009,6 +2010,9 @@ export default function Canvas({
     try {
       const doc = await pickDriveFile('worksheet'); // calls getAccessToken first, inside the click
       if (!doc || controller.signal.aborted) return;
+      if (!isWorksheetMime(doc.mimeType)) {
+        throw new GoogleError('unsupported_worksheet_type', friendlyGoogleError('unsupported_worksheet_type'));
+      }
       setDriveCanCancel(true);
       const file = await downloadDriveFile(doc, {
         signal: controller.signal,

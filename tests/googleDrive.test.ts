@@ -5,6 +5,11 @@ import {
   DRIVE_SAVE_KEY_PREFIX,
   DEFAULT_DRIVE_DOWNLOAD_TIMEOUT_MS,
   MY_DRIVE,
+  PPTX_MIME,
+  PPT_MIME,
+  buildMultipartRelatedBody,
+  isPowerPointMime,
+  isWorksheetMime,
   normalizeJsonFileName,
   replacesLastSave,
   DRIVE_SCOPE,
@@ -80,10 +85,18 @@ describe('googleDrive pure helpers', () => {
     );
   });
 
-  it('appends .pdf to Slides names and preserves other filenames', () => {
+  it('appends .pdf to Slides names, converts PowerPoint filenames to .pdf, and preserves other filenames', () => {
     assert.equal(importedFileName({ name: 'Fractions Deck', mimeType: SLIDES_MIME }), 'Fractions Deck.pdf');
+    assert.equal(importedFileName({ name: 'Lesson.pptx', mimeType: PPTX_MIME }), 'Lesson.pdf');
+    assert.equal(importedFileName({ name: 'OldDeck.PPT', mimeType: PPT_MIME }), 'OldDeck.pdf');
     assert.equal(importedFileName({ name: 'worksheet.pdf', mimeType: PDF_MIME }), 'worksheet.pdf');
     assert.equal(importedFileName({ name: 'room.json', mimeType: JSON_MIME }), 'room.json');
+    assert.equal(isPowerPointMime(PPTX_MIME), true);
+    assert.equal(isPowerPointMime(PPT_MIME), true);
+    assert.equal(isPowerPointMime(SLIDES_MIME), false);
+    assert.equal(isWorksheetMime(PPTX_MIME), true);
+    assert.equal(isWorksheetMime(PDF_MIME), true);
+    assert.equal(isWorksheetMime(JSON_MIME), false);
   });
 
   it('maps known Google error codes to friendly messages and falls back safely', () => {
@@ -96,6 +109,14 @@ describe('googleDrive pure helpers', () => {
     assert.match(friendlyGoogleError('exportSizeLimitExceeded'), /Download → PDF/);
     assert.match(friendlyGoogleError('timeout'), /too long to convert/);
     assert.match(friendlyGoogleError('timeout'), /Download → PDF/);
+    assert.equal(
+      friendlyGoogleError('pptx_conversion_failed'),
+      "This PowerPoint file couldn't be converted. Open it in Google Slides (or save it as PDF in PowerPoint) and try again."
+    );
+    assert.equal(
+      friendlyGoogleError('unsupported_worksheet_type'),
+      'Please choose a Google Slides presentation or a PDF.'
+    );
     assert.match(friendlyGoogleError('not_found'), /Pick it again from Drive/);
     assert.equal(friendlyGoogleError('something_unexpected'), 'Google Drive request failed. Local upload still works.');
   });
@@ -118,9 +139,30 @@ describe('googleDrive pure helpers', () => {
       'Downloading from Drive... 4.2 MB'
     );
     assert.equal(
+      formatDownloadProgress({ mimeType: PPTX_MIME }, { loadedBytes: 0, elapsedMs: 0, stage: 'converting-pptx' }),
+      'Converting PowerPoint...'
+    );
+    assert.equal(
+      formatDownloadProgress({ mimeType: PPTX_MIME }, { loadedBytes: 0, elapsedMs: 5_000, stage: 'exporting' }),
+      'Google is converting the deck... 0:05'
+    );
+    assert.equal(
       formatDownloadProgress({ mimeType: PDF_MIME }, { loadedBytes: 42 * 1024, elapsedMs: 1_000 }),
       'Downloading from Drive... 42 KB'
     );
+  });
+
+  it('builds a multipart/related body with Slides metadata and binary media part', async () => {
+    const body = buildMultipartRelatedBody(
+      'b123',
+      { name: 'Deck.pptx (AllAboard temp)', mimeType: SLIDES_MIME },
+      PPTX_MIME,
+      new Uint8Array([80, 75, 3, 4])
+    );
+    const text = await body.text();
+    assert.ok(text.includes('--b123\r\nContent-Type: application/json; charset=UTF-8'));
+    assert.ok(text.includes(`"mimeType":"${SLIDES_MIME}"`));
+    assert.ok(text.includes(`--b123\r\nContent-Type: ${PPTX_MIME}\r\n\r\nPK\u0003\u0004\r\n--b123--`));
   });
 
   it('defaults download timeout to 120s and respects window.__ALLABOARD_DRIVE_TIMEOUT_MS__', () => {

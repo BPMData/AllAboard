@@ -2,9 +2,20 @@ import { getGoogleConfig } from './googleConfig';
 
 export const DRIVE_SCOPE = 'https://www.googleapis.com/auth/drive.file';
 export const SLIDES_MIME = 'application/vnd.google-apps.presentation';
+export const PPTX_MIME = 'application/vnd.openxmlformats-officedocument.presentationml.presentation';
+export const PPT_MIME = 'application/vnd.ms-powerpoint';
 export const PDF_MIME = 'application/pdf';
 export const JSON_MIME = 'application/json';
 export const FOLDER_MIME = 'application/vnd.google-apps.folder';
+export const MAX_PPTX_BYTES = 100 * 1024 * 1024;
+
+export function isPowerPointMime(mimeType: string): boolean {
+  return mimeType === PPTX_MIME || mimeType === PPT_MIME;
+}
+
+export function isWorksheetMime(mimeType: string): boolean {
+  return mimeType === SLIDES_MIME || mimeType === PDF_MIME || isPowerPointMime(mimeType);
+}
 /** + roomId -> JSON DriveSaveRecord for that room's last Drive save. */
 export const DRIVE_SAVE_KEY_PREFIX = 'drawchat_drive_save_';
 /** JSON DriveFolder: the folder the teacher last saved any room to. */
@@ -29,7 +40,12 @@ export function downloadUrlFor(doc: { id: string; mimeType: string }): string {
 }
 
 export function importedFileName(doc: { name: string; mimeType: string }): string {
-  return doc.mimeType === SLIDES_MIME ? `${doc.name}.pdf` : doc.name;
+  if (doc.mimeType === SLIDES_MIME) return `${doc.name}.pdf`;
+  if (isPowerPointMime(doc.mimeType)) {
+    const base = doc.name.replace(/\.pptx?$/i, '') || doc.name;
+    return `${base}.pdf`;
+  }
+  return doc.name;
 }
 
 export function friendlyGoogleError(code: string): string {
@@ -47,6 +63,10 @@ export function friendlyGoogleError(code: string): string {
       return 'This deck is too big for Google to convert (10 MB limit). Open it in Google Slides, use File \u2192 Download \u2192 PDF, then use Upload (.JPG / .PNG / .PDF). Big PDFs work fine that way.';
     case 'timeout':
       return 'Google took too long to convert this deck. For big decks, open it in Google Slides, use File \u2192 Download \u2192 PDF, then use Upload (.JPG / .PNG / .PDF). Big PDFs work fine that way.';
+    case 'pptx_conversion_failed':
+      return "This PowerPoint file couldn't be converted. Open it in Google Slides (or save it as PDF in PowerPoint) and try again.";
+    case 'unsupported_worksheet_type':
+      return 'Please choose a Google Slides presentation or a PDF.';
     case 'not_found':
       return "AllAboard can't open that file. Pick it again from Drive.";
     default:
@@ -439,7 +459,9 @@ export async function pickDriveFile(kind: 'worksheet' | 'snapshot'): Promise<Pic
       makeView(pickerNs, 'PRESENTATIONS', 'Slides', (v) => tryCall(v, 'setIncludeFolders', false)),
       makeView(pickerNs, 'PDFS', 'PDFs', (v) => tryCall(v, 'setIncludeFolders', false)),
       makeView(pickerNs, 'DOCS', 'Browse Drive', (v) => {
-        v.setIncludeFolders(true).setSelectFolderEnabled(false).setMimeTypes(`${SLIDES_MIME},${PDF_MIME}`);
+        v.setIncludeFolders(true)
+          .setSelectFolderEnabled(false)
+          .setMimeTypes(`${SLIDES_MIME},${PDF_MIME},${PPTX_MIME},${PPT_MIME}`);
       }),
     ];
   } else {
@@ -476,6 +498,7 @@ export async function pickDriveFolder(startIn: DriveFolder): Promise<DriveFolder
 export interface DownloadDriveProgress {
   loadedBytes: number;
   elapsedMs: number;
+  stage?: 'converting-pptx' | 'exporting';
 }
 
 export interface DownloadDriveOptions {
@@ -495,9 +518,12 @@ export function formatDownloadProgress(
   doc: Pick<PickedDriveDoc, 'mimeType'>,
   progress: DownloadDriveProgress
 ): string {
+  if (progress.stage === 'converting-pptx') {
+    return 'Converting PowerPoint...';
+  }
   if (progress.loadedBytes <= 0) {
     const timer = formatElapsedTimer(progress.elapsedMs);
-    return doc.mimeType === SLIDES_MIME
+    return doc.mimeType === SLIDES_MIME || progress.stage === 'exporting'
       ? `Google is converting the deck... ${timer}`
       : `Downloading from Drive... ${timer}`;
   }
@@ -509,6 +535,119 @@ export function formatDownloadProgress(
   return `Downloading from Drive... ${kb} KB`;
 }
 
+export function buildMultipartRelatedBody(
+  boundary: string,
+  metadata: Record<string, unknown>,
+  mediaType: string,
+  mediaBytes: Uint8Array
+): Blob {
+  const preamble =
+    `--${boundary}\r\n` +
+    'Content-Type: application/json; charset=UTF-8\r\n\r\n' +
+    `${JSON.stringify(metadata)}\r\n` +
+    `--${boundary}\r\n` +
+    `Content-Type: ${mediaType}\r\n\r\n`;
+  const closing = `\r\n--${boundary}--`;
+  return new Blob([preamble, mediaBytes as BlobPart, closing], {
+    type: `multipart/related; boundary=${boundary}`,
+  });
+}
+
+async function readResponseBlob(
+  res: Response,
+  outputType: string,
+  onBytes: (loadedBytes: number) => void
+): Promise<Blob> {
+  if (res.body && typeof res.body.getReader === 'function') {
+    const reader = res.body.getReader();
+    const chunks: Uint8Array[] = [];
+    let loadedBytes = 0;
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      if (value && value.byteLength > 0) {
+        chunks.push(value);
+        loadedBytes += value.byteLength;
+        onBytes(loadedBytes);
+      }
+    }
+    return new Blob(chunks as BlobPart[], { type: outputType });
+  }
+  return res.blob();
+}
+
+const PRESERVED_POWERPOINT_CODES = new Set([
+  'abort',
+  'timeout',
+  'exportSizeLimitExceeded',
+  'access_denied',
+  'admin_policy_enforced',
+  'popup_failed_to_open',
+  'popup_closed',
+  'script_load_failed',
+  'not_found',
+]);
+
+async function convertPowerPointAndExportPdf(
+  doc: PickedDriveDoc,
+  scopedSignal: AbortSignal,
+  setStage: (stage: 'converting-pptx' | 'exporting', loadedBytes: number) => void
+): Promise<Blob> {
+  setStage('converting-pptx', 0);
+
+  // 1. Download original .pptx/.ppt bytes (check against ~100 MB ceiling).
+  const sourceRes = await driveFetch(downloadUrlFor(doc), { signal: scopedSignal });
+  const contentLen = Number(sourceRes.headers?.get?.('content-length') || 0);
+  if (contentLen > MAX_PPTX_BYTES) {
+    throw new GoogleError('pptx_conversion_failed', friendlyGoogleError('pptx_conversion_failed'));
+  }
+  const sourceBuffer = await sourceRes.arrayBuffer();
+  if (sourceBuffer.byteLength > MAX_PPTX_BYTES) {
+    throw new GoogleError('pptx_conversion_failed', friendlyGoogleError('pptx_conversion_failed'));
+  }
+  const sourceBytes = new Uint8Array(sourceBuffer);
+
+  // 2. Upload as a temporary Google Slides presentation so Drive converts it.
+  const boundary = `allaboard-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+  const body = buildMultipartRelatedBody(
+    boundary,
+    { name: `${doc.name} (AllAboard temp)`, mimeType: SLIDES_MIME },
+    doc.mimeType,
+    sourceBytes
+  );
+  const createRes = await driveFetch(
+    'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id',
+    {
+      method: 'POST',
+      headers: { 'Content-Type': `multipart/related; boundary=${boundary}` },
+      body,
+      signal: scopedSignal,
+    }
+  );
+  const created = await createRes.json();
+  const tempId = typeof created?.id === 'string' ? created.id : '';
+  if (!tempId) {
+    throw new GoogleError('pptx_conversion_failed', friendlyGoogleError('pptx_conversion_failed'));
+  }
+
+  // 3. Export the converted Slides copy as PDF, then always delete the temp copy.
+  try {
+    setStage('exporting', 0);
+    const exportRes = await driveFetch(downloadUrlFor({ id: tempId, mimeType: SLIDES_MIME }), {
+      signal: scopedSignal,
+    });
+    return await readResponseBlob(exportRes, PDF_MIME, (bytes) => setStage('exporting', bytes));
+  } finally {
+    try {
+      await driveFetch(`https://www.googleapis.com/drive/v3/files/${encodeURIComponent(tempId)}`, {
+        method: 'DELETE',
+      });
+    } catch {
+      /* best-effort cleanup of temp file */
+    }
+  }
+}
+
 export async function downloadDriveFile(
   doc: PickedDriveDoc,
   opts?: DownloadDriveOptions
@@ -517,44 +656,52 @@ export async function downloadDriveFile(
   const scoped = createScopedAbort(opts?.signal, timeoutMs);
   const startedAt = Date.now();
   let loadedBytes = 0;
+  const isPpt = isPowerPointMime(doc.mimeType);
+  let stage: 'converting-pptx' | 'exporting' | undefined = isPpt ? 'converting-pptx' : undefined;
 
   const reportProgress = () => {
-    opts?.onProgress?.({ loadedBytes, elapsedMs: Date.now() - startedAt });
+    opts?.onProgress?.({ loadedBytes, elapsedMs: Date.now() - startedAt, stage });
   };
 
   const progressTimer = opts?.onProgress
     ? setInterval(() => {
-        if (loadedBytes === 0) reportProgress();
+        if (loadedBytes === 0 && stage !== 'converting-pptx') reportProgress();
       }, 1000)
     : undefined;
 
   try {
     reportProgress();
-    const res = await driveFetch(downloadUrlFor(doc), { signal: scoped.signal });
-    const outputType = doc.mimeType === SLIDES_MIME ? PDF_MIME : doc.mimeType;
-
     let blob: Blob;
-    if (res.body && typeof res.body.getReader === 'function') {
-      const reader = res.body.getReader();
-      const chunks: Uint8Array[] = [];
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        if (value && value.byteLength > 0) {
-          chunks.push(value);
-          loadedBytes += value.byteLength;
-          reportProgress();
-        }
-      }
-      blob = new Blob(chunks as BlobPart[], { type: outputType });
+    let outputType: string;
+    if (isPpt) {
+      outputType = PDF_MIME;
+      blob = await convertPowerPointAndExportPdf(doc, scoped.signal, (nextStage, bytes) => {
+        stage = nextStage;
+        loadedBytes = bytes;
+        reportProgress();
+      });
     } else {
-      blob = await res.blob();
+      outputType = doc.mimeType === SLIDES_MIME ? PDF_MIME : doc.mimeType;
+      const res = await driveFetch(downloadUrlFor(doc), { signal: scoped.signal });
+      blob = await readResponseBlob(res, outputType, (bytes) => {
+        loadedBytes = bytes;
+        reportProgress();
+      });
     }
 
     return new File([blob], importedFileName(doc), { type: outputType });
-  } catch (err) {
+  } catch (err: any) {
     if (scoped.isTimedOut()) {
       throw new GoogleError('timeout', friendlyGoogleError('timeout'));
+    }
+    if (err?.name === 'AbortError' || opts?.signal?.aborted) {
+      throw err;
+    }
+    if (isPpt) {
+      if (err instanceof GoogleError && PRESERVED_POWERPOINT_CODES.has(err.code)) {
+        throw err;
+      }
+      throw new GoogleError('pptx_conversion_failed', friendlyGoogleError('pptx_conversion_failed'));
     }
     throw err;
   } finally {
