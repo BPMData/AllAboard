@@ -268,4 +268,50 @@ test.describe('worksheet UI', () => {
     await remove.click();
     await expect(remove).toBeHidden();
   });
+
+  test('teacher uploads a 12-page PDF, picks pages 3–12 in modal, and imports 10 pages', async ({ page }) => {
+    await joinRoom(page, uniqueRoom('pdf12'), 'Ms T', '4829');
+
+    const pdfBase64 = await page.evaluate(async (exporter) => {
+      const { buildMultiPagePdfFromJpegs } = await import(/* @vite-ignore */ exporter);
+      const pages = Array.from({ length: 12 }, (_, i) => {
+        const c = document.createElement('canvas');
+        c.width = 400;
+        c.height = 283;
+        const ctx = c.getContext('2d')!;
+        ctx.fillStyle = `hsl(${i * 30}, 80%, 50%)`;
+        ctx.fillRect(0, 0, c.width, c.height);
+        const b64 = c.toDataURL('image/jpeg', 0.9).split(',')[1];
+        const bytes = Uint8Array.from(atob(b64), (ch) => ch.charCodeAt(0));
+        return { jpegBytes: bytes, widthPx: c.width, heightPx: c.height };
+      });
+      const pdfBlob = buildMultiPagePdfFromJpegs(pages);
+      const pdfBytes = new Uint8Array(await pdfBlob.arrayBuffer());
+      let binary = '';
+      for (let i = 0; i < pdfBytes.length; i++) binary += String.fromCharCode(pdfBytes[i]);
+      return btoa(binary);
+    }, EXPORT);
+
+    await page
+      .locator('input[type="file"][accept*="application/pdf"]')
+      .setInputFiles({ name: 'twelve.pdf', mimeType: 'application/pdf', buffer: Buffer.from(pdfBase64, 'base64') });
+
+    await expect(page.getByText('Choose Pages to Import')).toBeVisible();
+    await expect(page.getByText('"twelve.pdf" has 12 pages. AllAboard imports up to 10 at a time.')).toBeVisible();
+    await page.getByLabel('From').fill('3');
+    await page.getByLabel('To').fill('12');
+    await expect(page.getByText('Importing pages 3–12.')).toBeVisible();
+    await page.getByRole('button', { name: 'Import pages' }).click();
+
+    await expect(page.getByTitle('Remove background worksheet from this board')).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Side-by-Side' })).toBeVisible();
+
+    const downloadPromise = page.waitForEvent('download');
+    await page.getByRole('button', { name: 'Save .JSON' }).click();
+    const download = await downloadPromise;
+    const fs = await import('node:fs/promises');
+    const saved = JSON.parse(await fs.readFile((await download.path())!, 'utf8'));
+    expect(saved.background.fileName).toBe('twelve.pdf (pp. 3–12)');
+    expect(saved.background.pages).toHaveLength(10);
+  });
 });

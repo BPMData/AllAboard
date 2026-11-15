@@ -206,3 +206,16 @@ export interface RoomSnapshot {
   subBoards?: Record<string, SubBoardData>;
   breakoutConfig?: BreakoutConfig;
 }
+
+export interface PendingSnapshotData {
+  fileName: string;
+  roomId: string;
+  exportedAt?: number;
+  exportedBy?: string;
+  elements: CanvasElement[];
+  messages: ChatMessage[];
+  background?: RoomBackground | null;
+  subBoards?: Record<string, SubBoardData>;
+  breakoutConfig?: BreakoutConfig;
+  assets?: Record<string, string>;
+}
