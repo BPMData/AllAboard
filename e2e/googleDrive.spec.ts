@@ -77,6 +77,8 @@ async function installFakeGoogle(page: Page, opts: FakeGoogleOptions = {}) {
 
     (window as any).__PICKER_LOG__ = [];
     (window as any).__FAKE_PICKER_QUEUE__ = [];
+    (window as any).__TOKEN_LOG__ = [];
+    (window as any).__FAKE_TOKEN_QUEUE__ = [];
 
     class FakeDocsView {
       viewId: string;
@@ -139,8 +141,10 @@ async function installFakeGoogle(page: Page, opts: FakeGoogleOptions = {}) {
       accounts: {
         oauth2: {
           initTokenClient: (cfg: { callback: (resp: any) => void }) => ({
-            requestAccessToken: () => {
-              cfg.callback({ access_token: 'fake-token', expires_in: 3600 });
+            requestAccessToken: (reqOpts?: Record<string, unknown>) => {
+              (window as any).__TOKEN_LOG__.push(reqOpts ?? {});
+              const nextToken = (window as any).__FAKE_TOKEN_QUEUE__.shift() || 'fake-token';
+              cfg.callback({ access_token: nextToken, expires_in: 3600 });
             },
           }),
         },
@@ -782,5 +786,99 @@ test.describe('Google Drive integration (stubbed Google)', () => {
     await joinRoom(page, uniqueRoom('gd-unsupported'), 'Ms T', '4829');
     await page.getByRole('button', { name: 'Slides / PDF from Drive', exact: true }).click();
     await expect(page.getByText('Please choose a Google Slides presentation or a PDF.')).toBeVisible();
+  });
+
+  test('Switch Google account prompts select_account, updates Drive email chip, and scopes saved folder per account', async ({ page }) => {
+    await installFakeGoogle(page);
+    const room = uniqueRoom('gd-switch');
+    await fakeDriveUploads(page);
+    await page.route('https://www.googleapis.com/drive/v3/about**', async (route) => {
+      const auth = route.request().headers()['authorization'];
+      const email = auth === 'Bearer token-personal' ? 'teacher@personal.gmail.com' : 'ms.t@school.org';
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ user: { emailAddress: email, displayName: 'Ms T' } }),
+      });
+    });
+
+    await joinRoom(page, room, 'Ms T', '4829');
+
+    // First sign-in saves to Period 3 as ms.t@school.org
+    await page.getByRole('button', { name: 'Save Room to Drive', exact: true }).click();
+    await queuePick(page, { id: 'fold-p3', name: 'Period 3', mimeType: 'application/vnd.google-apps.folder' });
+    await page.getByRole('button', { name: 'Change...' }).click();
+    await expect(page.getByTestId('drive-save-folder')).toHaveText('Period 3');
+    await page.getByRole('button', { name: 'Save', exact: true }).click();
+    await expect(page.getByText('Saved')).toBeVisible();
+    await expect(page.getByTestId('drive-account-chip')).toContainText('Drive: ms.t@school.org');
+
+    // Open Save dialog again (still Period 3), then click Switch account
+    await page.getByRole('button', { name: 'Save Room to Drive', exact: true }).click();
+    await expect(page.getByTestId('drive-save-folder')).toHaveText('Period 3');
+    await page.evaluate(() => (window as any).__FAKE_TOKEN_QUEUE__.push('token-personal'));
+    await page.getByRole('button', { name: 'Switch account', exact: true }).click();
+
+    await expect(page.getByTestId('drive-account-chip')).toContainText('Drive: teacher@personal.gmail.com');
+    await expect(page.getByTestId('drive-save-folder')).toHaveText('My Drive');
+
+    const tokenLog = await page.evaluate(() => (window as any).__TOKEN_LOG__);
+    expect(tokenLog.some((entry: Record<string, unknown>) => entry.prompt === 'select_account')).toBe(true);
+
+    // Switch back via the teacher bar link -> restores Period 3 for ms.t@school.org
+    await page.getByRole('button', { name: 'Cancel', exact: true }).click();
+    await page.evaluate(() => (window as any).__FAKE_TOKEN_QUEUE__.push('token-school'));
+    await page.getByTestId('drive-account-chip').getByRole('button', { name: 'Switch', exact: true }).click();
+    await expect(page.getByTestId('drive-account-chip')).toContainText('Drive: ms.t@school.org');
+    await page.getByRole('button', { name: 'Save Room to Drive', exact: true }).click();
+    await expect(page.getByTestId('drive-save-folder')).toHaveText('Period 3');
+  });
+
+  test('Save Room to Drive can create a new Drive folder and save into it', async ({ page }) => {
+    await installFakeGoogle(page);
+    const folderCreates: Array<Record<string, unknown>> = [];
+    const requests = await fakeDriveUploads(page);
+    await page.route('https://www.googleapis.com/drive/v3/files**', async (route) => {
+      const req = route.request();
+      if (req.method() === 'POST') {
+        const meta = JSON.parse(req.postData() || '{}');
+        folderCreates.push(meta);
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({ id: 'new-fold-77', name: meta.name }),
+        });
+        return;
+      }
+      await route.fallback();
+    });
+
+    const room = uniqueRoom('gd-new-folder');
+    await joinRoom(page, room, 'Ms T', '4829');
+    await page.getByRole('button', { name: 'Save Room to Drive', exact: true }).click();
+
+    await page.getByRole('button', { name: 'New folder...' }).click();
+    const folderInput = page.getByLabel('New folder name');
+    await expect(folderInput).toHaveValue('AllAboard rooms');
+    await folderInput.fill('Period 4');
+    await page.getByRole('button', { name: 'Create', exact: true }).click();
+
+    await expect(page.getByTestId('drive-save-folder')).toHaveText('Period 4');
+    expect(folderCreates).toEqual([
+      { name: 'Period 4', mimeType: 'application/vnd.google-apps.folder' },
+    ]);
+
+    await page.getByRole('button', { name: 'Save', exact: true }).click();
+    await expect(page.getByText(`Saved ${todayFileName(room)} to Period 4`)).toBeVisible();
+    expect(requests[0].method).toBe('POST');
+    expect(requests[0].meta).toEqual({
+      name: todayFileName(room),
+      mimeType: 'application/json',
+      parents: ['new-fold-77'],
+    });
+
+    // Reopening Save Room to Drive remembers the newly created folder
+    await page.getByRole('button', { name: 'Save Room to Drive', exact: true }).click();
+    await expect(page.getByTestId('drive-save-folder')).toHaveText('Period 4');
   });
 });

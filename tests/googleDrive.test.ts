@@ -8,6 +8,10 @@ import {
   PPTX_MIME,
   PPT_MIME,
   buildMultipartRelatedBody,
+  clearAccessToken,
+  getCachedDriveAccount,
+  getLastDriveFolder,
+  getRoomDriveSave,
   isPowerPointMime,
   isWorksheetMime,
   normalizeJsonFileName,
@@ -196,5 +200,36 @@ describe('googleDrive pure helpers', () => {
     assert.equal(replacesLastSave(last, 'room.json', MY_DRIVE), false);
     const inRoot = { fileId: 'f2', fileName: 'room.json', folder: MY_DRIVE };
     assert.equal(replacesLastSave(inRoot, 'room.json', { id: null, name: 'My Drive' }), true);
+  });
+
+  it('scopes remembered folder and last save by account email with un-keyed fallback', () => {
+    const store = new Map<string, string>();
+    const prevStorage = (globalThis as any).localStorage;
+    (globalThis as any).localStorage = {
+      getItem: (k: string) => store.get(k) ?? null,
+      setItem: (k: string, v: string) => { store.set(k, v); },
+      removeItem: (k: string) => { store.delete(k); },
+    };
+    try {
+      store.set(DRIVE_LAST_FOLDER_KEY, JSON.stringify({ id: 'legacy-f', name: 'Legacy Folder' }));
+      store.set(`${DRIVE_LAST_FOLDER_KEY}:ms.t@school.org`, JSON.stringify({ id: 'school-f', name: 'Period 3' }));
+      store.set(
+        `${DRIVE_SAVE_KEY_PREFIX}math-1:ms.t@school.org`,
+        JSON.stringify({ fileId: 'sf1', fileName: 'math.json', folder: { id: 'school-f', name: 'Period 3' } })
+      );
+
+      assert.deepEqual(getLastDriveFolder('ms.t@school.org'), { id: 'school-f', name: 'Period 3' });
+      assert.deepEqual(getLastDriveFolder('other@gmail.com'), MY_DRIVE);
+      assert.deepEqual(getLastDriveFolder(null), { id: 'legacy-f', name: 'Legacy Folder' });
+
+      assert.equal(getRoomDriveSave('math-1', 'ms.t@school.org')?.fileId, 'sf1');
+      assert.equal(getRoomDriveSave('math-1', 'other@gmail.com'), null);
+
+      clearAccessToken();
+      assert.equal(getCachedDriveAccount(), null);
+    } finally {
+      if (prevStorage === undefined) delete (globalThis as any).localStorage;
+      else (globalThis as any).localStorage = prevStorage;
+    }
   });
 });

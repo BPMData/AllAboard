@@ -1339,9 +1339,12 @@ interface DriveSaveModalProps {
   defaultFileName: string;
   folder: DriveFolder;
   lastSave: DriveSaveRecord | null;
-  busy: 'saving' | 'choosing-folder' | null;
+  accountEmail?: string | null;
+  busy: 'saving' | 'choosing-folder' | 'creating-folder' | null;
   error: string | null;
   onChangeFolder: () => void;
+  onCreateFolder: (name: string) => Promise<boolean>;
+  onSwitchAccount?: () => void;
   onSave: (fileName: string) => void;
   onCancel: () => void;
 }
@@ -1354,15 +1357,30 @@ export function DriveSaveModal({
   defaultFileName,
   folder,
   lastSave,
+  accountEmail,
   busy,
   error,
   onChangeFolder,
+  onCreateFolder,
+  onSwitchAccount,
   onSave,
   onCancel,
 }: DriveSaveModalProps) {
   const [nameText, setNameText] = useState(defaultFileName);
+  const [newFolderOpen, setNewFolderOpen] = useState(false);
+  const [newFolderName, setNewFolderName] = useState('AllAboard rooms');
   const finalName = normalizeJsonFileName(nameText, defaultFileName);
   const willReplace = replacesLastSave(lastSave, finalName, folder);
+
+  const submitNewFolder = async () => {
+    const trimmed = newFolderName.trim();
+    if (!trimmed || busy) return;
+    const ok = await onCreateFolder(trimmed);
+    if (ok) {
+      setNewFolderOpen(false);
+      setNewFolderName('AllAboard rooms');
+    }
+  };
 
   const submit = (e?: React.FormEvent) => {
     e?.preventDefault();
@@ -1428,7 +1446,73 @@ export function DriveSaveModal({
               >
                 {busy === 'choosing-folder' ? 'Opening...' : 'Change...'}
               </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setNewFolderName('AllAboard rooms');
+                  setNewFolderOpen((open) => !open);
+                }}
+                disabled={Boolean(busy)}
+                className="px-3 py-2.5 rounded-xl text-xs font-medium border border-slate-300 text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer disabled:opacity-50 shrink-0"
+              >
+                New folder...
+              </button>
             </div>
+            {onSwitchAccount && (
+              <div className="mt-1.5 flex items-center justify-between gap-2 text-xs text-slate-500">
+                <span className="truncate">
+                  {accountEmail ? `Signed in as ${accountEmail}` : 'Not signed in yet'}
+                </span>
+                <button
+                  type="button"
+                  onClick={onSwitchAccount}
+                  disabled={Boolean(busy)}
+                  className="text-indigo-600 hover:text-indigo-700 hover:underline font-medium cursor-pointer disabled:opacity-50 shrink-0"
+                >
+                  Switch account
+                </button>
+              </div>
+            )}
+            {newFolderOpen && (
+              <div className="mt-2 p-2.5 rounded-xl bg-slate-50 border border-slate-200 flex items-center gap-2">
+                <input
+                  type="text"
+                  value={newFolderName}
+                  onChange={(e) => setNewFolderName(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      void submitNewFolder();
+                    } else if (e.key === 'Escape') {
+                      e.stopPropagation();
+                      setNewFolderOpen(false);
+                    }
+                  }}
+                  aria-label="New folder name"
+                  placeholder="AllAboard rooms"
+                  disabled={Boolean(busy)}
+                  autoFocus
+                  className="flex-1 min-w-0 px-2.5 py-1.5 bg-white border border-slate-300 rounded-lg text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
+                />
+                <button
+                  type="button"
+                  onClick={() => void submitNewFolder()}
+                  disabled={Boolean(busy) || !newFolderName.trim()}
+                  className="px-2.5 py-1.5 rounded-lg text-xs font-medium bg-emerald-600 text-white hover:bg-emerald-700 transition-colors cursor-pointer disabled:opacity-50 shrink-0"
+                >
+                  {busy === 'creating-folder' ? 'Creating...' : 'Create'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setNewFolderOpen(false)}
+                  disabled={Boolean(busy)}
+                  className="px-2.5 py-1.5 rounded-lg text-xs font-medium border border-slate-300 text-slate-600 hover:bg-slate-100 transition-colors cursor-pointer disabled:opacity-50 shrink-0"
+                >
+                  Cancel
+                </button>
+              </div>
+            )}
           </div>
 
           <p className="text-xs text-slate-600">
