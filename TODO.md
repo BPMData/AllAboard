@@ -6,7 +6,9 @@
 Slides / PDF from Drive, Open Room from Drive and Save Room to Drive are live. See `PLANS_GOOGLE_DRIVE.md`.
 School Google Workspace accounts may still need their IT admin to allow the app (by OAuth client ID).
 
-### Next up: room name + worksheet polish (ready for an agent; do them in this order)
+### Next up: room name, worksheet polish, Drive follow-ups (ready for an agent)
+
+**Order:** task 4 first (it's a bug), then 0, 1, 2, 3, 5, 6, 7.
 
 Ground rules for all three:
 - Read `CLAUDE.md` and `docs/ARCHITECTURE.md` first. **No server changes are needed for any of these.**
@@ -65,7 +67,11 @@ misclick wipes the worksheet with no undo.
         `toDataURL('image/jpeg', 0.7)`, and call `onThumb` as each page finishes, **in order, one at a time**
         (don't render all pages in parallel; big textbooks will freeze a Chromebook).
       - Stop early if `signal.aborted` (the dialog was closed). Call `pdf.destroy()` at the end.
-      - Cap at the first **300** pages; past that, show the number boxes only.
+      - **No page cap, but render lazily:** decks of 300+ pages are real (a teacher tried 370). Keep one open
+        pdf.js document for the dialog's lifetime and render a page's thumbnail only when its placeholder
+        scrolls into view (`IntersectionObserver` on the grid, `rootMargin: '400px'`), still one at a time
+        through a small queue. So the API is better as
+        `openPdfForThumbnails(file) → { numPages, renderThumb(pageNumber, width): Promise<string>, destroy() }`.
 - [ ] **Dialog:** pass the `File` into `PdfPageRangeModal` (new prop `file`; `Canvas.tsx` already has it in
       `pendingPdfRange.file`). Under the From/To boxes, show a scrollable grid of thumbnails (max height ~50vh,
       `grid-template-columns: repeat(auto-fill, minmax(120px, 1fr))`), each with its page number under it and
@@ -79,6 +85,8 @@ misclick wipes the worksheet with no undo.
       - Start rendering in a `useEffect` when the dialog opens; abort it in the cleanup.
 - [ ] Widen the dialog to `max-w-3xl` so ~5 thumbnails fit per row.
 - [ ] **Tests:**
+      - Thumbnails off-screen are not rendered: with a 40-page PDF, fewer than 40 `<img>` thumbnails exist
+        before scrolling the grid to the bottom.
       - `e2e/worksheets.spec.ts`: a 12-page PDF (reuse the in-browser PDF builder used there) shows 12
         thumbnails; click page 3 → From = 3, To = 12; shift-click page 5 → To = 5; Import pages → 3 pages on the board.
       - `e2e/googleDrive.spec.ts` "page-range modal for a >10 page PDF" must still pass.
@@ -116,6 +124,117 @@ written on page 3 stays where it was while page 3 moves. This is true of the exi
 - [ ] **Tests:** unit tests above; an e2e test that imports a 6-page PDF, sees **Grid** selected, switches to
       **Row** on an empty board (no confirm), and Fit All still shows every page (`e2e/worksheets.spec.ts`).
       Update existing tests that click `'Side-by-Side'`.
+
+#### 4. Big Slides decks hang on "Importing from Drive..." forever (bug; do this one first)
+**What happened:** picking a **370-slide** Google Slides deck in *Slides / PDF from Drive* never reached the
+"Choose Pages to Import" dialog. The button stayed greyed out on **Importing from Drive...** forever.
+
+**Why (from the code):** `downloadDriveFile` → `driveFetch` (`src/lib/googleDrive.ts`) has **no timeout**, and
+`handleWorksheetFromDrive` (`Canvas.tsx`) only clears `driveBusy` when that promise settles. Google's
+`files.export` is also **limited to 10 MB** of output
+([files.export reference](https://developers.google.com/workspace/drive/api/reference/rest/v3/files/export)):
+a big deck either takes minutes to convert or fails with `exportSizeLimitExceeded`. There is **no official way
+around the 10 MB limit**. The `exportLinks` / `docs.google.com/.../export` URLs some forums mention aren't part of
+the API and aren't usable from the browser (no CORS), so **don't try them**.
+
+- [ ] **Timeout and Cancel.** Give `driveFetch` an optional `{ timeoutMs, signal }`. Use an `AbortController`;
+      for downloads/exports use **120 s**. While importing, show a small **Cancel** link next to the busy button
+      that aborts. Always clear `driveBusy` in `finally`. On timeout, throw `GoogleError('timeout')`.
+- [ ] **Show progress** instead of a frozen label: read the response with `res.body.getReader()` and update the
+      button text, e.g. `Downloading from Drive... 4.2 MB`. If Google is still converting (no bytes yet), show
+      `Google is converting the deck... 0:35` with a running timer.
+- [ ] **Clear messages** (add to `friendlyGoogleError`):
+      - `timeout`: "Google took too long to convert this deck. For big decks, open it in Google Slides, use
+        File → Download → PDF, then use Upload (.JPG / .PNG / .PDF). Big PDFs work fine that way."
+      - `exportSizeLimitExceeded`: already exists; make sure the same advice shows.
+- [ ] **Make sure the local-PDF path handles huge files** (it's the fallback we tell teachers to use): a 370-page
+      PDF must reach the page dialog. `getPdfPageCount` only reads the page count, which is fine; the thumbnail
+      work in task 2 must stay lazy.
+- [ ] **Tests** (`e2e/googleDrive.spec.ts`): a fake export that never responds → the busy label shows a timer,
+      Cancel brings the button back with no error; a fake export that answers 403 `exportSizeLimitExceeded` →
+      the friendly message. Use a short `timeoutMs` in the test via a test-only override (e.g.
+      `window.__ALLABOARD_DRIVE_TIMEOUT_MS__`), not a 2-minute wait.
+- [ ] **Optional, verify before building:** the **Slides API** can return a deck's slide count and per-slide
+      thumbnails (`presentations.get?fields=slides.objectId`, `presentations.pages.getThumbnail`), which would
+      let a teacher pick slides *before* the 10 MB export. **But:** it's unconfirmed whether these accept our
+      `drive.file` scope (Google's Slides scope list highlights `presentations` / `presentations.readonly`,
+      which are **sensitive** and would need Google's review), and `getThumbnail` counts as an "expensive read"
+      against quota. **Do not add new scopes.** Try it with the existing token; if Google says 403
+      insufficient scope, drop this item.
+
+#### 5. Switch Google account (and show which one is connected)
+**What happened:** the first Drive click shows Google's account chooser (and a district Workspace account
+**worked**). After that, AllAboard silently reuses that account. If you picked the wrong one, there's no way back.
+
+**Why:** `getAccessToken` keeps the token in memory for ~1 hour and asks Google with `prompt: ''`, which skips the
+chooser once you've consented.
+
+- [ ] In `src/lib/googleDrive.ts` add `switchGoogleAccount()`: `clearAccessToken()`, then
+      `tokenClient.requestAccessToken({ prompt: 'select_account' })`
+      ([GIS token client reference](https://developers.google.com/identity/oauth2/web/reference/js-reference)).
+      Must run directly in a click handler (popup rules). **Don't** call `google.accounts.oauth2.revoke` for a
+      plain switch: that removes consent and makes the teacher click through the consent screen again.
+- [ ] Add `getDriveAccount()`: `GET https://www.googleapis.com/drive/v3/about?fields=user(displayName,emailAddress)`
+      ([about.get](https://developers.google.com/workspace/drive/api/reference/rest/v3/about/get); the current
+      reference lists `drive.file` as an accepted scope, so **no new scope**). Cache it with the token; clear it
+      when the token is cleared. If the call fails, just don't show an email.
+- [ ] **UI:** once connected, show a quiet line in the teacher bar next to the Drive buttons:
+      `Drive: ms.t@school.org · Switch`. **Switch** calls `switchGoogleAccount()`, then refreshes the email.
+      Also add **Switch account** as a small link in the Save Room to Drive dialog, under the folder.
+- [ ] **Remembered folders/files belong to one account.** Key `drawchat_drive_last_folder` and
+      `drawchat_drive_save_<room>` by account email (e.g. `drawchat_drive_last_folder:<email>`), falling back to
+      the un-keyed values when no email is known. Otherwise, after switching, the dialog offers a folder the new
+      account can't see.
+- [ ] **Tests:** with the fake GIS, Switch calls `requestAccessToken` with `prompt: 'select_account'`; the
+      email line updates; the Save dialog starts in the new account's last folder (or My Drive).
+
+#### 6. "New folder" when saving a room
+**Ask:** create a Drive folder without leaving AllAboard.
+
+**Finding:** Google's Picker has **no "create folder" option** (none in the
+[DocsView reference](https://developers.google.com/workspace/drive/picker/reference/picker.docsview)), so it
+can't go *inside* the Open Room / folder picker. But AllAboard can create one itself with the Drive API under the
+existing `drive.file` scope (an app can always create files and folders, and keeps access to what it creates).
+**No new permission.**
+
+- [ ] In the **Save Room to Drive** dialog (`DriveSaveModal`, `CanvasModals.tsx`), add **New folder...** next to
+      **Change...**. It shows an inline name box (default `AllAboard rooms`) with Create / Cancel.
+- [ ] `createDriveFolder(name, parent: DriveFolder)` in `googleDrive.ts`:
+      `POST https://www.googleapis.com/drive/v3/files?fields=id,name` with
+      `{ name, mimeType: 'application/vnd.google-apps.folder', parents: [parent.id] }` (omit `parents` for My Drive).
+      Call `getAccessToken()` first inside the click.
+- [ ] The new folder becomes the dialog's folder (and so the remembered last folder after saving).
+- [ ] **Tests:** fake the POST; after Create, the folder row shows the new name; Save sends `parents: [<new id>]`.
+
+#### 7. PowerPoint (.pptx) files picked from Drive
+**What happened:** the **Slides** tab of the picker also lists `.pptx` files uploaded to Drive (Google treats them as
+presentations), but importing one fails: `files.export` only works on Google-format files, and a `.pptx`
+downloaded as-is isn't a PDF.
+
+**Plan: convert it through Google, then treat it like a Slides deck. No new permission.**
+- [ ] When the picked file's `mimeType` is
+      `application/vnd.openxmlformats-officedocument.presentationml.presentation` (or `application/vnd.ms-powerpoint`):
+      1. Download the bytes (`files/<id>?alt=media`; we have access because the teacher picked it).
+      2. **Upload a temporary converted copy:** multipart `POST https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id`
+         with metadata `{ name: '<original name> (AllAboard temp)', mimeType: 'application/vnd.google-apps.presentation' }`
+         and the .pptx bytes as the media part. Setting a Google `mimeType` on create is how Drive's API imports
+         (converts) Office files. **Use create, not `files.copy`:** community reports say `copy` doesn't convert.
+      3. Export the temp copy as PDF (same as Slides, same 10 MB limit and timeout from task 4).
+      4. **Delete the temp copy** (`DELETE https://www.googleapis.com/drive/v3/files/<tempId>`) in a `finally`,
+         even if the export fails. AllAboard created it, so `drive.file` allows deleting it.
+      5. Continue into the normal page dialog (thumbnails, 10-page range).
+- [ ] Busy text: `Converting PowerPoint...`, then the usual steps.
+- [ ] **If conversion fails** (Google rejects it, or the file is over ~100 MB), show: "This PowerPoint file couldn't
+      be converted. Open it in Google Slides (or save it as PDF in PowerPoint) and try again." Keep a separate
+      message for plain unsupported types: "Please choose a Google Slides presentation or a PDF."
+- [ ] **Verify first:** run the conversion once by hand with a real .pptx and the real token before building the UI.
+      If Drive won't convert under `drive.file`, skip the conversion, filter `.pptx` out of the Slides tab with
+      `setMimeTypes('application/vnd.google-apps.presentation')`, and show the message above if one still gets
+      through Browse Drive.
+- [ ] **Privacy policy:** if conversion ships, add one line to `privacy.html` in the `BPMData.github.io` repo:
+      "To import a PowerPoint file, AllAboard briefly saves a converted copy in your Drive and deletes it right after."
+- [ ] **Tests:** fake download → multipart create (assert the metadata `mimeType` is the Slides type) → export →
+      DELETE of the temp id, in that order; and DELETE still happens when the export fails.
 
 ### PDF import improvements
 - [ ] **Import PDFs bigger, with a user-set multiplier (default 3×).** Today a page is rendered at ~1224–1400 px
