@@ -14,5 +14,13 @@ storage, env vars, Cloud Run settings, or server startup code, read [`docs/DEPLO
    Cloud Storage JSON API (`backupMirror.ts`, `GcsBackend`). Never put SQLite on a bucket mount. Never "fix" a
    storage error with `/tmp`.
 5. **Max instances = 1.** Storage setup must **fail open**, never crash boot.
+6. **Google sign-in asks for `drive.file` and nothing else. Never add another Google OAuth scope without the
+   owner's explicit approval in the task itself**, not even
+   "just for one feature" or incrementally (`include_granted_scopes`, a second token client, `openid`/`email`/`profile`
+   or any Slides/Drive/Docs scope). Most broader scopes are *sensitive* or *restricted*: Google's manual review,
+   a 100-user cap and an "unverified app" screen until it passes, and school admins may block the app. Even the
+   harmless ones change the consent screen that schools have already accepted. If a feature only works with another
+   scope, **stop, drop that part, and write down why**; the owner decides. `tests/googleScopes.test.ts` enforces
+   this. Only the owner adds a scope to its allow-list.
 
 Commands: `npm ci`, `npm run lint` (tsc), `npm test` (node:test via tsx), `npm run test:e2e` (Playwright).
