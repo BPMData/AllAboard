@@ -1,5 +1,15 @@
 import { BackgroundPage, RoomBackground } from '../types';
-import { clampPageRange, type PageRange } from './pageRange';
+import {
+  clampPageRange,
+  MAX_PDF_PAGES,
+  MAX_RENDER_PIXEL_DIMENSION,
+  WORKSHEET_SCALE_OPTIONS,
+  DEFAULT_WORKSHEET_IMPORT_SCALE,
+  WORKSHEET_IMPORT_SCALE_STORAGE_KEY,
+  normalizeWorksheetImportScale,
+  scalePageDimensions,
+  type PageRange,
+} from './pageRange';
 import * as pdfjsLib from 'pdfjs-dist';
 // @ts-ignore - Vite ?url import for pdf.worker.mjs
 import pdfWorkerUrl from 'pdfjs-dist/build/pdf.worker.mjs?url';
@@ -7,7 +17,15 @@ import pdfWorkerUrl from 'pdfjs-dist/build/pdf.worker.mjs?url';
 pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorkerUrl;
 
 const MAX_IMAGE_DIMENSION = 1800;
-export const MAX_PDF_PAGES = 10;
+export {
+  MAX_PDF_PAGES,
+  MAX_RENDER_PIXEL_DIMENSION,
+  WORKSHEET_SCALE_OPTIONS,
+  DEFAULT_WORKSHEET_IMPORT_SCALE,
+  WORKSHEET_IMPORT_SCALE_STORAGE_KEY,
+  normalizeWorksheetImportScale,
+  scalePageDimensions,
+};
 
 export type BuiltInTemplateId = 'checkin-columns' | 'four-corners' | 'frayer-model';
 
@@ -397,15 +415,19 @@ export async function getPdfPageCount(file: File): Promise<number> {
   }
 }
 
-export async function processWorksheetFile(file: File, range?: PageRange): Promise<BackgroundPage[]> {
+export async function processWorksheetFile(
+  file: File,
+  range?: PageRange,
+  importScale?: number
+): Promise<BackgroundPage[]> {
   if (isPdfFile(file)) {
-    return renderPdfToPages(file, range);
+    return renderPdfToPages(file, range, importScale);
   }
-  const singlePage = await renderImageFileToPage(file);
+  const singlePage = await renderImageFileToPage(file, importScale);
   return [singlePage];
 }
 
-async function renderImageFileToPage(file: File): Promise<BackgroundPage> {
+async function renderImageFileToPage(file: File, importScale?: number): Promise<BackgroundPage> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onerror = () => reject(new Error('Failed to read image file.'));
@@ -413,29 +435,35 @@ async function renderImageFileToPage(file: File): Promise<BackgroundPage> {
       const img = new Image();
       img.onerror = () => reject(new Error('Invalid image file.'));
       img.onload = () => {
-        let width = img.naturalWidth || img.width;
-        let height = img.naturalHeight || img.height;
+        let baseWidth = img.naturalWidth || img.width;
+        let baseHeight = img.naturalHeight || img.height;
 
-        if (width > MAX_IMAGE_DIMENSION || height > MAX_IMAGE_DIMENSION) {
+        if (baseWidth > MAX_IMAGE_DIMENSION || baseHeight > MAX_IMAGE_DIMENSION) {
           const ratio = Math.min(
-            MAX_IMAGE_DIMENSION / width,
-            MAX_IMAGE_DIMENSION / height
+            MAX_IMAGE_DIMENSION / baseWidth,
+            MAX_IMAGE_DIMENSION / baseHeight
           );
-          width = Math.round(width * ratio);
-          height = Math.round(height * ratio);
+          baseWidth = Math.round(baseWidth * ratio);
+          baseHeight = Math.round(baseHeight * ratio);
         }
 
+        const { width, height, renderWidth, renderHeight } = scalePageDimensions(
+          baseWidth,
+          baseHeight,
+          importScale
+        );
+
         const canvas = document.createElement('canvas');
-        canvas.width = width;
-        canvas.height = height;
+        canvas.width = renderWidth;
+        canvas.height = renderHeight;
         const ctx = canvas.getContext('2d');
         if (!ctx) {
           reject(new Error('Canvas context unavailable.'));
           return;
         }
         ctx.fillStyle = '#ffffff';
-        ctx.fillRect(0, 0, width, height);
-        ctx.drawImage(img, 0, 0, width, height);
+        ctx.fillRect(0, 0, renderWidth, renderHeight);
+        ctx.drawImage(img, 0, 0, renderWidth, renderHeight);
 
         const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
         resolve({ dataUrl, width, height });
@@ -446,7 +474,11 @@ async function renderImageFileToPage(file: File): Promise<BackgroundPage> {
   });
 }
 
-async function renderPdfToPages(file: File, range?: PageRange): Promise<BackgroundPage[]> {
+async function renderPdfToPages(
+  file: File,
+  range?: PageRange,
+  importScale?: number
+): Promise<BackgroundPage[]> {
   const arrayBuffer = await file.arrayBuffer();
   const loadingTask = pdfjsLib.getDocument({ data: arrayBuffer });
   const pdf = await loadingTask.promise;
@@ -462,20 +494,29 @@ async function renderPdfToPages(file: File, range?: PageRange): Promise<Backgrou
   for (let pageNum = first; pageNum <= last; pageNum++) {
     const page = await pdf.getPage(pageNum);
     const unscaledViewport = page.getViewport({ scale: 1 });
-    const targetScale = Math.min(2.0, 1400 / Math.max(unscaledViewport.width, 1));
-    const viewport = page.getViewport({ scale: targetScale });
+    const baseScale = Math.min(2.0, 1400 / Math.max(unscaledViewport.width, 1));
+    const baseWidth = Math.round(unscaledViewport.width * baseScale);
+    const baseHeight = Math.round(unscaledViewport.height * baseScale);
+
+    const { width, height, renderWidth } = scalePageDimensions(
+      baseWidth,
+      baseHeight,
+      importScale
+    );
+    const renderScale = renderWidth / Math.max(unscaledViewport.width, 1);
+    const viewport = page.getViewport({ scale: renderScale });
 
     const canvas = document.createElement('canvas');
-    const width = Math.round(viewport.width);
-    const height = Math.round(viewport.height);
-    canvas.width = width;
-    canvas.height = height;
+    const cWidth = Math.max(1, Math.round(viewport.width));
+    const cHeight = Math.max(1, Math.round(viewport.height));
+    canvas.width = cWidth;
+    canvas.height = cHeight;
 
     const ctx = canvas.getContext('2d');
     if (!ctx) continue;
 
     ctx.fillStyle = '#ffffff';
-    ctx.fillRect(0, 0, width, height);
+    ctx.fillRect(0, 0, cWidth, cHeight);
 
     await page.render({
       canvasContext: ctx,

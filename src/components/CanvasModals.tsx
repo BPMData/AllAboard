@@ -16,6 +16,8 @@ import {
 import {
   BUILT_IN_TEMPLATES,
   BuiltInTemplateId,
+  DEFAULT_WORKSHEET_IMPORT_SCALE,
+  WORKSHEET_SCALE_OPTIONS,
   generateTemplateBackground,
   openPdfForThumbnails,
   type PdfThumbnailHandle,
@@ -1070,7 +1072,9 @@ interface PdfPageRangeModalProps {
   fileName: string;
   totalPages: number;
   maxPages: number;
-  onConfirm: (range: PageRange) => void;
+  importScale?: number;
+  onImportScaleChange?: (nextScale: number) => void;
+  onConfirm: (range: PageRange, importScale: number) => void;
   onCancel: () => void;
 }
 
@@ -1082,11 +1086,14 @@ export function PdfPageRangeModal({
   fileName,
   totalPages,
   maxPages,
+  importScale = DEFAULT_WORKSHEET_IMPORT_SCALE,
+  onImportScaleChange,
   onConfirm,
   onCancel,
 }: PdfPageRangeModalProps) {
   const [firstText, setFirstText] = useState('1');
   const [lastText, setLastText] = useState(String(Math.min(maxPages, totalPages)));
+  const [selectedScale, setSelectedScale] = useState<number>(importScale);
   const [thumbs, setThumbs] = useState<Record<number, string>>({});
   const gridRef = useRef<HTMLDivElement | null>(null);
 
@@ -1262,6 +1269,36 @@ export function PdfPageRangeModal({
             </span>
           </div>
 
+          <div className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 rounded-xl bg-slate-50 border border-slate-200/80 text-xs">
+            <span className="font-semibold text-slate-700">
+              Import Size <span className="font-normal text-slate-500">(scales pages relative to pens &amp; text):</span>
+            </span>
+            <div className="flex items-center gap-1" role="group" aria-label="Worksheet import size">
+              {WORKSHEET_SCALE_OPTIONS.map((mult) => {
+                const isActive = Math.abs(selectedScale - mult) < 0.01;
+                return (
+                  <button
+                    key={mult}
+                    type="button"
+                    aria-pressed={isActive}
+                    onClick={() => {
+                      setSelectedScale(mult);
+                      onImportScaleChange?.(mult);
+                    }}
+                    className={cn(
+                      'px-2 py-1 rounded-md font-mono font-semibold text-xs transition-colors cursor-pointer',
+                      isActive
+                        ? 'bg-blue-600 text-white shadow-xs'
+                        : 'bg-white text-slate-700 border border-slate-200 hover:bg-slate-100'
+                    )}
+                  >
+                    {mult}&times;
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
           <div
             ref={gridRef}
             data-testid="pdf-thumb-grid"
@@ -1324,7 +1361,12 @@ export function PdfPageRangeModal({
           </button>
           <button
             type="button"
-            onClick={() => onConfirm(clampPageRange(Number(firstText), Number(lastText), totalPages, maxPages))}
+            onClick={() =>
+              onConfirm(
+                clampPageRange(Number(firstText), Number(lastText), totalPages, maxPages),
+                selectedScale
+              )
+            }
             className="px-4 py-2 rounded-lg text-xs font-semibold bg-blue-600 text-white hover:bg-blue-500 transition-colors cursor-pointer"
           >
             Import pages

@@ -34,6 +34,7 @@ const STORAGE_KEYS = {
   USER_ID: 'drawchat_user_id',
   USER_NAME: 'drawchat_user_name',
   IS_JOINED: 'drawchat_is_joined',
+  JOINED_ROOM_SESSION: 'drawchat_joined_room_session',
   TEACHER_PIN_PREFIX: 'drawchat_teacher_pin_',
 };
 
@@ -118,9 +119,16 @@ export default function App() {
 
   const [isJoined, setIsJoined] = useState<boolean>(() => {
     try {
+      if (!hasInitialUrlRoomParam()) return false;
       const savedName = localStorage.getItem(STORAGE_KEYS.USER_NAME);
       const savedJoined = localStorage.getItem(STORAGE_KEYS.IS_JOINED) === 'true';
-      return Boolean(savedName && savedName.trim() && savedJoined);
+      const sessionRoom = sessionStorage.getItem(STORAGE_KEYS.JOINED_ROOM_SESSION);
+      return Boolean(
+        savedName &&
+          savedName.trim() &&
+          savedJoined &&
+          sessionRoom === getInitialRoomId()
+      );
     } catch {
       return false;
     }
@@ -290,7 +298,6 @@ export default function App() {
 
       try {
         savedName = localStorage.getItem(STORAGE_KEYS.USER_NAME) || savedName;
-        savedJoined = localStorage.getItem(STORAGE_KEYS.IS_JOINED) === 'true' || savedJoined;
         savedPin = localStorage.getItem(STORAGE_KEYS.TEACHER_PIN_PREFIX + effectiveRoomId) || undefined;
       } catch {
         // Ignore storage errors
@@ -525,6 +532,7 @@ export default function App() {
         setPendingPurgePrompt(null);
         try {
           localStorage.removeItem(STORAGE_KEYS.IS_JOINED);
+          sessionStorage.removeItem(STORAGE_KEYS.JOINED_ROOM_SESSION);
         } catch {
           // Ignore
         }
@@ -971,6 +979,25 @@ export default function App() {
     setIsPurgingContributions(false);
     setTeacherSelectedBoardId('main');
     setRoomId(cleanedRoomId);
+    try {
+      if (isJoinedRef.current) {
+        sessionStorage.setItem(STORAGE_KEYS.JOINED_ROOM_SESSION, cleanedRoomId);
+      }
+    } catch {
+      // Ignore
+    }
+  }, []);
+
+  const handleLeaveRoom = useCallback(() => {
+    setIsJoined(false);
+    setIsTeacher(false);
+    setPendingPurgePrompt(null);
+    try {
+      localStorage.removeItem(STORAGE_KEYS.IS_JOINED);
+      sessionStorage.removeItem(STORAGE_KEYS.JOINED_ROOM_SESSION);
+    } catch {
+      // Ignore
+    }
   }, []);
 
   const performLobbyJoin = useCallback(
@@ -982,6 +1009,7 @@ export default function App() {
       try {
         localStorage.setItem(STORAGE_KEYS.USER_NAME, trimmedName);
         localStorage.setItem(STORAGE_KEYS.IS_JOINED, 'true');
+        sessionStorage.setItem(STORAGE_KEYS.JOINED_ROOM_SESSION, targetRoomId);
         if (cleanPin.length >= 3) {
           localStorage.setItem(STORAGE_KEYS.TEACHER_PIN_PREFIX + targetRoomId, cleanPin);
         }
@@ -1721,6 +1749,7 @@ export default function App() {
           onStepDownTeacher={handleStepDownTeacher}
           onCreateNewRoom={handleCreateNewRoom}
           onSwitchRoom={handleSwitchRoom}
+          onLeaveRoom={handleLeaveRoom}
           onUpdateName={handleUpdateName}
           onClearUserDrawings={handleClearUserDrawings}
           onTeacherRenameUser={handleTeacherRenameUser}

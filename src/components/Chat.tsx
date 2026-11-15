@@ -18,6 +18,7 @@ import {
   RotateCcw,
   PanelLeftClose,
   Shuffle,
+  LogOut,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '../lib/utils';
@@ -45,6 +46,7 @@ interface ChatProps {
   onStepDownTeacher: () => void;
   onCreateNewRoom: () => void;
   onSwitchRoom: (newRoomId: string) => void;
+  onLeaveRoom?: () => void;
   onUpdateName: (newName: string) => void;
   onClearUserDrawings: (targetUserId: string) => void;
   onTeacherRenameUser?: (targetUserId: string, newName: string) => void;
@@ -87,6 +89,7 @@ export default function Chat({
   onStepDownTeacher,
   onCreateNewRoom,
   onSwitchRoom,
+  onLeaveRoom,
   onUpdateName,
   onClearUserDrawings,
   onTeacherRenameUser,
@@ -454,6 +457,20 @@ export default function Chat({
                   <PlusCircle size={11} />
                   <span>New Room</span>
                 </button>
+                {onLeaveRoom && (
+                  <>
+                    <span className="text-slate-300" aria-hidden="true">·</span>
+                    <button
+                      type="button"
+                      onClick={onLeaveRoom}
+                      className="flex items-center gap-1 px-1.5 py-0.5 text-[11px] font-medium text-slate-600 hover:text-slate-900 hover:bg-slate-200/60 rounded transition-colors cursor-pointer whitespace-nowrap"
+                      title="Return to Welcome screen"
+                    >
+                      <LogOut size={11} />
+                      <span>Lobby</span>
+                    </button>
+                  </>
+                )}
               </div>
             </>
           )}

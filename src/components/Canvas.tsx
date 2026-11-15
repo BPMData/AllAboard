@@ -34,6 +34,10 @@ import {
   getPdfPageCount,
   isPdfFile,
   MAX_PDF_PAGES,
+  WORKSHEET_SCALE_OPTIONS,
+  DEFAULT_WORKSHEET_IMPORT_SCALE,
+  WORKSHEET_IMPORT_SCALE_STORAGE_KEY,
+  normalizeWorksheetImportScale,
   BUILT_IN_TEMPLATES,
   BuiltInTemplateId,
 } from '../lib/worksheetLoader';
@@ -151,6 +155,7 @@ import {
   FileSpreadsheet,
   PanelLeftOpen,
   HardDrive,
+  Keyboard,
 } from 'lucide-react';
 import { cn } from '../lib/utils';
 
@@ -739,6 +744,7 @@ export default function Canvas({
   const [confirmClearAll, setConfirmClearAll] = useState(false);
   const [confirmClearMine, setConfirmClearMine] = useState(false);
   const [confirmRemoveWorksheet, setConfirmRemoveWorksheet] = useState(false);
+  const [showHotkeysModal, setShowHotkeysModal] = useState(false);
   const removeWorksheetTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
@@ -763,6 +769,18 @@ export default function Canvas({
   const worksheetInputRef = useRef<HTMLInputElement>(null);
   const [isUploadingWorksheet, setIsUploadingWorksheet] = useState(false);
   const [worksheetError, setWorksheetError] = useState<string | null>(null);
+  const [worksheetImportScale, setWorksheetImportScale] = useState<number>(() => {
+    try {
+      return normalizeWorksheetImportScale(localStorage.getItem(WORKSHEET_IMPORT_SCALE_STORAGE_KEY));
+    } catch {
+      return DEFAULT_WORKSHEET_IMPORT_SCALE;
+    }
+  });
+  const handleUpdateWorksheetImportScale = useCallback((next: number) => {
+    const normalized = normalizeWorksheetImportScale(next);
+    setWorksheetImportScale(normalized);
+    saveLocal(WORKSHEET_IMPORT_SCALE_STORAGE_KEY, String(normalized));
+  }, []);
   const [driveBusy, setDriveBusy] = useState<string | null>(null);
   const [driveCanCancel, setDriveCanCancel] = useState(false);
   const driveAbortRef = useRef<AbortController | null>(null);
@@ -1743,120 +1761,6 @@ export default function Canvas({
     ]
   );
 
-  // Keyboard shortcuts: Space (pan), Ctrl+Z (undo), Ctrl+Y/Shift+Z (redo), Ctrl+C/V/D, Delete/Backspace, Escape
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      const target = e.target as HTMLElement;
-      if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.tagName === 'SELECT')) {
-        return;
-      }
-      const mod = e.metaKey || e.ctrlKey;
-      const keyLower = e.key.toLowerCase();
-
-      if (e.code === 'Space' && !e.repeat) {
-        e.preventDefault();
-        setIsSpacePressed(true);
-      } else if (mod && keyLower === 'z' && e.shiftKey) {
-        e.preventDefault();
-        if (editingNote) commitEditingNote();
-        performRedo();
-      } else if (mod && keyLower === 'y') {
-        e.preventDefault();
-        if (editingNote) commitEditingNote();
-        performRedo();
-      } else if (mod && keyLower === 'z') {
-        e.preventDefault();
-        if (editingNote) commitEditingNote();
-        performUndo();
-      } else if (mod && keyLower === 'c' && selectedElements.length > 0) {
-        e.preventDefault();
-        handleCopySelection();
-      } else if (mod && keyLower === 'v' && clipboardElements.length > 0 && canDraw) {
-        e.preventDefault();
-        handlePasteElements(pastePrompt ? { x: pastePrompt.worldX, y: pastePrompt.worldY } : worldPos);
-      } else if (mod && keyLower === 'd' && selectedElements.length > 0 && canDraw) {
-        e.preventDefault();
-        handleDuplicateSelection();
-      } else if ((e.key === 'Delete' || e.key === 'Backspace') && selectedElements.length > 0 && canDraw) {
-        e.preventDefault();
-        handleDeleteSelection();
-      } else if (e.key === 'Escape') {
-        setSelectedIds([]);
-        setPastePrompt(null);
-      }
-    };
-    const handleKeyUp = (e: KeyboardEvent) => {
-      if (e.code === 'Space') {
-        setIsSpacePressed(false);
-        setIsPanning(false);
-      }
-    };
-    window.addEventListener('keydown', handleKeyDown);
-    window.addEventListener('keyup', handleKeyUp);
-    return () => {
-      window.removeEventListener('keydown', handleKeyDown);
-      window.removeEventListener('keyup', handleKeyUp);
-    };
-  }, [
-    canDraw,
-    editingNote,
-    commitEditingNote,
-    performUndo,
-    performRedo,
-    selectedElements.length,
-    clipboardElements.length,
-    handleCopySelection,
-    handlePasteElements,
-    handleDuplicateSelection,
-    handleDeleteSelection,
-    pastePrompt,
-    worldPos,
-  ]);
-
-  const handleWheel = (e: any) => {
-    e.evt.preventDefault();
-    const stage = stageRef.current;
-    if (!stage) return;
-
-    const pointer = stage.getPointerPosition();
-    if (!pointer) return;
-
-    const scaleBy = 1.1;
-    const oldScale = stageScale;
-
-    const mousePointTo = {
-      x: (pointer.x - stagePos.x) / oldScale,
-      y: (pointer.y - stagePos.y) / oldScale,
-    };
-
-    const direction = e.evt.deltaY > 0 ? -1 : 1;
-    const unclampedScale = direction > 0 ? oldScale * scaleBy : oldScale / scaleBy;
-    const newScale = Math.min(MAX_SCALE, Math.max(MIN_SCALE, unclampedScale));
-
-    const newPos = {
-      x: pointer.x - mousePointTo.x * newScale,
-      y: pointer.y - mousePointTo.y * newScale,
-    };
-
-    setStageScale(newScale);
-    setStagePos(newPos);
-  };
-
-  const zoomStep = (multiplier: number) => {
-    const oldScale = stageScale;
-    const newScale = Math.min(MAX_SCALE, Math.max(MIN_SCALE, oldScale * multiplier));
-    const centerScreen = { x: dimensions.width / 2, y: dimensions.height / 2 };
-    const centerWorld = {
-      x: (centerScreen.x - stagePos.x) / oldScale,
-      y: (centerScreen.y - stagePos.y) / oldScale,
-    };
-    setStageScale(newScale);
-    setStagePos({
-      x: centerScreen.x - centerWorld.x * newScale,
-      y: centerScreen.y - centerWorld.y * newScale,
-    });
-  };
-
   const resetView = useCallback(() => {
     setStageScale(1);
     setStagePos({ x: 0, y: 0 });
@@ -1917,6 +1821,189 @@ export default function Canvas({
     fitElementsAndBackgroundInView(elements, background);
   };
 
+  // Keyboard shortcuts: Space (pan), Arrow keys (Unity-style board pan), H/P/E/V/M/T/L/R/C/S/F tool hotkeys, Ctrl+Z/Y, Ctrl+C/V/D, Delete/Backspace, Escape
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement | null;
+      if (
+        target &&
+        (target.tagName === 'INPUT' ||
+          target.tagName === 'TEXTAREA' ||
+          target.tagName === 'SELECT' ||
+          target.isContentEditable)
+      ) {
+        return;
+      }
+      const mod = e.metaKey || e.ctrlKey;
+      const keyLower = e.key.toLowerCase();
+
+      // Arrow keys always pan the board (Unity / Unreal style camera movement)
+      if (
+        !mod &&
+        !e.altKey &&
+        !editingNote &&
+        (e.key === 'ArrowUp' || e.key === 'ArrowDown' || e.key === 'ArrowLeft' || e.key === 'ArrowRight')
+      ) {
+        e.preventDefault();
+        const panStep = e.shiftKey ? 200 : 72;
+        const dx = e.key === 'ArrowLeft' ? panStep : e.key === 'ArrowRight' ? -panStep : 0;
+        const dy = e.key === 'ArrowUp' ? panStep : e.key === 'ArrowDown' ? -panStep : 0;
+        setStagePos((prev) => ({ x: prev.x + dx, y: prev.y + dy }));
+        return;
+      }
+
+      if (e.code === 'Space' && !e.repeat) {
+        e.preventDefault();
+        setIsSpacePressed(true);
+      } else if (mod && keyLower === 'z' && e.shiftKey) {
+        e.preventDefault();
+        if (editingNote) commitEditingNote();
+        performRedo();
+      } else if (mod && keyLower === 'y') {
+        e.preventDefault();
+        if (editingNote) commitEditingNote();
+        performRedo();
+      } else if (mod && keyLower === 'z') {
+        e.preventDefault();
+        if (editingNote) commitEditingNote();
+        performUndo();
+      } else if (mod && keyLower === 'c' && selectedElements.length > 0) {
+        e.preventDefault();
+        handleCopySelection();
+      } else if (mod && keyLower === 'v' && clipboardElements.length > 0 && canDraw) {
+        e.preventDefault();
+        handlePasteElements(pastePrompt ? { x: pastePrompt.worldX, y: pastePrompt.worldY } : worldPos);
+      } else if (mod && keyLower === 'd' && selectedElements.length > 0 && canDraw) {
+        e.preventDefault();
+        handleDuplicateSelection();
+      } else if ((e.key === 'Delete' || e.key === 'Backspace') && selectedElements.length > 0 && canDraw) {
+        e.preventDefault();
+        handleDeleteSelection();
+      } else if (e.key === 'Escape') {
+        setSelectedIds([]);
+        setPastePrompt(null);
+        setShowHotkeysModal(false);
+        setShowHollowMenu(false);
+        setShowHlMenu(false);
+      } else if (!mod && !e.altKey && !editingNote) {
+        if (e.key === '?') {
+          e.preventDefault();
+          setShowHotkeysModal((prev) => !prev);
+        } else if (keyLower === 'h') {
+          e.preventDefault();
+          setTool('pan');
+        } else if ((keyLower === 'p' || keyLower === 'b') && canDraw) {
+          e.preventDefault();
+          setTool('solid');
+        } else if (keyLower === 'e' && canDraw) {
+          e.preventDefault();
+          setTool('eraser');
+        } else if (keyLower === 'v' && canDraw) {
+          e.preventDefault();
+          setTool('select');
+        } else if (keyLower === 'm' && canDraw) {
+          e.preventDefault();
+          setTool('highlighter');
+        } else if (keyLower === 't' && canDraw) {
+          e.preventDefault();
+          setTool('text');
+        } else if (keyLower === 'l' && canDraw) {
+          e.preventDefault();
+          setTool('line');
+        } else if (keyLower === 'r' && canDraw) {
+          e.preventDefault();
+          setTool('rect');
+        } else if (keyLower === 'c' && canDraw) {
+          e.preventDefault();
+          setTool('circle');
+        } else if (keyLower === 's' && canDraw) {
+          e.preventDefault();
+          setTool('stamp');
+        } else if (keyLower === 'f') {
+          e.preventDefault();
+          fitElementsAndBackgroundInView(elements, background);
+        } else if (e.key === '0') {
+          e.preventDefault();
+          resetView();
+        }
+      }
+    };
+    const handleKeyUp = (e: KeyboardEvent) => {
+      if (e.code === 'Space') {
+        setIsSpacePressed(false);
+        setIsPanning(false);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    window.addEventListener('keyup', handleKeyUp);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('keyup', handleKeyUp);
+    };
+  }, [
+    canDraw,
+    editingNote,
+    commitEditingNote,
+    performUndo,
+    performRedo,
+    selectedElements.length,
+    clipboardElements.length,
+    handleCopySelection,
+    handlePasteElements,
+    handleDuplicateSelection,
+    handleDeleteSelection,
+    pastePrompt,
+    worldPos,
+    elements,
+    background,
+    fitElementsAndBackgroundInView,
+    resetView,
+  ]);
+
+  const handleWheel = (e: any) => {
+    e.evt.preventDefault();
+    const stage = stageRef.current;
+    if (!stage) return;
+
+    const pointer = stage.getPointerPosition();
+    if (!pointer) return;
+
+    const scaleBy = 1.1;
+    const oldScale = stageScale;
+
+    const mousePointTo = {
+      x: (pointer.x - stagePos.x) / oldScale,
+      y: (pointer.y - stagePos.y) / oldScale,
+    };
+
+    const direction = e.evt.deltaY > 0 ? -1 : 1;
+    const unclampedScale = direction > 0 ? oldScale * scaleBy : oldScale / scaleBy;
+    const newScale = Math.min(MAX_SCALE, Math.max(MIN_SCALE, unclampedScale));
+
+    const newPos = {
+      x: pointer.x - mousePointTo.x * newScale,
+      y: pointer.y - mousePointTo.y * newScale,
+    };
+
+    setStageScale(newScale);
+    setStagePos(newPos);
+  };
+
+  const zoomStep = (multiplier: number) => {
+    const oldScale = stageScale;
+    const newScale = Math.min(MAX_SCALE, Math.max(MIN_SCALE, oldScale * multiplier));
+    const centerScreen = { x: dimensions.width / 2, y: dimensions.height / 2 };
+    const centerWorld = {
+      x: (centerScreen.x - stagePos.x) / oldScale,
+      y: (centerScreen.y - stagePos.y) / oldScale,
+    };
+    setStageScale(newScale);
+    setStagePos({
+      x: centerScreen.x - centerWorld.x * newScale,
+      y: centerScreen.y - centerWorld.y * newScale,
+    });
+  };
+
   // Auto-fit when switching between sub-boards
   useEffect(() => {
     if (editingNote) {
@@ -1933,12 +2020,13 @@ export default function Canvas({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeBoardId]);
 
-  const importWorksheetFile = async (file: File, range?: PageRange) => {
+  const importWorksheetFile = async (file: File, range?: PageRange, scaleOverride?: number) => {
     setIsUploadingWorksheet(true);
     setWorksheetError(null);
 
     try {
-      const pages = await processWorksheetFile(file, range);
+      const effectiveScale = normalizeWorksheetImportScale(scaleOverride ?? worksheetImportScale);
+      const pages = await processWorksheetFile(file, range, effectiveScale);
       const firstPage = pages[0];
       const startX = firstPage ? Math.round(-firstPage.width / 2) : -400;
       const startY = firstPage ? Math.round(-firstPage.height / 2) : -300;
@@ -3414,7 +3502,7 @@ export default function Canvas({
                 ? "bg-white text-blue-600 shadow-xs"
                 : "text-slate-600 hover:text-slate-900"
             )}
-            title="Pan Tool (or hold Spacebar + Drag)"
+            title="Pan Tool [H] (or hold Spacebar + Drag, or use Arrow Keys)"
           >
             <Hand size={17} />
           </button>
@@ -3429,7 +3517,7 @@ export default function Canvas({
                 ? "bg-white text-indigo-600 shadow-xs ring-1 ring-indigo-200"
                 : "text-slate-600 hover:text-slate-900"
             )}
-            title="Select & Lasso Tool: Tap or circle annotations and text to move, resize, restyle, copy, duplicate, or delete"
+            title="Select & Lasso Tool [V]: Tap or circle annotations and text to move, resize, restyle, copy, duplicate, or delete"
           >
             <Lasso size={16} />
             <span className="hidden md:inline">Select</span>
@@ -3447,7 +3535,7 @@ export default function Canvas({
                 ? "bg-white text-blue-600 shadow-xs"
                 : "text-slate-600 hover:text-slate-900"
             )}
-            title="Solid Pen"
+            title="Solid Pen [P]"
           >
             <Paintbrush size={17} />
           </button>
@@ -3724,7 +3812,7 @@ export default function Canvas({
                 ? "bg-white text-blue-600 shadow-xs"
                 : "text-slate-600 hover:text-slate-900"
             )}
-            title="Personal Eraser (Erases your own ink, highlights, and whole text notes — SMART Board palm always erases)"
+            title="Personal Eraser [E] (Erases your own ink, highlights, and whole text notes — SMART Board palm always erases)"
           >
             <Eraser size={17} />
           </button>
@@ -3742,7 +3830,7 @@ export default function Canvas({
                 ? "bg-white text-blue-600 shadow-xs"
                 : "text-slate-600 hover:text-slate-900"
             )}
-            title="Straight Line"
+            title="Straight Line [L]"
           >
             <Minus size={17} />
           </button>
@@ -3756,7 +3844,7 @@ export default function Canvas({
                 ? "bg-white text-blue-600 shadow-xs"
                 : "text-slate-600 hover:text-slate-900"
             )}
-            title="Rectangle"
+            title="Rectangle [R]"
           >
             <Square size={17} />
           </button>
@@ -3770,7 +3858,7 @@ export default function Canvas({
                 ? "bg-white text-blue-600 shadow-xs"
                 : "text-slate-600 hover:text-slate-900"
             )}
-            title="Circle"
+            title="Circle [C]"
           >
             <CircleIcon size={17} className="stroke-[2.5]" />
           </button>
@@ -3784,7 +3872,7 @@ export default function Canvas({
                 ? "bg-white text-blue-600 shadow-xs"
                 : "text-slate-600 hover:text-slate-900"
             )}
-            title="Type Note: Tap canvas to type, drag any note to move it, or tap/double-click a note to re-type it"
+            title="Type Note [T]: Tap canvas to type, drag any note to move it, or tap/double-click a note to re-type it"
           >
             <Type size={16} />
             <span className="hidden md:inline">Type</span>
@@ -3799,7 +3887,7 @@ export default function Canvas({
                 ? "bg-white text-blue-600 shadow-xs"
                 : "text-slate-600 hover:text-slate-900"
             )}
-            title="Quick Stamp Tool (Checkmark, Question Mark, Star, Thumbs Up, Heart, or Your Username)"
+            title="Quick Stamp Tool [S] (Checkmark, Question Mark, Star, Thumbs Up, Heart, or Your Username)"
           >
             <Stamp size={17} />
           </button>
@@ -4557,6 +4645,26 @@ export default function Canvas({
               </div>
             )}
 
+            {/* Import Size Multiplier Selector (0.5x to 3x, default 2x) */}
+            <label
+              className="flex items-center gap-1 px-2 py-0.5 rounded-md bg-white/90 border border-amber-300 text-xs text-slate-700 shrink-0"
+              title="Set the size at which PDFs, Google Slides, PowerPoint decks, and images are imported onto the board (default 2x so standard pen and text sizes feel natural)"
+            >
+              <span className="text-[11px] font-medium text-slate-500">Import Size:</span>
+              <select
+                aria-label="Worksheet import size"
+                value={String(worksheetImportScale)}
+                onChange={(e) => handleUpdateWorksheetImportScale(Number(e.target.value))}
+                className="font-mono font-semibold text-xs text-slate-900 bg-transparent focus:outline-none cursor-pointer"
+              >
+                {WORKSHEET_SCALE_OPTIONS.map((mult) => (
+                  <option key={mult} value={String(mult)}>
+                    {mult}&times;
+                  </option>
+                ))}
+              </select>
+            </label>
+
             {/* Active Background Worksheet Controls */}
             {background && (
               <div className="flex items-center gap-1.5 bg-white/90 px-2 py-0.5 rounded-md border border-amber-200 text-xs text-slate-700">
@@ -4965,10 +5073,13 @@ export default function Canvas({
           fileName={pendingPdfRange.file.name}
           totalPages={pendingPdfRange.totalPages}
           maxPages={MAX_PDF_PAGES}
-          onConfirm={(range) => {
+          importScale={worksheetImportScale}
+          onImportScaleChange={handleUpdateWorksheetImportScale}
+          onConfirm={(range, chosenScale) => {
             const { file } = pendingPdfRange;
             setPendingPdfRange(null);
-            void importWorksheetFile(file, range);
+            handleUpdateWorksheetImportScale(chosenScale);
+            void importWorksheetFile(file, range, chosenScale);
           }}
           onCancel={() => setPendingPdfRange(null)}
         />
@@ -5673,12 +5784,162 @@ export default function Canvas({
             type="button"
             onClick={fitAllContent}
             className="flex items-center gap-1 px-2 py-1 rounded hover:bg-slate-100 font-medium text-slate-700 whitespace-nowrap cursor-pointer"
-            title="Fit worksheet and all drawings into view"
+            title="Fit worksheet and all drawings into view [F]"
           >
             <Maximize2 size={13} />
             <span>Fit All</span>
           </button>
+
+          <div className="h-4 w-px bg-slate-200 mx-0.5" />
+
+          <button
+            type="button"
+            onClick={() => setShowHotkeysModal((prev) => !prev)}
+            className={cn(
+              "flex items-center gap-1 px-2 py-1 rounded font-medium whitespace-nowrap cursor-pointer transition-colors",
+              showHotkeysModal
+                ? "bg-blue-600 text-white"
+                : "hover:bg-slate-100 text-slate-700"
+            )}
+            title="Keyboard Shortcuts & Navigation [?]"
+          >
+            <Keyboard size={13} />
+            <span>Hotkeys</span>
+          </button>
         </div>
+
+        {/* Keyboard Shortcuts & Navigation Modal */}
+        {showHotkeysModal && (
+          <div
+            data-hud="true"
+            onPointerDown={(e) => e.stopPropagation()}
+            onClick={() => setShowHotkeysModal(false)}
+            className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 backdrop-blur-xs p-4"
+          >
+            <div
+              onClick={(e) => e.stopPropagation()}
+              className="bg-white border border-slate-200 rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden text-slate-800"
+            >
+              <div className="flex items-center justify-between px-5 py-3.5 border-b border-slate-200 bg-slate-50">
+                <div className="flex items-center gap-2">
+                  <Keyboard size={17} className="text-blue-600" />
+                  <h2 className="font-display font-bold text-sm text-slate-900">
+                    Keyboard Shortcuts &amp; Navigation
+                  </h2>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowHotkeysModal(false)}
+                  className="p-1 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-200/60 cursor-pointer"
+                  title="Close (Esc)"
+                >
+                  <X size={16} />
+                </button>
+              </div>
+
+              <div className="p-5 grid grid-cols-1 sm:grid-cols-2 gap-5 text-xs">
+                <div className="space-y-2.5">
+                  <div className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
+                    Navigation &amp; Camera
+                  </div>
+                  <div className="space-y-1.5">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-slate-700">Move around board</span>
+                      <kbd className="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-300 font-mono text-[11px] font-semibold text-slate-800">
+                        ↑ ↓ ← →
+                      </kbd>
+                    </div>
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-slate-700">Fast move around board</span>
+                      <kbd className="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-300 font-mono text-[11px] font-semibold text-slate-800">
+                        Shift + Arrows
+                      </kbd>
+                    </div>
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-slate-700">Hand / Pan tool</span>
+                      <kbd className="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-300 font-mono text-[11px] font-semibold text-slate-800">
+                        H
+                      </kbd>
+                    </div>
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-slate-700">Temporary pan while drawing</span>
+                      <kbd className="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-300 font-mono text-[11px] font-semibold text-slate-800">
+                        Hold Space
+                      </kbd>
+                    </div>
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-slate-700">Fit all pages &amp; ink</span>
+                      <kbd className="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-300 font-mono text-[11px] font-semibold text-slate-800">
+                        F
+                      </kbd>
+                    </div>
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-slate-700">Reset zoom to 100%</span>
+                      <kbd className="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-300 font-mono text-[11px] font-semibold text-slate-800">
+                        0
+                      </kbd>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="space-y-2.5">
+                  <div className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
+                    Drawing Tools
+                  </div>
+                  <div className="space-y-1.5">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-slate-700 font-medium">Solid Pen</span>
+                      <kbd className="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-300 font-mono text-[11px] font-semibold text-slate-800">
+                        P / B
+                      </kbd>
+                    </div>
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-slate-700 font-medium">Personal Eraser</span>
+                      <kbd className="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-300 font-mono text-[11px] font-semibold text-slate-800">
+                        E
+                      </kbd>
+                    </div>
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-slate-700">Select &amp; Lasso</span>
+                      <kbd className="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-300 font-mono text-[11px] font-semibold text-slate-800">
+                        V
+                      </kbd>
+                    </div>
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-slate-700">Highlighter / Cover</span>
+                      <kbd className="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-300 font-mono text-[11px] font-semibold text-slate-800">
+                        M
+                      </kbd>
+                    </div>
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-slate-700">Type Note</span>
+                      <kbd className="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-300 font-mono text-[11px] font-semibold text-slate-800">
+                        T
+                      </kbd>
+                    </div>
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-slate-700">Line / Rect / Circle / Stamp</span>
+                      <kbd className="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-300 font-mono text-[11px] font-semibold text-slate-800">
+                        L / R / C / S
+                      </kbd>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="px-5 py-3 bg-slate-50 border-t border-slate-200 flex flex-wrap items-center justify-between gap-2 text-[11px] text-slate-500">
+                <span>
+                  Undo: <kbd className="font-mono font-semibold text-slate-700">Ctrl+Z</kbd> · Redo:{' '}
+                  <kbd className="font-mono font-semibold text-slate-700">Ctrl+Y</kbd> · Copy/Paste/Duplicate:{' '}
+                  <kbd className="font-mono font-semibold text-slate-700">Ctrl+C / V / D</kbd>
+                </span>
+                <span>
+                  Press <kbd className="font-mono font-semibold text-slate-700">?</kbd> anytime to toggle
+                </span>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

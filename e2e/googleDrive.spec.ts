@@ -259,12 +259,12 @@ test.describe('Google Drive integration (stubbed Google)', () => {
     );
   });
 
-  test('Slides / PDF from Drive opens the page-range modal for a >10 page PDF', async ({ page }) => {
+  test('Slides / PDF from Drive opens the page-range modal for a >30 page PDF', async ({ page }) => {
     await page.goto('/');
-    const pdfBuf = await makePdfBuffer(page, 12);
+    const pdfBuf = await makePdfBuffer(page, 32);
 
     await installFakeGoogle(page, {
-      pickerDoc: { id: 'pdf-12', name: 'long-deck.pdf', mimeType: 'application/pdf' },
+      pickerDoc: { id: 'pdf-32', name: 'long-deck.pdf', mimeType: 'application/pdf' },
     });
 
     await page.route('https://www.googleapis.com/**', async (route) => {
@@ -275,7 +275,7 @@ test.describe('Google Drive integration (stubbed Google)', () => {
       });
     });
 
-    await joinRoom(page, uniqueRoom('gd-12'), 'Ms T', '4829');
+    await joinRoom(page, uniqueRoom('gd-32'), 'Ms T', '4829');
     await page.getByRole('button', { name: 'Slides / PDF from Drive', exact: true }).click();
 
     await expect(page.getByText('Choose Pages to Import')).toBeVisible();

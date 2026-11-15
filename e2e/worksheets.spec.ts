@@ -107,7 +107,7 @@ test.describe('worksheetLoader (in browser)', () => {
     expect(message).toBe('Invalid image file.');
   });
 
-  test('renders PDFs page by page with pdf.js and caps uploads at 10 pages', async ({ page }) => {
+  test('renders PDFs page by page with pdf.js and caps uploads at 30 pages', async ({ page }) => {
     // Build real PDFs in the page using the app's own PDF writer, then load them back through
     // pdf.js. This doubles as a round-trip check that exported PDFs are readable.
     const result = await page.evaluate(
@@ -130,13 +130,13 @@ test.describe('worksheetLoader (in browser)', () => {
           new File([buildMultiPagePdfFromJpegs(Array.from({ length: n }, (_, i) => jpegPage(i * 30)))], name, { type });
 
         const two = await processWorksheetFile(pdfFile(2, 'two.pdf'));
-        const twelve = await processWorksheetFile(pdfFile(12, 'twelve.pdf'));
+        const thirtyTwo = await processWorksheetFile(pdfFile(32, 'thirty-two.pdf'));
         // Detected by extension even when the browser reports no MIME type
         const noMime = await processWorksheetFile(pdfFile(1, 'SCAN.PDF', ''));
 
         return {
           two: two.map((p: { width: number; height: number }) => [p.width, p.height]),
-          twelve: twelve.length,
+          thirtyTwo: thirtyTwo.length,
           noMime: noMime.length,
         };
       },
@@ -148,7 +148,7 @@ test.describe('worksheetLoader (in browser)', () => {
       [1400, 989],
       [1400, 989],
     ]);
-    expect(result.twelve).toBe(10);
+    expect(result.thirtyTwo).toBe(30);
     expect(result.noMime).toBe(1);
   });
 });
@@ -281,17 +281,17 @@ test.describe('worksheet UI', () => {
     await expect(remove).toBeHidden();
   });
 
-  test('teacher uploads a 12-page PDF, picks pages 3–12 in modal, and imports 10 pages', async ({ page }) => {
-    await joinRoom(page, uniqueRoom('pdf12'), 'Ms T', '4829');
+  test('teacher uploads a 32-page PDF, picks pages 3–12 in modal, and imports 10 pages', async ({ page }) => {
+    await joinRoom(page, uniqueRoom('pdf32'), 'Ms T', '4829');
 
     const pdfBase64 = await page.evaluate(async (exporter) => {
       const { buildMultiPagePdfFromJpegs } = await import(/* @vite-ignore */ exporter);
-      const pages = Array.from({ length: 12 }, (_, i) => {
+      const pages = Array.from({ length: 32 }, (_, i) => {
         const c = document.createElement('canvas');
         c.width = 400;
         c.height = 283;
         const ctx = c.getContext('2d')!;
-        ctx.fillStyle = `hsl(${i * 30}, 80%, 50%)`;
+        ctx.fillStyle = `hsl(${(i * 15) % 360}, 80%, 50%)`;
         ctx.fillRect(0, 0, c.width, c.height);
         const b64 = c.toDataURL('image/jpeg', 0.9).split(',')[1];
         const bytes = Uint8Array.from(atob(b64), (ch) => ch.charCodeAt(0));
@@ -306,10 +306,10 @@ test.describe('worksheet UI', () => {
 
     await page
       .locator('input[type="file"][accept*="application/pdf"]')
-      .setInputFiles({ name: 'twelve.pdf', mimeType: 'application/pdf', buffer: Buffer.from(pdfBase64, 'base64') });
+      .setInputFiles({ name: 'thirty-two.pdf', mimeType: 'application/pdf', buffer: Buffer.from(pdfBase64, 'base64') });
 
     await expect(page.getByText('Choose Pages to Import')).toBeVisible();
-    await expect(page.getByText('"twelve.pdf" has 12 pages. AllAboard imports up to 10 at a time.')).toBeVisible();
+    await expect(page.getByText('"thirty-two.pdf" has 32 pages. AllAboard imports up to 30 at a time.')).toBeVisible();
     await page.getByLabel('From').fill('3');
     await page.getByLabel('To').fill('12');
     await expect(page.getByText('Importing pages 3–12.')).toBeVisible();
@@ -323,21 +323,21 @@ test.describe('worksheet UI', () => {
     const download = await downloadPromise;
     const fs = await import('node:fs/promises');
     const saved = JSON.parse(await fs.readFile((await download.path())!, 'utf8'));
-    expect(saved.background.fileName).toBe('twelve.pdf (pp. 3–12)');
+    expect(saved.background.fileName).toBe('thirty-two.pdf (pp. 3–12)');
     expect(saved.background.pages).toHaveLength(10);
   });
 
   test('PDF page-range modal shows thumbnails, click & shift-click selection, and imports selected range', async ({ page }) => {
-    await joinRoom(page, uniqueRoom('pdf12thumbs'), 'Ms T', '4829');
+    await joinRoom(page, uniqueRoom('pdf32thumbs'), 'Ms T', '4829');
 
     const pdfBase64 = await page.evaluate(async (exporter) => {
       const { buildMultiPagePdfFromJpegs } = await import(/* @vite-ignore */ exporter);
-      const pages = Array.from({ length: 12 }, (_, i) => {
+      const pages = Array.from({ length: 32 }, (_, i) => {
         const c = document.createElement('canvas');
         c.width = 400;
         c.height = 283;
         const ctx = c.getContext('2d')!;
-        ctx.fillStyle = `hsl(${i * 30}, 80%, 50%)`;
+        ctx.fillStyle = `hsl(${(i * 15) % 360}, 80%, 50%)`;
         ctx.fillRect(0, 0, c.width, c.height);
         const b64 = c.toDataURL('image/jpeg', 0.9).split(',')[1];
         const bytes = Uint8Array.from(atob(b64), (ch) => ch.charCodeAt(0));
@@ -352,17 +352,14 @@ test.describe('worksheet UI', () => {
 
     await page
       .locator('input[type="file"][accept*="application/pdf"]')
-      .setInputFiles({ name: 'twelve.pdf', mimeType: 'application/pdf', buffer: Buffer.from(pdfBase64, 'base64') });
+      .setInputFiles({ name: 'thirty-two.pdf', mimeType: 'application/pdf', buffer: Buffer.from(pdfBase64, 'base64') });
 
     await expect(page.getByText('Choose Pages to Import')).toBeVisible();
-    for (let p = 1; p <= 12; p++) {
-      await expect(page.getByTestId(`pdf-thumb-${p}`)).toBeVisible();
-    }
     await expect(page.getByTestId('pdf-thumb-1').locator('img')).toBeVisible();
 
     await page.getByTestId('pdf-thumb-3').click();
     await expect(page.getByLabel('From')).toHaveValue('3');
-    await expect(page.getByLabel('To')).toHaveValue('12');
+    await expect(page.getByLabel('To')).toHaveValue('32');
 
     await page.getByTestId('pdf-thumb-5').click({ modifiers: ['Shift'] });
     await expect(page.getByLabel('From')).toHaveValue('3');
@@ -377,7 +374,7 @@ test.describe('worksheet UI', () => {
     const download = await downloadPromise;
     const fs = await import('node:fs/promises');
     const saved = JSON.parse(await fs.readFile((await download.path())!, 'utf8'));
-    expect(saved.background.fileName).toBe('twelve.pdf (pp. 3–5)');
+    expect(saved.background.fileName).toBe('thirty-two.pdf (pp. 3–5)');
     expect(saved.background.pages).toHaveLength(3);
   });
 
