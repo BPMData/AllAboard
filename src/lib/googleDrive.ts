@@ -613,6 +613,30 @@ export function buildMultipartRelatedBody(
   });
 }
 
+/** Creates a new folder in Google Drive inside `parent` (or in My Drive root when `parent.id` is null). */
+export async function createDriveFolder(name: string, parent: DriveFolder): Promise<DriveFolder> {
+  await getAccessToken();
+  const folderName = name.trim() || 'AllAboard rooms';
+  const metadata: Record<string, unknown> = {
+    name: folderName,
+    mimeType: FOLDER_MIME,
+    ...(parent.id ? { parents: [parent.id] } : {}),
+  };
+  const res = await driveFetch('https://www.googleapis.com/drive/v3/files?fields=id,name', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json; charset=UTF-8' },
+    body: JSON.stringify(metadata),
+  });
+  const created = await res.json();
+  if (!created?.id) {
+    throw new GoogleError('invalid_response', 'Google Drive did not return a folder ID.');
+  }
+  return {
+    id: String(created.id),
+    name: String(created.name || folderName),
+  };
+}
+
 async function readResponseBlob(
   res: Response,
   outputType: string,
