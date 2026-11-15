@@ -1339,9 +1339,11 @@ interface DriveSaveModalProps {
   defaultFileName: string;
   folder: DriveFolder;
   lastSave: DriveSaveRecord | null;
+  accountEmail?: string | null;
   busy: 'saving' | 'choosing-folder' | null;
   error: string | null;
   onChangeFolder: () => void;
+  onSwitchAccount?: () => void;
   onSave: (fileName: string) => void;
   onCancel: () => void;
 }
@@ -1354,9 +1356,11 @@ export function DriveSaveModal({
   defaultFileName,
   folder,
   lastSave,
+  accountEmail,
   busy,
   error,
   onChangeFolder,
+  onSwitchAccount,
   onSave,
   onCancel,
 }: DriveSaveModalProps) {
@@ -1429,6 +1433,21 @@ export function DriveSaveModal({
                 {busy === 'choosing-folder' ? 'Opening...' : 'Change...'}
               </button>
             </div>
+            {onSwitchAccount && (
+              <div className="mt-1.5 flex items-center justify-between gap-2 text-xs text-slate-500">
+                <span className="truncate">
+                  {accountEmail ? `Signed in as ${accountEmail}` : 'Not signed in yet'}
+                </span>
+                <button
+                  type="button"
+                  onClick={onSwitchAccount}
+                  disabled={Boolean(busy)}
+                  className="text-indigo-600 hover:text-indigo-700 hover:underline font-medium cursor-pointer disabled:opacity-50 shrink-0"
+                >
+                  Switch account
+                </button>
+              </div>
+            )}
           </div>
 
           <p className="text-xs text-slate-600">

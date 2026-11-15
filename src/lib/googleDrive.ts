@@ -120,22 +120,28 @@ export function loadScript(src: string, globalCheck: () => boolean): Promise<voi
   return promise;
 }
 
+export interface DriveAccount {
+  email: string;
+  displayName?: string;
+}
+
 let token: string | null = null;
 let expiresAt = 0;
 let tokenClient: any = null;
 let tokenClientForClientId: string | null = null;
 let pendingTokenRequest: { resolve: (t: string) => void; reject: (err: unknown) => void } | null = null;
 let inFlightTokenPromise: Promise<string> | null = null;
+let cachedAccount: DriveAccount | null = null;
+let inFlightAccountPromise: Promise<DriveAccount | null> | null = null;
 
 export function clearAccessToken(): void {
   token = null;
   expiresAt = 0;
+  cachedAccount = null;
+  inFlightAccountPromise = null;
 }
 
-export async function getAccessToken(): Promise<string> {
-  if (token && Date.now() < expiresAt - 60_000) {
-    return token;
-  }
+async function requestToken(prompt: '' | 'select_account'): Promise<string> {
   if (inFlightTokenPromise) {
     return inFlightTokenPromise;
   }
@@ -166,6 +172,7 @@ export async function getAccessToken(): Promise<string> {
           const expiresIn = Number(resp.expires_in) || 3600;
           token = resp.access_token;
           expiresAt = Date.now() + expiresIn * 1000;
+          cachedAccount = null;
           pending.resolve(resp.access_token);
         },
         error_callback: (err: any) => {
@@ -181,7 +188,7 @@ export async function getAccessToken(): Promise<string> {
     return await new Promise<string>((resolve, reject) => {
       pendingTokenRequest = { resolve, reject };
       try {
-        tokenClient.requestAccessToken({ prompt: '' });
+        tokenClient.requestAccessToken({ prompt });
       } catch (err) {
         pendingTokenRequest = null;
         reject(err);
@@ -194,6 +201,54 @@ export async function getAccessToken(): Promise<string> {
   } finally {
     inFlightTokenPromise = null;
   }
+}
+
+export async function getAccessToken(): Promise<string> {
+  if (token && Date.now() < expiresAt - 60_000) {
+    return token;
+  }
+  return requestToken('');
+}
+
+export async function switchGoogleAccount(): Promise<string> {
+  clearAccessToken();
+  return requestToken('select_account');
+}
+
+export function getCachedDriveAccount(): DriveAccount | null {
+  return cachedAccount;
+}
+
+export async function getDriveAccount(): Promise<DriveAccount | null> {
+  if (cachedAccount && token && Date.now() < expiresAt - 60_000) {
+    return cachedAccount;
+  }
+  if (inFlightAccountPromise) {
+    return inFlightAccountPromise;
+  }
+
+  inFlightAccountPromise = (async () => {
+    try {
+      const res = await driveFetch(
+        'https://www.googleapis.com/drive/v3/about?fields=user(displayName,emailAddress)'
+      );
+      const data = await res.json();
+      const email = typeof data?.user?.emailAddress === 'string' ? data.user.emailAddress.trim() : '';
+      if (!email) return null;
+      const displayName =
+        typeof data?.user?.displayName === 'string' && data.user.displayName.trim()
+          ? data.user.displayName.trim()
+          : undefined;
+      cachedAccount = { email, displayName };
+      return cachedAccount;
+    } catch {
+      return null;
+    } finally {
+      inFlightAccountPromise = null;
+    }
+  })();
+
+  return inFlightAccountPromise;
 }
 
 export const DEFAULT_DRIVE_DOWNLOAD_TIMEOUT_MS = 120_000;
@@ -247,7 +302,6 @@ function createScopedAbort(
 export async function driveFetch(url: string, init?: DriveFetchInit): Promise<Response> {
   const { timeoutMs, signal: callerSignal, ...restInit } = init || {};
   const scoped = createScopedAbort(callerSignal, timeoutMs);
-
   const sendWithToken = (accessToken: string) => {
     const headers = new Headers(restInit.headers);
     headers.set('Authorization', `Bearer ${accessToken}`);
@@ -347,13 +401,18 @@ function writeJson(key: string, value: unknown): void {
   }
 }
 
-export function getLastDriveFolder(): DriveFolder {
-  const v = readJson(DRIVE_LAST_FOLDER_KEY);
+function accountStorageKey(baseKey: string, accountEmail?: string | null): string {
+  const email = (accountEmail === undefined ? cachedAccount?.email : accountEmail)?.trim().toLowerCase();
+  return email ? `${baseKey}:${email}` : baseKey;
+}
+
+export function getLastDriveFolder(accountEmail?: string | null): DriveFolder {
+  const v = readJson(accountStorageKey(DRIVE_LAST_FOLDER_KEY, accountEmail));
   return isDriveFolder(v) ? v : MY_DRIVE;
 }
 
-export function getRoomDriveSave(roomId: string): DriveSaveRecord | null {
-  const v = readJson(DRIVE_SAVE_KEY_PREFIX + roomId);
+export function getRoomDriveSave(roomId: string, accountEmail?: string | null): DriveSaveRecord | null {
+  const v = readJson(accountStorageKey(DRIVE_SAVE_KEY_PREFIX + roomId, accountEmail));
   if (v && typeof v.fileId === 'string' && typeof v.fileName === 'string' && isDriveFolder(v.folder)) {
     return v;
   }
@@ -365,9 +424,9 @@ export function getRoomDriveSave(roomId: string): DriveSaveRecord | null {
   return null;
 }
 
-function rememberSave(roomId: string, record: DriveSaveRecord): void {
-  writeJson(DRIVE_SAVE_KEY_PREFIX + roomId, record);
-  writeJson(DRIVE_LAST_FOLDER_KEY, record.folder);
+function rememberSave(roomId: string, record: DriveSaveRecord, accountEmail?: string | null): void {
+  writeJson(accountStorageKey(DRIVE_SAVE_KEY_PREFIX + roomId, accountEmail), record);
+  writeJson(accountStorageKey(DRIVE_LAST_FOLDER_KEY, accountEmail), record.folder);
 }
 
 function pickerOrigin(): string {
@@ -466,6 +525,7 @@ export async function pickDriveFile(kind: 'worksheet' | 'snapshot'): Promise<Pic
     ];
   } else {
     title = 'Open a saved room';
+    if (!cachedAccount) await getDriveAccount();
     const lastFolder = getLastDriveFolder();
     views = [
       makeView(pickerNs, 'DOCS', 'My room saves', (v) => {
@@ -721,6 +781,7 @@ export async function saveJsonToDrive(
   folder: DriveFolder,
   json: string
 ): Promise<DriveSaveRecord> {
+  if (!cachedAccount) await getDriveAccount();
   const last = getRoomDriveSave(roomId);
   const replaceId = replacesLastSave(last, fileName, folder) ? last!.fileId : null;
 

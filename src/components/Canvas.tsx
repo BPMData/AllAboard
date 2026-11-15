@@ -53,12 +53,15 @@ import {
   formatDownloadProgress,
   friendlyGoogleError,
   getAccessToken,
+  getDriveAccount,
   getLastDriveFolder,
   getRoomDriveSave,
   isWorksheetMime,
   pickDriveFile,
   pickDriveFolder,
   saveJsonToDrive,
+  switchGoogleAccount,
+  type DriveAccount,
   type DriveFolder,
   type DriveSaveRecord,
 } from '../lib/googleDrive';
@@ -944,6 +947,7 @@ export default function Canvas({
   } | null>(null);
   const [driveSaveBusy, setDriveSaveBusy] = useState<'saving' | 'choosing-folder' | null>(null);
   const [driveSaveError, setDriveSaveError] = useState<string | null>(null);
+  const [driveAccount, setDriveAccount] = useState<DriveAccount | null>(null);
   const [driveOpening, setDriveOpening] = useState(false);
   const [driveNotice, setDriveNotice] = useState<{ text: string; isError?: boolean } | null>(null);
   const [driveOpenError, setDriveOpenError] = useState<string | null>(null);
@@ -2028,6 +2032,7 @@ export default function Canvas({
     driveAbortRef.current = controller;
     try {
       const doc = await pickDriveFile('worksheet'); // calls getAccessToken first, inside the click
+      void refreshDriveAccount();
       if (!doc || controller.signal.aborted) return;
       if (!isWorksheetMime(doc.mimeType)) {
         throw new GoogleError('unsupported_worksheet_type', friendlyGoogleError('unsupported_worksheet_type'));
@@ -2156,6 +2161,38 @@ export default function Canvas({
   const driveErrorText = (err: any, fallback: string) =>
     err instanceof GoogleError ? friendlyGoogleError(err.code) : err?.message || fallback;
 
+  const refreshDriveAccount = async () => {
+    const account = await getDriveAccount();
+    setDriveAccount(account);
+    return account;
+  };
+
+  const handleSwitchDriveAccount = async () => {
+    setDriveOpenError(null);
+    setDriveSaveError(null);
+    try {
+      await switchGoogleAccount(); // calls requestToken('select_account') directly inside click
+      const account = await refreshDriveAccount();
+      const nextLastSave = getRoomDriveSave(roomId, account?.email);
+      setDriveSaveDialog((d) =>
+        d
+          ? {
+              ...d,
+              folder: nextLastSave?.folder ?? getLastDriveFolder(account?.email),
+              lastSave: nextLastSave,
+            }
+          : d
+      );
+    } catch (err: any) {
+      const message = driveErrorText(err, 'Could not switch Google account.');
+      if (driveSaveDialog) {
+        setDriveSaveError(message);
+      } else {
+        setDriveOpenError(message);
+      }
+    }
+  };
+
   /** Opens the Save Room dialog in the folder this room (or any room) was last saved to. */
   const handleSaveToDrive = () => {
     setDriveNotice(null);
@@ -2163,12 +2200,12 @@ export default function Canvas({
       clearTimeout(driveNoticeTimerRef.current);
       driveNoticeTimerRef.current = null;
     }
-    const lastSave = getRoomDriveSave(roomId);
+    const lastSave = getRoomDriveSave(roomId, driveAccount?.email);
     setDriveSaveError(null);
     setDriveSaveBusy(null);
     setDriveSaveDialog({
       defaultFileName: snapshotFileName(roomId),
-      folder: lastSave?.folder ?? getLastDriveFolder(),
+      folder: lastSave?.folder ?? getLastDriveFolder(driveAccount?.email),
       lastSave,
     });
   };
@@ -2179,6 +2216,7 @@ export default function Canvas({
     setDriveSaveBusy('choosing-folder');
     try {
       const folder = await pickDriveFolder(driveSaveDialog.folder); // signs in first, inside the click
+      void refreshDriveAccount();
       if (folder) setDriveSaveDialog((d) => (d ? { ...d, folder } : d));
     } catch (err: any) {
       setDriveSaveError(driveErrorText(err, 'Could not open Google Drive.'));
@@ -2196,6 +2234,7 @@ export default function Canvas({
       await getAccessToken(); // call first inside click handler so popup is not blocked
       const { json } = await buildSnapshotJson();
       const saved = await saveJsonToDrive(roomId, fileName, folder, json);
+      void refreshDriveAccount();
       setDriveSaveDialog(null);
       showDriveNotice(`Saved ${saved.fileName} to ${saved.folder.name}`);
     } catch (err: any) {
@@ -2210,6 +2249,7 @@ export default function Canvas({
     setDriveOpening(true);
     try {
       const doc = await pickDriveFile('snapshot');
+      void refreshDriveAccount();
       if (!doc) return;
       const file = await downloadDriveFile(doc);
       openSnapshotText(doc.name, await file.text());
@@ -4677,6 +4717,18 @@ export default function Canvas({
                     {driveNotice.text}
                   </span>
                 )}
+                {driveAccount && (
+                  <span className="text-xs text-slate-500 whitespace-nowrap" data-testid="drive-account-chip">
+                    Drive: {driveAccount.email} ·{' '}
+                    <button
+                      type="button"
+                      onClick={() => void handleSwitchDriveAccount()}
+                      className="text-indigo-600 hover:text-indigo-700 hover:underline font-medium cursor-pointer"
+                    >
+                      Switch
+                    </button>
+                  </span>
+                )}
               </>
             )}
 
@@ -4899,9 +4951,11 @@ export default function Canvas({
           defaultFileName={driveSaveDialog.defaultFileName}
           folder={driveSaveDialog.folder}
           lastSave={driveSaveDialog.lastSave}
+          accountEmail={driveAccount?.email}
           busy={driveSaveBusy}
           error={driveSaveError}
           onChangeFolder={() => void handleDriveChangeFolder()}
+          onSwitchAccount={() => void handleSwitchDriveAccount()}
           onSave={(name) => void handleDriveSaveConfirm(name)}
           onCancel={() => {
             if (driveSaveBusy !== 'saving') setDriveSaveDialog(null);
