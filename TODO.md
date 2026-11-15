@@ -29,11 +29,12 @@ sidebar is hidden, the room name isn't on screen at all. Students and teachers d
 - [ ] **When the sidebar is hidden:** in `Canvas.tsx`, next to the **Chat** button shown when `isChatHidden`
       (search `title="Show chat sidebar"`), add a read-only chip: `Room: <code>` (`font-mono font-semibold`), with
       `data-testid="room-chip"`. Pass `roomId` in if Canvas doesn't already have it (it does: `roomId` prop).
-- [ ] **Browser tab title:** set `document.title` to `<room code> · AllAboard` while in a room, and back to
-      `AllAboard` on the lobby/welcome screen (a `useEffect` on `roomId` + joined state in `src/App.tsx`).
-      Teachers with several rooms open in tabs can then tell them apart.
+- [ ] **Browser tab title: put the room first.** `src/App.tsx` (~line 263) sets
+      `` `AllAboard — #${effectiveRoomId}` ``; narrow tabs cut off the room part. Change it to
+      `` `#${effectiveRoomId} · AllAboard` `` (keep plain `AllAboard` for the `main` room), so teachers with
+      several rooms open can tell the tabs apart.
 - [ ] **Tests** (`e2e/classroom.spec.ts`): after joining room `period-3-biology-lab`, the sidebar shows the full code
-      (not truncated: the element's `scrollWidth <= clientWidth`), the tab title is `period-3-biology-lab · AllAboard`,
+      (not truncated: the element's `scrollWidth <= clientWidth`), the tab title is `#period-3-biology-lab · AllAboard`,
       and after hiding the sidebar `room-chip` shows the code.
 
 #### 1. "Remove worksheet" button: clearer name, and a second tap to confirm
