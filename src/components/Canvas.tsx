@@ -45,8 +45,13 @@ import {
   downloadDriveFile,
   friendlyGoogleError,
   getAccessToken,
+  getLastDriveFolder,
+  getRoomDriveSave,
   pickDriveFile,
+  pickDriveFolder,
   saveJsonToDrive,
+  type DriveFolder,
+  type DriveSaveRecord,
 } from '../lib/googleDrive';
 import { exportAllBoardsToPdf } from '../lib/batchPdfExport';
 import {
@@ -55,6 +60,7 @@ import {
   WorksheetTemplateModal,
   RestoreSnapshotModal,
   PdfPageRangeModal,
+  DriveSaveModal,
 } from './CanvasModals';
 import {
   NOTE_FONT,
@@ -908,7 +914,13 @@ export default function Canvas({
   const [importMode, setImportMode] = useState<ImportRestoreMode>('replace');
   const [importError, setImportError] = useState<string | null>(null);
   const [isImporting, setIsImporting] = useState(false);
-  const [driveSaving, setDriveSaving] = useState(false);
+  const [driveSaveDialog, setDriveSaveDialog] = useState<{
+    defaultFileName: string;
+    folder: DriveFolder;
+    lastSave: DriveSaveRecord | null;
+  } | null>(null);
+  const [driveSaveBusy, setDriveSaveBusy] = useState<'saving' | 'choosing-folder' | null>(null);
+  const [driveSaveError, setDriveSaveError] = useState<string | null>(null);
   const [driveOpening, setDriveOpening] = useState(false);
   const [driveNotice, setDriveNotice] = useState<{ text: string; isError?: boolean } | null>(null);
   const [driveOpenError, setDriveOpenError] = useState<string | null>(null);
@@ -2086,26 +2098,55 @@ export default function Canvas({
     }, 6000);
   };
 
-  const handleSaveToDrive = async () => {
+  const driveErrorText = (err: any, fallback: string) =>
+    err instanceof GoogleError ? friendlyGoogleError(err.code) : err?.message || fallback;
+
+  /** Opens the Save Room dialog in the folder this room (or any room) was last saved to. */
+  const handleSaveToDrive = () => {
     setDriveNotice(null);
     if (driveNoticeTimerRef.current) {
       clearTimeout(driveNoticeTimerRef.current);
       driveNoticeTimerRef.current = null;
     }
-    setDriveSaving(true);
+    const lastSave = getRoomDriveSave(roomId);
+    setDriveSaveError(null);
+    setDriveSaveBusy(null);
+    setDriveSaveDialog({
+      defaultFileName: snapshotFileName(roomId),
+      folder: lastSave?.folder ?? getLastDriveFolder(),
+      lastSave,
+    });
+  };
+
+  const handleDriveChangeFolder = async () => {
+    if (!driveSaveDialog) return;
+    setDriveSaveError(null);
+    setDriveSaveBusy('choosing-folder');
+    try {
+      const folder = await pickDriveFolder(driveSaveDialog.folder); // signs in first, inside the click
+      if (folder) setDriveSaveDialog((d) => (d ? { ...d, folder } : d));
+    } catch (err: any) {
+      setDriveSaveError(driveErrorText(err, 'Could not open Google Drive.'));
+    } finally {
+      setDriveSaveBusy(null);
+    }
+  };
+
+  const handleDriveSaveConfirm = async (fileName: string) => {
+    if (!driveSaveDialog) return;
+    const { folder } = driveSaveDialog;
+    setDriveSaveError(null);
+    setDriveSaveBusy('saving');
     try {
       await getAccessToken(); // call first inside click handler so popup is not blocked
-      const { json, fileName } = await buildSnapshotJson();
-      const saved = await saveJsonToDrive(roomId, fileName, json);
-      showDriveNotice(`Saved ${saved.name} to Google Drive`);
+      const { json } = await buildSnapshotJson();
+      const saved = await saveJsonToDrive(roomId, fileName, folder, json);
+      setDriveSaveDialog(null);
+      showDriveNotice(`Saved ${saved.fileName} to ${saved.folder.name}`);
     } catch (err: any) {
-      const msg =
-        err instanceof GoogleError
-          ? friendlyGoogleError(err.code)
-          : err?.message || 'Could not save to Google Drive.';
-      showDriveNotice(msg, true);
+      setDriveSaveError(driveErrorText(err, 'Could not save to Google Drive.'));
     } finally {
-      setDriveSaving(false);
+      setDriveSaveBusy(null);
     }
   };
 
@@ -3945,31 +3986,6 @@ export default function Canvas({
             <span>Save .JSON</span>
           </button>
 
-          {isTeacher && isGoogleDriveConfigured() && (
-            <>
-              <button
-                type="button"
-                disabled={driveSaving}
-                onClick={handleSaveToDrive}
-                className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium text-slate-700 bg-slate-100 hover:bg-slate-200/80 rounded-lg transition-colors whitespace-nowrap shrink-0 cursor-pointer disabled:opacity-50"
-                title="Save room snapshot to your Google Drive"
-              >
-                <HardDrive size={14} className="text-emerald-600" />
-                <span>{driveSaving ? 'Saving...' : 'Save to Drive'}</span>
-              </button>
-              {driveNotice && (
-                <span
-                  className={cn(
-                    'text-xs whitespace-nowrap',
-                    driveNotice.isError ? 'text-red-600 font-medium' : 'text-slate-500'
-                  )}
-                >
-                  {driveNotice.text}
-                </span>
-              )}
-            </>
-          )}
-
           <button
             type="button"
             onClick={handleExportPNG}
@@ -4321,10 +4337,10 @@ export default function Canvas({
                 disabled={isUploadingWorksheet || Boolean(driveBusy)}
                 onClick={handleWorksheetFromDrive}
                 className="flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium bg-white text-slate-800 border border-amber-300 hover:bg-amber-100/60 transition-colors whitespace-nowrap shrink-0 cursor-pointer disabled:opacity-50"
-                title="Import a Google Slides deck or PDF from your Google Drive"
+                title="Import a Google Slides deck or PDF from your Google Drive as a worksheet"
               >
                 <HardDrive size={13} className="text-emerald-600" />
-                <span>{driveBusy || 'From Drive'}</span>
+                <span>{driveBusy || 'Slides / PDF from Drive'}</span>
               </button>
             )}
 
@@ -4433,13 +4449,32 @@ export default function Canvas({
                   disabled={driveOpening}
                   onClick={handleOpenFromDrive}
                   className="flex items-center gap-1.5 px-3 py-1 rounded-md text-xs font-medium bg-white text-slate-800 border border-amber-300 hover:bg-amber-100/60 transition-colors whitespace-nowrap shrink-0 cursor-pointer disabled:opacity-50"
-                  title="Open a saved .json room snapshot from your Google Drive"
+                  title="Open a room you saved to Google Drive"
                 >
                   <HardDrive size={13} className="text-emerald-600" />
-                  <span>{driveOpening ? 'Opening...' : 'Open from Drive'}</span>
+                  <span>{driveOpening ? 'Opening...' : 'Open Room from Drive'}</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSaveToDrive}
+                  className="flex items-center gap-1.5 px-3 py-1 rounded-md text-xs font-medium bg-white text-slate-800 border border-amber-300 hover:bg-amber-100/60 transition-colors whitespace-nowrap shrink-0 cursor-pointer"
+                  title="Save this room (drawings, chat, worksheets and breakout boards) to your Google Drive"
+                >
+                  <HardDrive size={13} className="text-emerald-600" />
+                  <span>Save Room to Drive</span>
                 </button>
                 {driveOpenError && (
                   <span className="text-xs text-red-600 font-medium">{driveOpenError}</span>
+                )}
+                {driveNotice && (
+                  <span
+                    className={cn(
+                      'text-xs whitespace-nowrap',
+                      driveNotice.isError ? 'text-red-600 font-medium' : 'text-slate-500'
+                    )}
+                  >
+                    {driveNotice.text}
+                  </span>
                 )}
               </>
             )}
@@ -4653,6 +4688,22 @@ export default function Canvas({
             void importWorksheetFile(file, range);
           }}
           onCancel={() => setPendingPdfRange(null)}
+        />
+      )}
+
+      {/* Teacher Save Room to Drive Modal */}
+      {driveSaveDialog && (
+        <DriveSaveModal
+          defaultFileName={driveSaveDialog.defaultFileName}
+          folder={driveSaveDialog.folder}
+          lastSave={driveSaveDialog.lastSave}
+          busy={driveSaveBusy}
+          error={driveSaveError}
+          onChangeFolder={() => void handleDriveChangeFolder()}
+          onSave={(name) => void handleDriveSaveConfirm(name)}
+          onCancel={() => {
+            if (driveSaveBusy !== 'saving') setDriveSaveDialog(null);
+          }}
         />
       )}
 
