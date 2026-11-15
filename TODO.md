@@ -10,7 +10,7 @@ School Google Workspace accounts may still need their IT admin to allow the app 
 
 **Order:** task 4 first (it's a bug), then 0, 1, 2, 3, 5, 6, 7.
 
-Ground rules for all three:
+Ground rules for every task:
 - Read `CLAUDE.md` and `docs/ARCHITECTURE.md` first. **No server changes are needed for any of these.**
 - Run `npm run lint`, `npm test`, `npm run test:e2e`, and
   `node -e "import('./server.ts').then(() => console.log('OK'))"` before each commit. All must pass.
