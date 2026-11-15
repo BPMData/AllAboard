@@ -1,4 +1,5 @@
 import { BackgroundPage, RoomBackground } from '../types';
+import { clampPageRange, type PageRange } from './pageRange';
 import * as pdfjsLib from 'pdfjs-dist';
 // @ts-ignore - Vite ?url import for pdf.worker.mjs
 import pdfWorkerUrl from 'pdfjs-dist/build/pdf.worker.mjs?url';
@@ -6,7 +7,7 @@ import pdfWorkerUrl from 'pdfjs-dist/build/pdf.worker.mjs?url';
 pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorkerUrl;
 
 const MAX_IMAGE_DIMENSION = 1800;
-const MAX_PDF_PAGES = 10;
+export const MAX_PDF_PAGES = 10;
 
 export type BuiltInTemplateId = 'checkin-columns' | 'four-corners' | 'frayer-model';
 
@@ -297,12 +298,18 @@ export function generateTemplateBackground(
   };
 }
 
-export async function processWorksheetFile(file: File): Promise<BackgroundPage[]> {
-  const isPdf =
-    file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
+export function isPdfFile(file: File): boolean {
+  return file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
+}
 
-  if (isPdf) {
-    return renderPdfToPages(file);
+export async function getPdfPageCount(file: File): Promise<number> {
+  const pdf = await pdfjsLib.getDocument({ data: await file.arrayBuffer() }).promise;
+  return pdf.numPages;
+}
+
+export async function processWorksheetFile(file: File, range?: PageRange): Promise<BackgroundPage[]> {
+  if (isPdfFile(file)) {
+    return renderPdfToPages(file, range);
   }
   const singlePage = await renderImageFileToPage(file);
   return [singlePage];
@@ -349,15 +356,20 @@ async function renderImageFileToPage(file: File): Promise<BackgroundPage> {
   });
 }
 
-async function renderPdfToPages(file: File): Promise<BackgroundPage[]> {
+async function renderPdfToPages(file: File, range?: PageRange): Promise<BackgroundPage[]> {
   const arrayBuffer = await file.arrayBuffer();
   const loadingTask = pdfjsLib.getDocument({ data: arrayBuffer });
   const pdf = await loadingTask.promise;
 
-  const numPages = Math.min(pdf.numPages, MAX_PDF_PAGES);
+  const { first, last } = clampPageRange(
+    range?.first ?? 1,
+    range?.last ?? MAX_PDF_PAGES,
+    pdf.numPages,
+    MAX_PDF_PAGES
+  );
   const pages: BackgroundPage[] = [];
 
-  for (let pageNum = 1; pageNum <= numPages; pageNum++) {
+  for (let pageNum = first; pageNum <= last; pageNum++) {
     const page = await pdf.getPage(pageNum);
     const unscaledViewport = page.getViewport({ scale: 1 });
     const targetScale = Math.min(2.0, 1400 / Math.max(unscaledViewport.width, 1));

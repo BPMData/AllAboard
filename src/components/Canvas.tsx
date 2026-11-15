@@ -10,6 +10,7 @@ import {
   RoomBackground,
   RemoteCursor,
   ImportRestoreMode,
+  PendingSnapshotData,
   RoomSnapshot,
   BreakoutConfig,
   BreakoutGroupDraft,
@@ -30,15 +31,30 @@ import {
 } from '../lib/breakoutRounds';
 import {
   processWorksheetFile,
+  getPdfPageCount,
+  isPdfFile,
+  MAX_PDF_PAGES,
   BUILT_IN_TEMPLATES,
   BuiltInTemplateId,
 } from '../lib/worksheetLoader';
+import type { PageRange } from '../lib/pageRange';
+import { parseSnapshotText, snapshotFileName } from '../lib/roomSnapshot';
+import { isGoogleDriveConfigured } from '../lib/googleConfig';
+import {
+  GoogleError,
+  downloadDriveFile,
+  friendlyGoogleError,
+  getAccessToken,
+  pickDriveFile,
+  saveJsonToDrive,
+} from '../lib/googleDrive';
 import { exportAllBoardsToPdf } from '../lib/batchPdfExport';
 import {
   LiveGridOverview,
   BreakoutManagerModal,
   WorksheetTemplateModal,
   RestoreSnapshotModal,
+  PdfPageRangeModal,
 } from './CanvasModals';
 import {
   NOTE_FONT,
@@ -114,6 +130,7 @@ import {
   RotateCcw,
   FileSpreadsheet,
   PanelLeftOpen,
+  HardDrive,
 } from 'lucide-react';
 import { cn } from '../lib/utils';
 
@@ -714,6 +731,8 @@ export default function Canvas({
   const worksheetInputRef = useRef<HTMLInputElement>(null);
   const [isUploadingWorksheet, setIsUploadingWorksheet] = useState(false);
   const [worksheetError, setWorksheetError] = useState<string | null>(null);
+  const [driveBusy, setDriveBusy] = useState<string | null>(null);
+  const [pendingPdfRange, setPendingPdfRange] = useState<{ file: File; totalPages: number } | null>(null);
   const [showTemplateModal, setShowTemplateModal] = useState(false);
   const [selectedTemplateId, setSelectedTemplateId] = useState<BuiltInTemplateId>('checkin-columns');
   const [templatePromptText, setTemplatePromptText] = useState(
@@ -885,21 +904,21 @@ export default function Canvas({
 
   // JSON Import Modal States (Teacher Only)
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const [pendingSnapshot, setPendingSnapshot] = useState<{
-    fileName: string;
-    roomId: string;
-    exportedAt?: number;
-    exportedBy?: string;
-    elements: CanvasElement[];
-    messages: ChatMessage[];
-    background?: RoomBackground | null;
-    subBoards?: Record<string, SubBoardData>;
-    breakoutConfig?: BreakoutConfig;
-    assets?: Record<string, string>;
-  } | null>(null);
+  const [pendingSnapshot, setPendingSnapshot] = useState<PendingSnapshotData | null>(null);
   const [importMode, setImportMode] = useState<ImportRestoreMode>('replace');
   const [importError, setImportError] = useState<string | null>(null);
   const [isImporting, setIsImporting] = useState(false);
+  const [driveSaving, setDriveSaving] = useState(false);
+  const [driveOpening, setDriveOpening] = useState(false);
+  const [driveNotice, setDriveNotice] = useState<{ text: string; isError?: boolean } | null>(null);
+  const [driveOpenError, setDriveOpenError] = useState<string | null>(null);
+  const driveNoticeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (driveNoticeTimerRef.current) clearTimeout(driveNoticeTimerRef.current);
+    };
+  }, []);
 
   const stageRef = useRef<any>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -1899,23 +1918,19 @@ export default function Canvas({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeBoardId]);
 
-  const handleWorksheetFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    e.target.value = '';
-
+  const importWorksheetFile = async (file: File, range?: PageRange) => {
     setIsUploadingWorksheet(true);
     setWorksheetError(null);
 
     try {
-      const pages = await processWorksheetFile(file);
+      const pages = await processWorksheetFile(file, range);
       const firstPage = pages[0];
       const startX = firstPage ? Math.round(-firstPage.width / 2) : -400;
       const startY = firstPage ? Math.round(-firstPage.height / 2) : -300;
 
       const newBg: RoomBackground = {
         id: 'bg_' + Math.random().toString(36).substring(2, 10),
-        fileName: file.name,
+        fileName: range ? `${file.name} (pp. ${range.first}–${range.last})` : file.name,
         pages,
         x: startX,
         y: startY,
@@ -1934,6 +1949,49 @@ export default function Canvas({
       setWorksheetError(err?.message || 'Could not process worksheet file.');
     } finally {
       setIsUploadingWorksheet(false);
+    }
+  };
+
+  const startWorksheetImport = async (file: File) => {
+    setWorksheetError(null);
+    if (isPdfFile(file)) {
+      try {
+        const total = await getPdfPageCount(file);
+        if (total > MAX_PDF_PAGES) {
+          setPendingPdfRange({ file, totalPages: total });
+          return;
+        }
+      } catch {
+        /* fall through; importWorksheetFile reports the error */
+      }
+    }
+    await importWorksheetFile(file);
+  };
+
+  const handleWorksheetFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    e.target.value = '';
+    await startWorksheetImport(file);
+  };
+
+  const handleWorksheetFromDrive = async () => {
+    setWorksheetError(null);
+    setDriveBusy('Opening Google Drive...');
+    try {
+      const doc = await pickDriveFile('worksheet'); // calls getAccessToken first, inside the click
+      if (!doc) return;
+      setDriveBusy('Importing from Drive...');
+      const file = await downloadDriveFile(doc);
+      await startWorksheetImport(file); // same path as local upload, including the page-range modal
+    } catch (err: any) {
+      setWorksheetError(
+        err instanceof GoogleError
+          ? friendlyGoogleError(err.code)
+          : err?.message || 'Could not import from Drive.'
+      );
+    } finally {
+      setDriveBusy(null);
     }
   };
 
@@ -1965,8 +2023,7 @@ export default function Canvas({
     document.body.removeChild(link);
   };
 
-  // Export complete Room Snapshot (.json) including main board + all breakout/individual subBoards
-  const handleExportJSON = async () => {
+  const buildSnapshotJson = async (): Promise<{ json: string; fileName: string }> => {
     const assetUrls = new Set<string>();
     const collect = (bg?: RoomBackground | null) => {
       for (const p of bg?.pages || []) {
@@ -1999,17 +2056,83 @@ export default function Canvas({
       breakoutConfig,
     };
 
-    const jsonString = JSON.stringify(snapshot, null, 2);
-    const blob = new Blob([jsonString], { type: 'application/json' });
+    return {
+      json: JSON.stringify(snapshot, null, 2),
+      fileName: snapshotFileName(roomId),
+    };
+  };
+
+  // Export complete Room Snapshot (.json) including main board + all breakout/individual subBoards
+  const handleExportJSON = async () => {
+    const { json, fileName } = await buildSnapshotJson();
+    const blob = new Blob([json], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
 
     const link = document.createElement('a');
-    link.download = `allaboard-room-${roomId}-${new Date().toISOString().slice(0, 10)}.json`;
+    link.download = fileName;
     link.href = url;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
     URL.revokeObjectURL(url);
+  };
+
+  const showDriveNotice = (text: string, isError = false) => {
+    setDriveNotice({ text, isError });
+    if (driveNoticeTimerRef.current) clearTimeout(driveNoticeTimerRef.current);
+    driveNoticeTimerRef.current = setTimeout(() => {
+      setDriveNotice(null);
+      driveNoticeTimerRef.current = null;
+    }, 6000);
+  };
+
+  const handleSaveToDrive = async () => {
+    setDriveNotice(null);
+    if (driveNoticeTimerRef.current) {
+      clearTimeout(driveNoticeTimerRef.current);
+      driveNoticeTimerRef.current = null;
+    }
+    setDriveSaving(true);
+    try {
+      await getAccessToken(); // call first inside click handler so popup is not blocked
+      const { json, fileName } = await buildSnapshotJson();
+      const saved = await saveJsonToDrive(roomId, fileName, json);
+      showDriveNotice(`Saved ${saved.name} to Google Drive`);
+    } catch (err: any) {
+      const msg =
+        err instanceof GoogleError
+          ? friendlyGoogleError(err.code)
+          : err?.message || 'Could not save to Google Drive.';
+      showDriveNotice(msg, true);
+    } finally {
+      setDriveSaving(false);
+    }
+  };
+
+  const handleOpenFromDrive = async () => {
+    setDriveOpenError(null);
+    setDriveOpening(true);
+    try {
+      const doc = await pickDriveFile('snapshot');
+      if (!doc) return;
+      const file = await downloadDriveFile(doc);
+      openSnapshotText(doc.name, await file.text());
+    } catch (err: any) {
+      setDriveOpenError(
+        err instanceof GoogleError
+          ? friendlyGoogleError(err.code)
+          : err?.message || 'Could not open snapshot from Drive.'
+      );
+    } finally {
+      setDriveOpening(false);
+    }
+  };
+
+  const openSnapshotText = (fileName: string, text: string) => {
+    const { pending, error } = parseSnapshotText(fileName, text, roomId);
+    setImportError(error);
+    setPendingSnapshot(pending);
+    if (!error) setImportMode('replace');
   };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -2019,62 +2142,7 @@ export default function Canvas({
     setImportError(null);
     const reader = new FileReader();
     reader.onload = () => {
-      try {
-        const parsed = JSON.parse(String(reader.result || '{}'));
-        if (
-          !parsed ||
-          (!Array.isArray(parsed.elements) &&
-            !Array.isArray(parsed.messages) &&
-            !parsed.background &&
-            !parsed.subBoards)
-        ) {
-          setImportError(
-            'This JSON file does not contain valid AllAboard room data.'
-          );
-          setPendingSnapshot({
-            fileName: file.name,
-            roomId: roomId,
-            elements: [],
-            messages: [],
-            background: null,
-          });
-          return;
-        }
-
-        const safeElements: CanvasElement[] = Array.isArray(parsed.elements)
-          ? parsed.elements.filter(
-              (el: any) => el && typeof el.id === 'string' && typeof el.tool === 'string'
-            )
-          : [];
-        const safeMessages: ChatMessage[] = Array.isArray(parsed.messages)
-          ? parsed.messages.filter(
-              (m: any) => m && typeof m.id === 'string' && typeof m.text === 'string'
-            )
-          : [];
-
-        setPendingSnapshot({
-          fileName: file.name,
-          roomId: parsed.roomId || roomId,
-          exportedAt: parsed.exportedAt,
-          exportedBy: parsed.exportedBy,
-          elements: safeElements,
-          messages: safeMessages,
-          background: parsed.background || null,
-          subBoards: parsed.subBoards,
-          breakoutConfig: parsed.breakoutConfig,
-          assets: parsed.assets && typeof parsed.assets === 'object' ? parsed.assets : undefined,
-        });
-        setImportMode('replace');
-      } catch {
-        setImportError('Could not parse JSON file. Make sure it is a valid .json room snapshot.');
-        setPendingSnapshot({
-          fileName: file.name,
-          roomId: roomId,
-          elements: [],
-          messages: [],
-          background: null,
-        });
-      }
+      openSnapshotText(file.name, String(reader.result || ''));
     };
     reader.readAsText(file);
     e.target.value = '';
@@ -3877,6 +3945,31 @@ export default function Canvas({
             <span>Save .JSON</span>
           </button>
 
+          {isTeacher && isGoogleDriveConfigured() && (
+            <>
+              <button
+                type="button"
+                disabled={driveSaving}
+                onClick={handleSaveToDrive}
+                className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium text-slate-700 bg-slate-100 hover:bg-slate-200/80 rounded-lg transition-colors whitespace-nowrap shrink-0 cursor-pointer disabled:opacity-50"
+                title="Save room snapshot to your Google Drive"
+              >
+                <HardDrive size={14} className="text-emerald-600" />
+                <span>{driveSaving ? 'Saving...' : 'Save to Drive'}</span>
+              </button>
+              {driveNotice && (
+                <span
+                  className={cn(
+                    'text-xs whitespace-nowrap',
+                    driveNotice.isError ? 'text-red-600 font-medium' : 'text-slate-500'
+                  )}
+                >
+                  {driveNotice.text}
+                </span>
+              )}
+            </>
+          )}
+
           <button
             type="button"
             onClick={handleExportPNG}
@@ -4222,6 +4315,19 @@ export default function Canvas({
               </span>
             </button>
 
+            {isGoogleDriveConfigured() && (
+              <button
+                type="button"
+                disabled={isUploadingWorksheet || Boolean(driveBusy)}
+                onClick={handleWorksheetFromDrive}
+                className="flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium bg-white text-slate-800 border border-amber-300 hover:bg-amber-100/60 transition-colors whitespace-nowrap shrink-0 cursor-pointer disabled:opacity-50"
+                title="Import a Google Slides deck or PDF from your Google Drive"
+              >
+                <HardDrive size={13} className="text-emerald-600" />
+                <span>{driveBusy || 'From Drive'}</span>
+              </button>
+            )}
+
             {/* Active Background Worksheet Controls */}
             {background && (
               <div className="flex items-center gap-1.5 bg-white/90 px-2 py-0.5 rounded-md border border-amber-200 text-xs text-slate-700">
@@ -4319,6 +4425,24 @@ export default function Canvas({
               <Upload size={13} />
               <span>Import .JSON</span>
             </button>
+
+            {isGoogleDriveConfigured() && (
+              <>
+                <button
+                  type="button"
+                  disabled={driveOpening}
+                  onClick={handleOpenFromDrive}
+                  className="flex items-center gap-1.5 px-3 py-1 rounded-md text-xs font-medium bg-white text-slate-800 border border-amber-300 hover:bg-amber-100/60 transition-colors whitespace-nowrap shrink-0 cursor-pointer disabled:opacity-50"
+                  title="Open a saved .json room snapshot from your Google Drive"
+                >
+                  <HardDrive size={13} className="text-emerald-600" />
+                  <span>{driveOpening ? 'Opening...' : 'Open from Drive'}</span>
+                </button>
+                {driveOpenError && (
+                  <span className="text-xs text-red-600 font-medium">{driveOpenError}</span>
+                )}
+              </>
+            )}
 
             <button
               type="button"
@@ -4514,6 +4638,21 @@ export default function Canvas({
             }
           }}
           onClose={() => setShowTemplateModal(false)}
+        />
+      )}
+
+      {/* Teacher PDF Page Range Modal */}
+      {pendingPdfRange && (
+        <PdfPageRangeModal
+          fileName={pendingPdfRange.file.name}
+          totalPages={pendingPdfRange.totalPages}
+          maxPages={MAX_PDF_PAGES}
+          onConfirm={(range) => {
+            const { file } = pendingPdfRange;
+            setPendingPdfRange(null);
+            void importWorksheetFile(file, range);
+          }}
+          onCancel={() => setPendingPdfRange(null)}
         />
       )}
 
