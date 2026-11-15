@@ -260,7 +260,7 @@ export default function App() {
   const effectiveRoomId = normalizeRoomCode(roomId);
 
   useEffect(() => {
-    document.title = effectiveRoomId !== 'main' ? `AllAboard — #${effectiveRoomId}` : 'AllAboard';
+    document.title = effectiveRoomId !== 'main' ? `#${effectiveRoomId} · AllAboard` : 'AllAboard';
     try {
       const url = new URL(window.location.href);
       if (effectiveRoomId === 'main') {

@@ -368,7 +368,7 @@ export default function Chat({
         </div>
 
         {/* Room Code Bar + Custom or Random "New Room" Controls */}
-        <div className="flex flex-wrap items-center justify-between gap-1.5 px-2.5 py-1.5 rounded-lg bg-slate-50 border border-slate-200/80 text-xs">
+        <div className="px-2.5 py-2 rounded-lg bg-slate-50 border border-slate-200/80 text-xs space-y-1.5">
           {isEditingRoom ? (
             <form onSubmit={handleRoomSubmit} className="flex items-center gap-1 flex-1 min-w-0">
               <input
@@ -416,22 +416,22 @@ export default function Chat({
             </form>
           ) : (
             <>
-              <div className="flex items-center gap-1.5 min-w-0 flex-1">
-                <span className="text-slate-400 shrink-0">Room:</span>
+              <div className="min-w-0">
+                <div className="text-[10px] uppercase tracking-wide text-slate-500">ROOM</div>
                 <button
                   type="button"
                   onClick={() => {
                     setRoomDraft(roomId);
                     setIsEditingRoom(true);
                   }}
-                  className="font-mono font-semibold text-slate-800 hover:text-blue-600 truncate cursor-pointer"
+                  className="text-lg font-bold font-mono text-slate-900 hover:text-blue-600 break-all text-left leading-tight cursor-pointer"
                   title="Click to enter a different room code"
                 >
                   {roomId}
                 </button>
               </div>
 
-              <div className="flex items-center gap-1 shrink-0">
+              <div className="flex items-center gap-1">
                 <button
                   type="button"
                   onClick={handleCopyRoomLink}
