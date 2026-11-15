@@ -264,7 +264,19 @@ test.describe('worksheet UI', () => {
 
     const remove = page.getByTitle('Remove background worksheet from this board');
     await expect(remove).toBeVisible();
-    page.once('dialog', (d) => d.accept());
+    await expect(remove).toHaveText('Remove worksheet');
+
+    // First tap arms confirmation without removing; after 3.5s it resets cleanly.
+    await remove.click();
+    await expect(remove).toHaveText('Tap again to remove');
+    await expect(remove).toBeVisible();
+    await page.waitForTimeout(3500);
+    await expect(remove).toHaveText('Remove worksheet');
+    await expect(remove).toBeVisible();
+
+    // Tapping twice within 3s removes the worksheet.
+    await remove.click();
+    await expect(remove).toHaveText('Tap again to remove');
     await remove.click();
     await expect(remove).toBeHidden();
   });
