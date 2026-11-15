@@ -49,6 +49,7 @@ import { parseSnapshotText, snapshotFileName } from '../lib/roomSnapshot';
 import { isGoogleDriveConfigured } from '../lib/googleConfig';
 import {
   GoogleError,
+  createDriveFolder,
   downloadDriveFile,
   formatDownloadProgress,
   friendlyGoogleError,
@@ -945,7 +946,7 @@ export default function Canvas({
     folder: DriveFolder;
     lastSave: DriveSaveRecord | null;
   } | null>(null);
-  const [driveSaveBusy, setDriveSaveBusy] = useState<'saving' | 'choosing-folder' | null>(null);
+  const [driveSaveBusy, setDriveSaveBusy] = useState<'saving' | 'choosing-folder' | 'creating-folder' | null>(null);
   const [driveSaveError, setDriveSaveError] = useState<string | null>(null);
   const [driveAccount, setDriveAccount] = useState<DriveAccount | null>(null);
   const [driveOpening, setDriveOpening] = useState(false);
@@ -2220,6 +2221,23 @@ export default function Canvas({
       if (folder) setDriveSaveDialog((d) => (d ? { ...d, folder } : d));
     } catch (err: any) {
       setDriveSaveError(driveErrorText(err, 'Could not open Google Drive.'));
+    } finally {
+      setDriveSaveBusy(null);
+    }
+  };
+
+  const handleDriveCreateFolder = async (folderName: string): Promise<boolean> => {
+    if (!driveSaveDialog) return false;
+    setDriveSaveError(null);
+    setDriveSaveBusy('creating-folder');
+    try {
+      const created = await createDriveFolder(folderName, driveSaveDialog.folder);
+      void refreshDriveAccount();
+      setDriveSaveDialog((d) => (d ? { ...d, folder: created } : d));
+      return true;
+    } catch (err: any) {
+      setDriveSaveError(driveErrorText(err, 'Could not create Google Drive folder.'));
+      return false;
     } finally {
       setDriveSaveBusy(null);
     }
@@ -4955,10 +4973,11 @@ export default function Canvas({
           busy={driveSaveBusy}
           error={driveSaveError}
           onChangeFolder={() => void handleDriveChangeFolder()}
+          onCreateFolder={(name) => handleDriveCreateFolder(name)}
           onSwitchAccount={() => void handleSwitchDriveAccount()}
           onSave={(name) => void handleDriveSaveConfirm(name)}
           onCancel={() => {
-            if (driveSaveBusy !== 'saving') setDriveSaveDialog(null);
+            if (!driveSaveBusy) setDriveSaveDialog(null);
           }}
         />
       )}

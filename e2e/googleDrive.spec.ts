@@ -833,4 +833,52 @@ test.describe('Google Drive integration (stubbed Google)', () => {
     await page.getByRole('button', { name: 'Save Room to Drive', exact: true }).click();
     await expect(page.getByTestId('drive-save-folder')).toHaveText('Period 3');
   });
+
+  test('Save Room to Drive can create a new Drive folder and save into it', async ({ page }) => {
+    await installFakeGoogle(page);
+    const folderCreates: Array<Record<string, unknown>> = [];
+    const requests = await fakeDriveUploads(page);
+    await page.route('https://www.googleapis.com/drive/v3/files**', async (route) => {
+      const req = route.request();
+      if (req.method() === 'POST') {
+        const meta = JSON.parse(req.postData() || '{}');
+        folderCreates.push(meta);
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({ id: 'new-fold-77', name: meta.name }),
+        });
+        return;
+      }
+      await route.fallback();
+    });
+
+    const room = uniqueRoom('gd-new-folder');
+    await joinRoom(page, room, 'Ms T', '4829');
+    await page.getByRole('button', { name: 'Save Room to Drive', exact: true }).click();
+
+    await page.getByRole('button', { name: 'New folder...' }).click();
+    const folderInput = page.getByLabel('New folder name');
+    await expect(folderInput).toHaveValue('AllAboard rooms');
+    await folderInput.fill('Period 4');
+    await page.getByRole('button', { name: 'Create', exact: true }).click();
+
+    await expect(page.getByTestId('drive-save-folder')).toHaveText('Period 4');
+    expect(folderCreates).toEqual([
+      { name: 'Period 4', mimeType: 'application/vnd.google-apps.folder' },
+    ]);
+
+    await page.getByRole('button', { name: 'Save', exact: true }).click();
+    await expect(page.getByText(`Saved ${todayFileName(room)} to Period 4`)).toBeVisible();
+    expect(requests[0].method).toBe('POST');
+    expect(requests[0].meta).toEqual({
+      name: todayFileName(room),
+      mimeType: 'application/json',
+      parents: ['new-fold-77'],
+    });
+
+    // Reopening Save Room to Drive remembers the newly created folder
+    await page.getByRole('button', { name: 'Save Room to Drive', exact: true }).click();
+    await expect(page.getByTestId('drive-save-folder')).toHaveText('Period 4');
+  });
 });
