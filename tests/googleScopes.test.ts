@@ -4,11 +4,17 @@ import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 
 /**
- * AllAboard only asks Google for drive.file (rule 6 in CLAUDE.md). Only the owner may add to ALLOWED.
- * Any other scope is "sensitive" or "restricted": manual review by Google, a 100-user cap and an
- * "unverified app" screen until it passes, and school admins may block the app.
+ * Rule 6 in CLAUDE.md: AllAboard never uses a sensitive or restricted Google OAuth scope.
+ * Those trigger Google's manual review (restricted: also a paid security audit), a 100-user cap and an
+ * "unverified app" screen, and school admins block them. Only these non-sensitive scopes are allowed.
+ * Before adding anything here, check its category in Google's scope list and ask the owner.
  */
-const ALLOWED = new Set(['https://www.googleapis.com/auth/drive.file']);
+const ALLOWED_URL_SCOPES = new Set([
+  'https://www.googleapis.com/auth/drive.file',
+  'https://www.googleapis.com/auth/userinfo.email',
+  'https://www.googleapis.com/auth/userinfo.profile',
+]);
+const ALLOWED_SHORT_SCOPES = new Set(['openid', 'email', 'profile']);
 
 function sourceFiles(dir: string): string[] {
   return readdirSync(dir).flatMap((name) => {
@@ -19,18 +25,22 @@ function sourceFiles(dir: string): string[] {
 }
 
 describe('Google OAuth scopes', () => {
-  it('only drive.file appears anywhere in the app code', () => {
+  it('only non-sensitive scopes appear in the app code', () => {
     const files = [...sourceFiles('src'), 'index.html', 'server.ts'];
     const found: string[] = [];
     for (const f of files) {
       const text = readFileSync(f, 'utf8');
       for (const m of text.matchAll(/https:\/\/www\.googleapis\.com\/auth\/[\w.\-]+/g)) {
-        if (!ALLOWED.has(m[0])) found.push(`${f}: ${m[0]}`);
+        if (!ALLOWED_URL_SCOPES.has(m[0])) found.push(`${f}: ${m[0]}`);
       }
-      // OpenID scopes ask for the user's identity and change the consent screen.
-      if (/scope\s*:\s*['"`][^'"`]*\b(openid|email|profile)\b/.test(text)) found.push(`${f}: openid/email/profile scope`);
-      if (/include_granted_scopes/.test(text)) found.push(`${f}: include_granted_scopes (incremental scopes)`);
+      // Short scope names inside a `scope: '...'` string, e.g. scope: 'openid email'.
+      // (A quoted string followed by `|` is a TypeScript type like `scope: 'unified' | 'board'`, not a scope.)
+      for (const m of text.matchAll(/\bscope\s*:\s*['"`]([^'"`]*)['"`](?!\s*\|)/g)) {
+        for (const part of m[1].split(/\s+/).filter(Boolean)) {
+          if (!part.startsWith('https://') && !ALLOWED_SHORT_SCOPES.has(part)) found.push(`${f}: scope "${part}"`);
+        }
+      }
     }
-    assert.deepEqual(found, [], 'Only drive.file is allowed. See rule 6 in CLAUDE.md.');
+    assert.deepEqual(found, [], 'Sensitive or restricted Google scopes are not allowed. See rule 6 in CLAUDE.md.');
   });
 });

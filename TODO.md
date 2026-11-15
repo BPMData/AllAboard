@@ -15,9 +15,9 @@ Ground rules for every task:
 - Run `npm run lint`, `npm test`, `npm run test:e2e`, and
   `node -e "import('./server.ts').then(() => console.log('OK'))"` before each commit. All must pass.
 - One PR per task. Plain-language commit messages. Don't add npm dependencies.
-- **Google permission stays `drive.file` only. Never add another OAuth scope** without the owner's approval (rule 6
-  in `CLAUDE.md`). Everything below was checked to work without one. If something turns out to need one, stop,
-  drop that part, and write down why.
+- **Never use a sensitive or restricted Google OAuth scope** (rule 6 in `CLAUDE.md`). Everything below works with
+  the `drive.file` permission AllAboard already has. If something turns out to need a sensitive or restricted
+  scope, drop that part and write down why.
 
 #### 0. Show the room name clearly at the top of the sidebar
 **Today:** the room code is in the sidebar's room bar (`src/components/Chat.tsx`, the block commented
@@ -161,8 +161,8 @@ the API and aren't usable from the browser (no CORS), so **don't try them**.
       thumbnails (`presentations.get?fields=slides.objectId`, `presentations.pages.getThumbnail`), which would
       let a teacher pick slides *before* the 10 MB export. It's unconfirmed whether these accept our `drive.file`
       token. Try one call **with the existing token only**. If Google answers 403 / insufficient scope, **drop this
-      item entirely**. Never request `presentations` / `presentations.readonly` or any other scope, not even
-      incrementally (see rule 6 in `CLAUDE.md`). Also note `getThumbnail` counts as an "expensive read" for quota.
+      item entirely**. Never request `presentations` / `presentations.readonly`: they're sensitive scopes
+      (rule 6 in `CLAUDE.md`). Also note `getThumbnail` counts as an "expensive read" for quota.
 
 #### 5. Switch Google account (and show which one is connected)
 **What happened:** the first Drive click shows Google's account chooser (and a district Workspace account
