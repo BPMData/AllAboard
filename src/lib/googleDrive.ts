@@ -44,7 +44,9 @@ export function friendlyGoogleError(code: string): string {
     case 'admin_policy_enforced':
       return "Your Google account (or school) didn't allow AllAboard to use Drive. Download the file and use Upload instead, or ask your IT admin to allow AllAboard.";
     case 'exportSizeLimitExceeded':
-      return 'This deck is too big for Google to convert (10 MB limit). In Slides, use File \u2192 Download \u2192 PDF, then Upload.';
+      return 'This deck is too big for Google to convert (10 MB limit). Open it in Google Slides, use File \u2192 Download \u2192 PDF, then use Upload (.JPG / .PNG / .PDF). Big PDFs work fine that way.';
+    case 'timeout':
+      return 'Google took too long to convert this deck. For big decks, open it in Google Slides, use File \u2192 Download \u2192 PDF, then use Upload (.JPG / .PNG / .PDF). Big PDFs work fine that way.';
     case 'not_found':
       return "AllAboard can't open that file. Pick it again from Drive.";
     default:
@@ -174,40 +176,100 @@ export async function getAccessToken(): Promise<string> {
   }
 }
 
-export async function driveFetch(url: string, init?: RequestInit): Promise<Response> {
+export const DEFAULT_DRIVE_DOWNLOAD_TIMEOUT_MS = 120_000;
+
+export function getDriveDownloadTimeoutMs(): number {
+  if (typeof window !== 'undefined') {
+    const override = Number((window as any).__ALLABOARD_DRIVE_TIMEOUT_MS__);
+    if (Number.isFinite(override) && override > 0) return override;
+  }
+  return DEFAULT_DRIVE_DOWNLOAD_TIMEOUT_MS;
+}
+
+export interface DriveFetchInit extends RequestInit {
+  timeoutMs?: number;
+}
+
+function createScopedAbort(
+  callerSignal?: AbortSignal | null,
+  timeoutMs?: number
+): { signal: AbortSignal; isTimedOut: () => boolean; cleanup: () => void } {
+  const controller = new AbortController();
+  let timedOut = false;
+
+  const onCallerAbort = () => controller.abort();
+  if (callerSignal) {
+    if (callerSignal.aborted) {
+      controller.abort();
+    } else {
+      callerSignal.addEventListener('abort', onCallerAbort, { once: true });
+    }
+  }
+
+  const timer =
+    timeoutMs !== undefined && Number.isFinite(timeoutMs) && timeoutMs > 0
+      ? setTimeout(() => {
+          timedOut = true;
+          controller.abort();
+        }, timeoutMs)
+      : undefined;
+
+  return {
+    signal: controller.signal,
+    isTimedOut: () => timedOut,
+    cleanup: () => {
+      if (timer !== undefined) clearTimeout(timer);
+      callerSignal?.removeEventListener('abort', onCallerAbort);
+    },
+  };
+}
+
+export async function driveFetch(url: string, init?: DriveFetchInit): Promise<Response> {
+  const { timeoutMs, signal: callerSignal, ...restInit } = init || {};
+  const scoped = createScopedAbort(callerSignal, timeoutMs);
+
   const sendWithToken = (accessToken: string) => {
-    const headers = new Headers(init?.headers);
+    const headers = new Headers(restInit.headers);
     headers.set('Authorization', `Bearer ${accessToken}`);
-    return fetch(url, { ...init, headers });
+    return fetch(url, { ...restInit, headers, signal: scoped.signal });
   };
 
-  let accessToken = await getAccessToken();
-  let res = await sendWithToken(accessToken);
+  try {
+    let accessToken = await getAccessToken();
+    let res = await sendWithToken(accessToken);
 
-  if (res.status === 401) {
-    clearAccessToken();
-    accessToken = await getAccessToken();
-    res = await sendWithToken(accessToken);
-  }
-
-  if (!res.ok) {
-    let body: any = null;
-    try {
-      body = await res.json();
-    } catch {
-      body = null;
+    if (res.status === 401) {
+      clearAccessToken();
+      accessToken = await getAccessToken();
+      res = await sendWithToken(accessToken);
     }
-    const rawReason = body?.error?.errors?.[0]?.reason;
-    const code =
-      res.status === 404 || rawReason === 'notFound'
-        ? 'not_found'
-        : typeof rawReason === 'string' && rawReason
-          ? rawReason
-          : `http_${res.status}`;
-    throw new GoogleError(code, friendlyGoogleError(code));
-  }
 
-  return res;
+    if (!res.ok) {
+      let body: any = null;
+      try {
+        body = await res.json();
+      } catch {
+        body = null;
+      }
+      const rawReason = body?.error?.errors?.[0]?.reason;
+      const code =
+        res.status === 404 || rawReason === 'notFound'
+          ? 'not_found'
+          : typeof rawReason === 'string' && rawReason
+            ? rawReason
+            : `http_${res.status}`;
+      throw new GoogleError(code, friendlyGoogleError(code));
+    }
+
+    return res;
+  } catch (err) {
+    if (scoped.isTimedOut()) {
+      throw new GoogleError('timeout', friendlyGoogleError('timeout'));
+    }
+    throw err;
+  } finally {
+    scoped.cleanup();
+  }
 }
 
 /** A Drive folder. `id: null` means the top of My Drive. */
@@ -411,12 +473,94 @@ export async function pickDriveFolder(startIn: DriveFolder): Promise<DriveFolder
   return picked ? { id: picked.id, name: picked.name } : null;
 }
 
-export async function downloadDriveFile(doc: PickedDriveDoc): Promise<File> {
-  const res = await driveFetch(downloadUrlFor(doc));
-  const blob = await res.blob();
-  return new File([blob], importedFileName(doc), {
-    type: doc.mimeType === SLIDES_MIME ? PDF_MIME : doc.mimeType,
-  });
+export interface DownloadDriveProgress {
+  loadedBytes: number;
+  elapsedMs: number;
+}
+
+export interface DownloadDriveOptions {
+  signal?: AbortSignal;
+  timeoutMs?: number;
+  onProgress?: (progress: DownloadDriveProgress) => void;
+}
+
+export function formatElapsedTimer(elapsedMs: number): string {
+  const totalSec = Math.max(0, Math.floor(elapsedMs / 1000));
+  const mins = Math.floor(totalSec / 60);
+  const secs = totalSec % 60;
+  return `${mins}:${String(secs).padStart(2, '0')}`;
+}
+
+export function formatDownloadProgress(
+  doc: Pick<PickedDriveDoc, 'mimeType'>,
+  progress: DownloadDriveProgress
+): string {
+  if (progress.loadedBytes <= 0) {
+    const timer = formatElapsedTimer(progress.elapsedMs);
+    return doc.mimeType === SLIDES_MIME
+      ? `Google is converting the deck... ${timer}`
+      : `Downloading from Drive... ${timer}`;
+  }
+  const mb = progress.loadedBytes / (1024 * 1024);
+  if (mb >= 0.1) {
+    return `Downloading from Drive... ${mb.toFixed(1)} MB`;
+  }
+  const kb = Math.max(1, Math.round(progress.loadedBytes / 1024));
+  return `Downloading from Drive... ${kb} KB`;
+}
+
+export async function downloadDriveFile(
+  doc: PickedDriveDoc,
+  opts?: DownloadDriveOptions
+): Promise<File> {
+  const timeoutMs = opts?.timeoutMs ?? getDriveDownloadTimeoutMs();
+  const scoped = createScopedAbort(opts?.signal, timeoutMs);
+  const startedAt = Date.now();
+  let loadedBytes = 0;
+
+  const reportProgress = () => {
+    opts?.onProgress?.({ loadedBytes, elapsedMs: Date.now() - startedAt });
+  };
+
+  const progressTimer = opts?.onProgress
+    ? setInterval(() => {
+        if (loadedBytes === 0) reportProgress();
+      }, 1000)
+    : undefined;
+
+  try {
+    reportProgress();
+    const res = await driveFetch(downloadUrlFor(doc), { signal: scoped.signal });
+    const outputType = doc.mimeType === SLIDES_MIME ? PDF_MIME : doc.mimeType;
+
+    let blob: Blob;
+    if (res.body && typeof res.body.getReader === 'function') {
+      const reader = res.body.getReader();
+      const chunks: Uint8Array[] = [];
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        if (value && value.byteLength > 0) {
+          chunks.push(value);
+          loadedBytes += value.byteLength;
+          reportProgress();
+        }
+      }
+      blob = new Blob(chunks as BlobPart[], { type: outputType });
+    } else {
+      blob = await res.blob();
+    }
+
+    return new File([blob], importedFileName(doc), { type: outputType });
+  } catch (err) {
+    if (scoped.isTimedOut()) {
+      throw new GoogleError('timeout', friendlyGoogleError('timeout'));
+    }
+    throw err;
+  } finally {
+    if (progressTimer !== undefined) clearInterval(progressTimer);
+    scoped.cleanup();
+  }
 }
 
 /**

@@ -283,6 +283,127 @@ test.describe('Google Drive integration (stubbed Google)', () => {
     await expect(page.getByRole('button', { name: 'Side-by-Side' })).toBeVisible();
   });
 
+  test('hanging Slides export shows live timer and Cancel aborts cleanly with no error', async ({ page }) => {
+    await installFakeGoogle(page, {
+      pickerDoc: {
+        id: 'slides-hang',
+        name: 'Huge 370-Slide Deck',
+        mimeType: 'application/vnd.google-apps.presentation',
+      },
+    });
+
+    await page.route('https://www.googleapis.com/**', async () => {
+      // Intentionally never respond to simulate a stalled Slides export.
+    });
+
+    await joinRoom(page, uniqueRoom('gd-hang-cancel'), 'Ms T', '4829');
+    await page.getByRole('button', { name: 'Slides / PDF from Drive', exact: true }).click();
+
+    await expect(page.getByRole('button', { name: /Google is converting the deck\.\.\. 0:0[0-9]/ })).toBeVisible();
+    await expect(page.getByRole('button', { name: /Google is converting the deck\.\.\. 0:0[1-9]/ })).toBeVisible({
+      timeout: 3000,
+    });
+
+    await page.getByRole('button', { name: 'Cancel', exact: true }).click();
+
+    await expect(page.getByRole('button', { name: 'Slides / PDF from Drive', exact: true })).toBeEnabled();
+    await expect(page.getByRole('button', { name: 'Cancel', exact: true })).toHaveCount(0);
+    await expect(page.getByText(/Could not import from Drive|Google took too long|Google Drive request failed/)).toHaveCount(0);
+  });
+
+  test('hanging Slides export times out with Download-as-PDF advice', async ({ page }) => {
+    await page.addInitScript(() => {
+      (window as any).__ALLABOARD_DRIVE_TIMEOUT_MS__ = 350;
+    });
+    await installFakeGoogle(page, {
+      pickerDoc: {
+        id: 'slides-timeout',
+        name: 'Huge Deck',
+        mimeType: 'application/vnd.google-apps.presentation',
+      },
+    });
+
+    await page.route('https://www.googleapis.com/**', async () => {
+      // Intentionally never respond so the timeout fires.
+    });
+
+    await joinRoom(page, uniqueRoom('gd-timeout'), 'Ms T', '4829');
+    await page.getByRole('button', { name: 'Slides / PDF from Drive', exact: true }).click();
+
+    await expect(
+      page.getByText(
+        'Google took too long to convert this deck. For big decks, open it in Google Slides, use File → Download → PDF, then use Upload (.JPG / .PNG / .PDF). Big PDFs work fine that way.'
+      )
+    ).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Slides / PDF from Drive', exact: true })).toBeEnabled();
+    await expect(page.getByRole('button', { name: 'Cancel', exact: true })).toHaveCount(0);
+  });
+
+  test('403 exportSizeLimitExceeded shows friendly Download-as-PDF advice', async ({ page }) => {
+    await installFakeGoogle(page, {
+      pickerDoc: {
+        id: 'slides-too-big',
+        name: '370 Slides',
+        mimeType: 'application/vnd.google-apps.presentation',
+      },
+    });
+
+    await page.route('https://www.googleapis.com/**', async (route) => {
+      await route.fulfill({
+        status: 403,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          error: {
+            code: 403,
+            errors: [{ reason: 'exportSizeLimitExceeded', message: 'This file is too large to be exported.' }],
+          },
+        }),
+      });
+    });
+
+    await joinRoom(page, uniqueRoom('gd-403-limit'), 'Ms T', '4829');
+    await page.getByRole('button', { name: 'Slides / PDF from Drive', exact: true }).click();
+
+    await expect(
+      page.getByText(/This deck is too big for Google to convert \(10 MB limit\).*Download → PDF/)
+    ).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Slides / PDF from Drive', exact: true })).toBeEnabled();
+  });
+
+  test('local Upload handles a 370-page PDF and opens the page-range modal', async ({ page }) => {
+    await joinRoom(page, uniqueRoom('gd-local-370'), 'Ms T', '4829');
+
+    const b64 = await page.evaluate(async (exporter) => {
+      const { buildMultiPagePdfFromJpegs } = await import(/* @vite-ignore */ exporter);
+      const c = document.createElement('canvas');
+      c.width = 40;
+      c.height = 30;
+      const ctx = c.getContext('2d')!;
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(0, 0, c.width, c.height);
+      const jpgB64 = c.toDataURL('image/jpeg', 0.7).split(',')[1];
+      const bytes = Uint8Array.from(atob(jpgB64), (ch) => ch.charCodeAt(0));
+      const pages = Array.from({ length: 370 }, () => ({ jpegBytes: bytes, widthPx: c.width, heightPx: c.height }));
+      const blob = buildMultiPagePdfFromJpegs(pages);
+      const out = new Uint8Array(await blob.arrayBuffer());
+      let binary = '';
+      for (let i = 0; i < out.length; i++) binary += String.fromCharCode(out[i]);
+      return btoa(binary);
+    }, EXPORT_MOD);
+
+    await page
+      .locator('input[type="file"][accept*="application/pdf"]')
+      .setInputFiles({ name: 'textbook-370.pdf', mimeType: 'application/pdf', buffer: Buffer.from(b64, 'base64') });
+
+    await expect(page.getByText('Choose Pages to Import')).toBeVisible();
+    await expect(page.getByText(/370 pages/)).toBeVisible();
+    await page.getByLabel('From').fill('1');
+    await page.getByLabel('To').fill('2');
+    await page.getByRole('button', { name: 'Import pages' }).click();
+
+    await expect(page.getByTitle('Remove background worksheet from this board')).toBeVisible();
+  });
+
   test('cancelling the Drive picker does nothing and shows no error', async ({ page }) => {
     await installFakeGoogle(page, { pickerAction: 'cancel' });
 
