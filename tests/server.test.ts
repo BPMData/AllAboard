@@ -855,6 +855,90 @@ describe('AllAboard server & Socket.IO integration tests', () => {
       assert.equal(switchSync.subBoards['r1_ind_s1'].elements.length, 1);
       assert.equal(switchSync.subBoards['r2_grp_1'].elements.length, 1);
     });
+
+    it('T9 – autoIndividual lands joining students directly on own board with separate worksheet, cleared by return-to-main', async () => {
+      const roomId = 'mr-t9-auto';
+      const { socket: teacher } = await joinTracked({ roomId, userId: 't1', name: 'Teacher' });
+      const { socket: nonTeacher } = await joinTracked({ roomId, userId: 'stu-0', name: 'Waiter' });
+
+      // Non-teacher cannot configure auto-individual
+      const nonTeacherRes = await emitAck(nonTeacher, 'teacher:configure-breakout', {
+        action: 'set-auto-individual',
+        autoIndividual: true,
+      });
+      assert.equal(nonTeacherRes.ok, false);
+      nonTeacher.disconnect();
+
+      // Teacher claims PIN and sets Main Board background distinct from student starting worksheet
+      await emitAck(teacher, 'teacher:auth', { pin: '1234' });
+      await emitAck(teacher, 'teacher:set-background', {
+        boardId: 'main',
+        background: {
+          id: 'main-bg',
+          fileName: 'teacher-main.png',
+          pages: [],
+          x: 0,
+          y: 0,
+          scale: 1,
+          layout: 'row',
+          opacity: 1,
+        },
+      });
+
+      const settingsUpdated = waitForEvent<any>(teacher, 'room-settings');
+      const armRes = await emitAck(teacher, 'teacher:configure-breakout', {
+        action: 'set-auto-individual',
+        autoIndividual: true,
+        templateLabel: 'Frayer Model',
+        customBackground: {
+          id: 'student-bg',
+          fileName: 'student-frayer.png',
+          pages: [],
+          x: 0,
+          y: 0,
+          scale: 1,
+          layout: 'row',
+          opacity: 1,
+        },
+      });
+      assert.equal(armRes.ok, true);
+      const settings = await settingsUpdated;
+      assert.equal(settings.breakoutConfig.mode, 'main');
+      assert.equal(settings.breakoutConfig.autoIndividual, true);
+      assert.equal(settings.breakoutConfig.autoIndividualBackground.fileName, 'student-frayer.png');
+
+      // Student 1 joins -> init immediately starts Round 1 Individual and assigns r1_ind_s1 with student worksheet
+      const s1TeacherSyncPromise = waitForEvent<any>(teacher, 'breakout-sync');
+      const s1Join = await joinTracked({ roomId, userId: 's1', name: 'Sam' });
+      assert.equal(s1Join.init.roomSettings.breakoutConfig.mode, 'individual');
+      assert.equal(s1Join.init.roomSettings.breakoutConfig.activeRoundId, 'r1');
+      assert.equal(s1Join.init.roomSettings.breakoutConfig.rounds[0].title, 'Round 1 · Individual · Frayer Model');
+      assert.ok(s1Join.init.subBoards['r1_ind_s1']);
+      assert.equal(s1Join.init.subBoards['r1_ind_s1'].background.fileName, 'student-frayer.png');
+      assert.equal(s1Join.init.background.fileName, 'teacher-main.png');
+      await s1TeacherSyncPromise;
+
+      // Late student 2 joins -> also gets their own board in r1
+      const s2TeacherSyncPromise = waitForEvent<any>(teacher, 'breakout-sync');
+      const s2Join = await joinTracked({ roomId, userId: 's2', name: 'Ada' });
+      assert.equal(s2Join.init.roomSettings.breakoutConfig.mode, 'individual');
+      assert.ok(s2Join.init.subBoards['r1_ind_s2']);
+      assert.equal(s2Join.init.subBoards['r1_ind_s2'].background.fileName, 'student-frayer.png');
+      await s2TeacherSyncPromise;
+
+      // Bring All to Main returns everyone to main and turns off autoIndividual
+      const mainSyncPromise = waitForEvent<any>(teacher, 'breakout-sync');
+      const mainRes = await emitAck(teacher, 'teacher:configure-breakout', { action: 'return-to-main' });
+      assert.equal(mainRes.ok, true);
+      const mainSync = await mainSyncPromise;
+      assert.equal(mainSync.breakoutConfig.mode, 'main');
+      assert.equal(mainSync.breakoutConfig.autoIndividual, false);
+
+      // Latecomer joining after Bring All to Main lands on Main with the rest of the class
+      const s3Join = await joinTracked({ roomId, userId: 's3', name: 'Lee' });
+      assert.equal(s3Join.init.roomSettings.breakoutConfig.mode, 'main');
+      assert.equal(s3Join.init.subBoards['r1_ind_s3'], undefined);
+    });
   });
 
   it('reports room availability accurately via check-room without creating empty rooms', async () => {
@@ -1232,6 +1316,30 @@ describe('AllAboard server & Socket.IO integration tests', () => {
       const result = await emitAck(probe.socket, 'check-room', { roomId: 'lobby-room' });
       assert.equal(result.exists, true);
       assert.equal(result.hasTeacherPin, true);
+    });
+    it('S8 – armed autoIndividualBackground asset survives GC and restart', async () => {
+      const teacher = await teacherIn('s8-auto');
+      const settingsPromise = waitForEvent<any>(teacher, 'room-settings');
+      const armRes = await emitAck(teacher, 'teacher:configure-breakout', {
+        action: 'set-auto-individual',
+        autoIndividual: true,
+        templateLabel: 'Frayer Model',
+        customBackground: worksheet(),
+      });
+      assert.equal(armRes.ok, true);
+      const settings = await settingsPromise;
+      const url = settings.breakoutConfig.autoIndividualBackground.pages[0].dataUrl as string;
+      assert.match(url, /^\/api\/assets\/[a-f0-9]{64}$/);
+
+      await srv.flushRoomsToDiskAsync();
+      assert.equal(srv.store.gcAssets(), 0);
+      await restart();
+
+      // Re-verified asset URL still serves 200 and triggers auto-individual with the interned asset on first student join
+      assert.equal((await fetch(`http://127.0.0.1:${srv.port}${url}`)).status, 200);
+      const { init } = await joinTracked({ roomId: 's8-auto', userId: 's1', name: 'Sam' });
+      assert.equal(init.roomSettings.breakoutConfig.mode, 'individual');
+      assert.equal(init.subBoards['r1_ind_s1'].background.pages[0].dataUrl, url);
     });
   });
 

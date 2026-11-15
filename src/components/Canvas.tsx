@@ -177,6 +177,7 @@ interface CanvasProps {
   users: User[];
   remoteCursors: Record<string, RemoteCursor>;
   isCanvasLocked: boolean;
+  hasTeacherPin?: boolean;
   isTeacher: boolean;
   userId: string;
   userName: string;
@@ -566,6 +567,7 @@ export default function Canvas({
   users,
   remoteCursors,
   isCanvasLocked,
+  hasTeacherPin = true,
   isTeacher,
   userId,
   userName,
@@ -4302,6 +4304,8 @@ export default function Canvas({
                 "flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium transition-colors whitespace-nowrap shrink-0 cursor-pointer",
                 breakoutConfig.mode !== 'main'
                   ? "bg-blue-600 text-white hover:bg-blue-700"
+                  : breakoutConfig.autoIndividual
+                  ? "bg-emerald-50 text-emerald-900 border border-emerald-400 hover:bg-emerald-100"
                   : "bg-white text-slate-800 border border-amber-300 hover:bg-amber-100/60"
               )}
               title="Assign individual student boards or breakout group rooms"
@@ -4312,6 +4316,8 @@ export default function Canvas({
                   ? `Individual Boards (${activeRoundBoards.length})`
                   : breakoutConfig.mode === 'groups'
                   ? `Breakout Groups (${activeRoundBoards.length})`
+                  : breakoutConfig.autoIndividual
+                  ? 'Breakouts · Students → Own Boards'
                   : 'Breakouts / Individual'}
               </span>
             </button>
@@ -5018,6 +5024,9 @@ export default function Canvas({
         <BreakoutManagerModal
           users={users}
           fullMainBackground={fullMainBackground}
+          hasTeacherPin={Boolean(hasTeacherPin)}
+          autoIndividual={Boolean(breakoutConfig.autoIndividual)}
+          autoIndividualTemplateLabel={breakoutConfig.autoIndividualTemplateLabel}
           rounds={rounds}
           activeRound={activeRound}
           draftEditRoundId={draftEditRoundId}

@@ -198,5 +198,38 @@ describe('breakoutRounds helpers', () => {
 
     assert.equal(findStudentBoardId(boards, config, 'u1'), 'r1_ind_u1');
   });
+
+  it('normalizeBreakoutConfig preserves autoIndividual and autoIndividualBackground safely', () => {
+    const validBg = {
+      id: 'bg-auto',
+      fileName: 'frayer.png',
+      pages: [{ dataUrl: '/api/assets/abc', width: 800, height: 600 }],
+      x: 0,
+      y: 0,
+      scale: 1,
+      layout: 'row' as const,
+      opacity: 1,
+    };
+    const normalized = normalizeBreakoutConfig({
+      mode: 'main',
+      rounds: [],
+      allowSelfSelect: false,
+      chatScope: 'unified',
+      autoIndividual: true,
+      autoIndividualBackground: validBg,
+      autoIndividualTemplateLabel: 'Frayer Model',
+    });
+    assert.equal(normalized.autoIndividual, true);
+    assert.deepEqual(normalized.autoIndividualBackground, validBg);
+    assert.equal(normalized.autoIndividualTemplateLabel, 'Frayer Model');
+
+    const sanitized = normalizeBreakoutConfig({
+      mode: 'main',
+      autoIndividual: false,
+      autoIndividualBackground: 'not-an-object',
+    });
+    assert.equal(sanitized.autoIndividual, false);
+    assert.equal(sanitized.autoIndividualBackground, undefined);
+  });
 });
 

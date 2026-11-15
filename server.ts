@@ -314,6 +314,12 @@ export async function startServer(options: StartServerOptions = {}) {
     for (const key of Object.keys(room.roundTemplates)) {
       room.roundTemplates[key] = internBackground(store, room.roundTemplates[key]);
     }
+    if (room.breakoutConfig.autoIndividualBackground !== undefined) {
+      room.breakoutConfig.autoIndividualBackground = internBackground(
+        store,
+        room.breakoutConfig.autoIndividualBackground
+      );
+    }
   }
 
   /** Imports an old rooms-store.json (if present) into SQLite, then renames it. */
@@ -630,6 +636,33 @@ export async function startServer(options: StartServerOptions = {}) {
     return provisionIndividualBoard(room, round.id, { userId, name: userName });
   }
 
+  /**
+   * When a room is in 'main' mode with autoIndividual armed and a student joins,
+   * immediately open a new Individual round using autoIndividualBackground so the
+   * student enters straight onto their own board without flashing Main.
+   */
+  function startAutoIndividualRound(room: RoomState): boolean {
+    const cfg = room.breakoutConfig;
+    if (!cfg.autoIndividual || cfg.mode !== 'main') return false;
+    const roundNumber = getNextRoundNumber(cfg);
+    const roundId = makeRoundId(roundNumber);
+    room.roundTemplates[roundId] = cloneBackground(cfg.autoIndividualBackground ?? null);
+    const roundMeta: BreakoutRoundMeta = {
+      id: roundId,
+      number: roundNumber,
+      title: buildRoundTitle(roundNumber, 'individual', cfg.autoIndividualTemplateLabel),
+      mode: 'individual',
+      createdAt: Date.now(),
+    };
+    cfg.mode = 'individual';
+    cfg.activeRoundId = roundId;
+    cfg.rounds = [...getRounds(cfg), roundMeta];
+    for (const u of getBreakoutStudents(room)) {
+      provisionIndividualBoard(room, roundId, u);
+    }
+    return true;
+  }
+
   function getRoomAvailability(rawRoomId?: string) {
     const normalizedId = normalizeRoomId(rawRoomId);
     const room = findRoom(normalizedId);
@@ -707,6 +740,7 @@ export async function startServer(options: StartServerOptions = {}) {
       const effectiveName = lockedName || (name && String(name).trim() ? String(name).trim() : '');
 
       let createdSubBoard = false;
+      let autoStartedRound = false;
       if (effectiveName) {
         if (existing) {
           existing.name = effectiveName;
@@ -724,7 +758,13 @@ export async function startServer(options: StartServerOptions = {}) {
             sockets: new Set([socket.id]),
           });
         }
+        if (!isVerifiedTeacher && room.breakoutConfig.autoIndividual && room.breakoutConfig.mode === 'main') {
+          autoStartedRound = startAutoIndividualRound(room);
+        }
         createdSubBoard = ensureIndividualBoardForUser(room, userId, effectiveName, isVerifiedTeacher);
+        if (autoStartedRound || createdSubBoard) {
+          scheduleSaveToDisk(room, autoStartedRound);
+        }
       }
 
       socket.emit('init', {
@@ -740,7 +780,10 @@ export async function startServer(options: StartServerOptions = {}) {
       });
 
       broadcastRoster(room);
-      if (createdSubBoard) {
+      if (autoStartedRound) {
+        broadcastRoomSettings(room);
+        broadcastBreakoutSync(room);
+      } else if (createdSubBoard) {
         broadcastBreakoutSync(room);
       }
     });
@@ -823,8 +866,33 @@ export async function startServer(options: StartServerOptions = {}) {
       const cfg = room.breakoutConfig;
       const action = resolveBreakoutAction(safePayload, cfg);
 
-      if (action === 'return-to-main') {
+      if (action === 'set-auto-individual') {
+        if (room.teacherPin === null) {
+          callback?.({
+            ok: false,
+            error: 'Set a Room Teacher PIN before enabling automatic student boards.',
+          });
+          return;
+        }
+        cfg.autoIndividual = Boolean(safePayload.autoIndividual);
+        if (safePayload.customBackground !== undefined) {
+          cfg.autoIndividualBackground = cloneBackground(safePayload.customBackground);
+        } else if (safePayload.autoIndividualBackground !== undefined) {
+          cfg.autoIndividualBackground = cloneBackground(safePayload.autoIndividualBackground);
+        } else if (safePayload.copyWorksheet) {
+          cfg.autoIndividualBackground = cloneBackground(room.background);
+        }
+        if (typeof safePayload.templateLabel === 'string' && safePayload.templateLabel.trim()) {
+          cfg.autoIndividualTemplateLabel = safePayload.templateLabel.trim().slice(0, 40);
+        } else if (safePayload.customBackground === null && !safePayload.copyWorksheet) {
+          cfg.autoIndividualTemplateLabel = 'Blank';
+        }
+        if (safePayload.chatScope === 'board' || safePayload.chatScope === 'unified') {
+          cfg.chatScope = safePayload.chatScope;
+        }
+      } else if (action === 'return-to-main') {
         cfg.mode = 'main';
+        cfg.autoIndividual = false;
         delete cfg.userBoardOverrides;
       } else if (action === 'resume' || action === 'update-current') {
         const targetId = safePayload.roundId || safePayload.targetRoundId;
@@ -895,6 +963,13 @@ export async function startServer(options: StartServerOptions = {}) {
           activeRoundId: roundId,
           rounds: [...getRounds(cfg), roundMeta],
           allowSelfSelect: Boolean(safePayload.allowSelfSelect),
+          ...(cfg.autoIndividual !== undefined ? { autoIndividual: cfg.autoIndividual } : {}),
+          ...(cfg.autoIndividualBackground !== undefined
+            ? { autoIndividualBackground: cfg.autoIndividualBackground }
+            : {}),
+          ...(cfg.autoIndividualTemplateLabel
+            ? { autoIndividualTemplateLabel: cfg.autoIndividualTemplateLabel }
+            : {}),
           chatScope: safePayload.chatScope === 'board' ? 'board' : 'unified',
         };
       }

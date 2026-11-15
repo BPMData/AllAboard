@@ -7,6 +7,7 @@ import type {
   BreakoutMode,
   BreakoutRoundMeta,
   ConfigureBreakoutPayload,
+  RoomBackground,
   SubBoardKind,
 } from '../types.ts';
 
@@ -27,6 +28,9 @@ export interface BreakoutConfigLike {
   allowSelfSelect: boolean;
   allowRoundSelfSelect?: boolean;
   userBoardOverrides?: Record<string, string>;
+  autoIndividual?: boolean;
+  autoIndividualBackground?: RoomBackground | null;
+  autoIndividualTemplateLabel?: string;
   chatScope: 'unified' | 'board';
 }
 
@@ -187,6 +191,18 @@ export function normalizeBreakoutConfig(raw: unknown): BreakoutConfigLike {
       userBoardOverrides = cleanOverrides;
     }
   }
+  const autoIndividualBackground =
+    r.autoIndividualBackground === null
+      ? null
+      : r.autoIndividualBackground &&
+        typeof r.autoIndividualBackground === 'object' &&
+        Array.isArray((r.autoIndividualBackground as RoomBackground).pages)
+      ? (r.autoIndividualBackground as RoomBackground)
+      : undefined;
+  const autoIndividualTemplateLabel =
+    typeof r.autoIndividualTemplateLabel === 'string' && r.autoIndividualTemplateLabel.trim()
+      ? r.autoIndividualTemplateLabel.trim().slice(0, 40)
+      : undefined;
   return {
     mode,
     activeRoundId,
@@ -194,6 +210,9 @@ export function normalizeBreakoutConfig(raw: unknown): BreakoutConfigLike {
     allowSelfSelect: Boolean(r.allowSelfSelect),
     ...(r.allowRoundSelfSelect !== undefined ? { allowRoundSelfSelect: Boolean(r.allowRoundSelfSelect) } : {}),
     ...(userBoardOverrides ? { userBoardOverrides } : {}),
+    ...(r.autoIndividual !== undefined ? { autoIndividual: Boolean(r.autoIndividual) } : {}),
+    ...(autoIndividualBackground !== undefined ? { autoIndividualBackground } : {}),
+    ...(autoIndividualTemplateLabel ? { autoIndividualTemplateLabel } : {}),
     chatScope: r.chatScope === 'board' ? 'board' : 'unified',
   };
 }

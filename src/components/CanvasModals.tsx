@@ -258,6 +258,9 @@ export function LiveGridOverview({
 interface BreakoutManagerModalProps {
   users: User[];
   fullMainBackground: RoomBackground | null;
+  hasTeacherPin: boolean;
+  autoIndividual: boolean;
+  autoIndividualTemplateLabel?: string;
   rounds?: BreakoutRoundMeta[];
   activeRound: BreakoutRoundMeta | null;
   draftEditRoundId?: string;
@@ -295,6 +298,9 @@ interface BreakoutManagerModalProps {
 export function BreakoutManagerModal({
   users,
   fullMainBackground,
+  hasTeacherPin,
+  autoIndividual,
+  autoIndividualTemplateLabel,
   rounds = [],
   activeRound,
   draftEditRoundId,
@@ -323,6 +329,20 @@ export function BreakoutManagerModal({
   onClose,
   onShowLiveGridOverview,
 }: BreakoutManagerModalProps) {
+  const [autoDraftEnabled, setAutoDraftEnabled] = useState<boolean>(autoIndividual);
+  const [autoWorksheetChoice, setAutoWorksheetChoice] = useState<
+    'current' | 'frayer' | 'checkin' | 'corners' | 'none'
+  >(() => {
+    if (autoIndividualTemplateLabel === 'Frayer Model') return 'frayer';
+    if (autoIndividualTemplateLabel === 'Task Pulse Check') return 'checkin';
+    if (autoIndividualTemplateLabel === 'Four Corners') return 'corners';
+    if (autoIndividualTemplateLabel === 'Blank') return 'none';
+    if (fullMainBackground) return 'current';
+    return 'none';
+  });
+  const [autoWorksheetTopic, setAutoWorksheetTopic] = useState<string>(draftWorksheetTopic);
+  const [autoSaving, setAutoSaving] = useState(false);
+
   const targetRound =
     (draftEditRoundId ? rounds.find((r) => r.id === draftEditRoundId) : null) ||
     activeRound ||
@@ -337,6 +357,22 @@ export function BreakoutManagerModal({
     : choice === 'corners' ? 'Four Corners'
     : choice === 'current' && fullMainBackground ? 'Copy of Main'
     : 'Blank';
+
+  const buildWorksheetConfig = (
+    choice: 'current' | 'frayer' | 'checkin' | 'corners' | 'none',
+    topic: string
+  ): { customBackground?: RoomBackground | null; copyWorksheet: boolean; templateLabel: string } => {
+    let customBackground: RoomBackground | null | undefined = undefined;
+    if (choice === 'frayer') customBackground = generateTemplateBackground('frayer-model', topic);
+    else if (choice === 'checkin') customBackground = generateTemplateBackground('checkin-columns', topic);
+    else if (choice === 'corners') customBackground = generateTemplateBackground('four-corners', topic);
+    else if (choice === 'none') customBackground = null;
+    return {
+      customBackground,
+      copyWorksheet: choice === 'current',
+      templateLabel: templateLabelFor(choice),
+    };
+  };
 
   return (
     <div className="fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-xs flex items-center justify-center p-4 select-text">
@@ -703,6 +739,125 @@ export function BreakoutManagerModal({
             {activeRound.title} will be archived. Nothing is deleted. You can still open and export it from the Round selector.
           </p>
         )}
+
+        {/* Auto-Start on Entry: Students start on their own boards */}
+        <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200 space-y-2.5">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="font-display text-xs font-semibold text-slate-900">
+                  Students start on their own boards
+                </span>
+                {autoIndividual && (
+                  <span className="px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-800 text-[10px] font-semibold">
+                    {currentMode === 'main'
+                      ? `Armed${autoIndividualTemplateLabel ? ` · ${autoIndividualTemplateLabel}` : ''}`
+                      : 'Active'}
+                  </span>
+                )}
+              </div>
+              <p className="text-[11px] text-slate-500 mt-0.5">
+                Any non-teacher student joining Main lands straight on their own private board with your chosen worksheet, while you keep Main separate. Clicking Bring All to Main turns this off so latecomers follow the class.
+              </p>
+            </div>
+            <label className="flex items-center gap-1.5 text-xs font-medium text-slate-800 shrink-0 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={autoDraftEnabled}
+                disabled={!hasTeacherPin}
+                onChange={(e) => setAutoDraftEnabled(e.target.checked)}
+                className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+              />
+              <span>Enable</span>
+            </label>
+          </div>
+
+          {!hasTeacherPin && (
+            <p className="text-[11px] text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-2.5 py-1.5">
+              Set a Room Teacher PIN in the sidebar first before enabling automatic student boards.
+            </p>
+          )}
+
+          {hasTeacherPin && autoDraftEnabled && (
+            <div className="space-y-2 pt-1 border-t border-slate-200/80">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <label className="text-[11px] font-semibold text-slate-700">
+                  Starting worksheet for students:
+                </label>
+                <select
+                  aria-label="Starting worksheet for students"
+                  value={autoWorksheetChoice}
+                  onChange={(e) =>
+                    setAutoWorksheetChoice(
+                      e.target.value as 'current' | 'frayer' | 'checkin' | 'corners' | 'none'
+                    )
+                  }
+                  className="bg-white border border-slate-300 rounded-md px-2 py-1 text-xs font-medium text-slate-800 cursor-pointer"
+                >
+                  <option value="frayer">4-Box Frayer Concept Model</option>
+                  <option value="checkin">Task Pulse Check (3 Columns)</option>
+                  <option value="corners">Four Corners Debate</option>
+                  {fullMainBackground && (
+                    <option value="current">
+                      Copy Current Main Board ({fullMainBackground.fileName.slice(0, 18)})
+                    </option>
+                  )}
+                  <option value="none">Blank Canvas (No Worksheet)</option>
+                </select>
+              </div>
+              {(autoWorksheetChoice === 'frayer' ||
+                autoWorksheetChoice === 'checkin' ||
+                autoWorksheetChoice === 'corners') && (
+                <input
+                  type="text"
+                  value={autoWorksheetTopic}
+                  onChange={(e) => setAutoWorksheetTopic(e.target.value)}
+                  placeholder="Worksheet Header / Concept Prompt..."
+                  className="w-full px-2.5 py-1.5 bg-white border border-slate-300 rounded-lg text-xs text-slate-900 focus:border-blue-600 focus:outline-none"
+                />
+              )}
+            </div>
+          )}
+
+          {hasTeacherPin && (autoDraftEnabled || autoIndividual) && (
+            <div className="flex justify-end">
+              <button
+                type="button"
+                disabled={autoSaving}
+                onClick={async () => {
+                  setAutoSaving(true);
+                  const ws = buildWorksheetConfig(autoWorksheetChoice, autoWorksheetTopic);
+                  const res = await onConfigureBreakout({
+                    action: 'set-auto-individual',
+                    autoIndividual: autoDraftEnabled,
+                    customBackground: ws.customBackground,
+                    copyWorksheet: ws.copyWorksheet,
+                    templateLabel: ws.templateLabel,
+                    chatScope: draftChatScope,
+                  });
+                  setAutoSaving(false);
+                  if (!res.ok) {
+                    window.alert(res.error || 'Could not save auto-start student board mode.');
+                  }
+                }}
+                className={cn(
+                  "px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors cursor-pointer disabled:opacity-50",
+                  autoDraftEnabled
+                    ? "bg-emerald-600 text-white hover:bg-emerald-500"
+                    : "bg-white border border-slate-300 text-slate-700 hover:bg-slate-100"
+                )}
+              >
+                {autoSaving
+                  ? 'Saving...'
+                  : autoDraftEnabled
+                  ? autoIndividual
+                    ? 'Update Auto-Start Mode'
+                    : 'Save Auto-Start Mode (Stay on Main)'
+                  : 'Turn Off Auto-Start'}
+              </button>
+            </div>
+          )}
+        </div>
 
         <div className="flex flex-wrap items-center justify-end gap-2 pt-3 border-t border-slate-100">
           <button

@@ -116,7 +116,12 @@ export interface BreakoutRoundMeta {
   createdAt: number;
 }
 
-export type BreakoutAction = 'new-round' | 'resume' | 'update-current' | 'return-to-main';
+export type BreakoutAction =
+  | 'new-round'
+  | 'resume'
+  | 'update-current'
+  | 'return-to-main'
+  | 'set-auto-individual';
 
 export interface BreakoutGroupDraft {
   id: string;
@@ -132,10 +137,12 @@ export interface ConfigureBreakoutPayload {
   targetRoundId?: string;                    // alias for roundId
   allowSelfSelect?: boolean;
   chatScope?: 'unified' | 'board';
-  copyWorksheet?: boolean;                   // 'new-round' only
-  customBackground?: RoomBackground | null;  // 'new-round' only
+  copyWorksheet?: boolean;                   // 'new-round' / 'set-auto-individual'
+  customBackground?: RoomBackground | null;  // 'new-round' / 'set-auto-individual'
   groups?: BreakoutGroupDraft[];             // 'new-round': ids ignored. 'resume'/'update-current': ids must be real board ids
-  templateLabel?: string;                    // 'new-round' only, used in the round title
+  templateLabel?: string;                    // 'new-round' / 'set-auto-individual', used in the round title
+  autoIndividual?: boolean;                  // used by 'set-auto-individual'
+  autoIndividualBackground?: RoomBackground | null; // used by 'set-auto-individual'
 }
 
 export interface SubBoardData {
@@ -157,6 +164,10 @@ export interface BreakoutConfig {
   allowRoundSelfSelect?: boolean;
   /** Optional per-student board override (maps userId -> boardId or 'main') for future per-student cross-round routing. */
   userBoardOverrides?: Record<string, string>;
+  /** When true while mode is 'main', any non-teacher student joining auto-starts an Individual round with autoIndividualBackground. Cleared on return-to-main. */
+  autoIndividual?: boolean;
+  autoIndividualBackground?: RoomBackground | null;
+  autoIndividualTemplateLabel?: string;
   chatScope: 'unified' | 'board';
 }
 

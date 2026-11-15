@@ -1783,6 +1783,7 @@ export default function App() {
           users={users}
           remoteCursors={remoteCursors}
           isCanvasLocked={roomSettings.isCanvasLocked}
+          hasTeacherPin={roomSettings.hasTeacherPin}
           isTeacher={isTeacher}
           userId={userId}
           userName={userName}
