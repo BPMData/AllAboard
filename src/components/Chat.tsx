@@ -319,9 +319,17 @@ export default function Chat({
       {/* Top Studio Header, Room Switcher & PIN-Protected Teacher Control */}
       <div className="p-3.5 border-b border-slate-200 bg-white space-y-2.5">
         <div className="flex items-center justify-between gap-1.5">
-          <span className="font-display font-bold text-base tracking-tight text-slate-900 whitespace-nowrap shrink-0">
-            AllAboard
-          </span>
+          <div className="flex items-center gap-2 min-w-0 shrink-0">
+            <img
+              src="/assets/aistudio/favicon_68cc1684.svg"
+              alt="AllAboard"
+              referrerPolicy="no-referrer"
+              className="w-7 h-7 rounded-lg shrink-0 object-contain shadow-xs"
+            />
+            <span className="font-display font-bold text-base tracking-tight text-slate-900 whitespace-nowrap shrink-0">
+              AllAboard
+            </span>
+          </div>
 
           <div className="flex items-center gap-1.5 min-w-0">
             {isTeacher ? (
@@ -371,7 +379,7 @@ export default function Chat({
         </div>
 
         {/* Room Code Bar + Custom or Random "New Room" Controls */}
-        <div className="px-2.5 py-2 rounded-lg bg-slate-50 border border-slate-200/80 text-xs space-y-1.5">
+        <div className="px-2.5 py-2 rounded-lg bg-brand-50/45 border border-brand-200/70 text-xs space-y-1.5">
           {isEditingRoom ? (
             <form onSubmit={handleRoomSubmit} className="flex items-center gap-1 flex-1 min-w-0">
               <input
@@ -386,12 +394,12 @@ export default function Chat({
                 placeholder="room-code"
                 autoFocus
                 maxLength={24}
-                className="w-full min-w-0 px-2 py-0.5 bg-white border border-slate-300 rounded font-mono text-xs text-slate-900 focus:outline-none focus:border-blue-500"
+                className="w-full min-w-0 px-2 py-0.5 bg-white border border-slate-300 rounded font-mono text-xs text-slate-900 focus:outline-none focus:border-brand-500"
               />
               <button
                 type="submit"
                 disabled={!roomDraft.replace(/^-|-$/g, '').trim()}
-                className="p-1 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-40 cursor-pointer shrink-0"
+                className="p-1 bg-brand-600 text-white rounded hover:bg-brand-700 disabled:opacity-40 cursor-pointer shrink-0"
                 title="Switch to custom room code"
               >
                 <Check size={12} />
@@ -420,14 +428,14 @@ export default function Chat({
           ) : (
             <>
               <div className="min-w-0">
-                <div className="text-[10px] uppercase tracking-wide text-slate-500">ROOM</div>
+                <div className="text-[10px] uppercase tracking-wide text-brand-800/70 font-medium">ROOM</div>
                 <button
                   type="button"
                   onClick={() => {
                     setRoomDraft(roomId);
                     setIsEditingRoom(true);
                   }}
-                  className="text-lg font-bold font-mono text-slate-900 hover:text-blue-600 break-all text-left leading-tight cursor-pointer"
+                  className="text-lg font-bold font-mono text-slate-900 hover:text-brand-600 break-all text-left leading-tight cursor-pointer"
                   title="Click to enter a different room code"
                 >
                   {roomId}
@@ -438,7 +446,7 @@ export default function Chat({
                 <button
                   type="button"
                   onClick={handleCopyRoomLink}
-                  className="flex items-center gap-1 px-1.5 py-0.5 text-[11px] font-medium text-slate-600 hover:text-slate-900 hover:bg-slate-200/60 rounded transition-colors cursor-pointer whitespace-nowrap"
+                  className="flex items-center gap-1 px-1.5 py-0.5 text-[11px] font-medium text-slate-600 hover:text-slate-900 hover:bg-brand-100/60 rounded transition-colors cursor-pointer whitespace-nowrap"
                   title="Copy room invite link for students"
                 >
                   <Copy size={11} />
@@ -451,7 +459,7 @@ export default function Chat({
                     setRoomDraft('');
                     setIsEditingRoom(true);
                   }}
-                  className="flex items-center gap-1 px-1.5 py-0.5 text-[11px] font-medium text-blue-600 hover:text-blue-700 hover:bg-blue-50 rounded transition-colors cursor-pointer whitespace-nowrap"
+                  className="flex items-center gap-1 px-1.5 py-0.5 text-[11px] font-medium text-brand-600 hover:text-brand-700 hover:bg-brand-100/70 rounded transition-colors cursor-pointer whitespace-nowrap"
                   title="Enter a custom room code or generate a random room"
                 >
                   <PlusCircle size={11} />
@@ -509,12 +517,12 @@ export default function Chat({
                 placeholder={hasTeacherPin ? 'Enter room PIN...' : 'Create 4+ digit PIN...'}
                 autoFocus
                 maxLength={16}
-                className="flex-1 px-2.5 py-1.5 bg-slate-800 border border-slate-700 rounded text-xs text-white placeholder:text-slate-500 font-mono focus:outline-none focus:border-blue-500"
+                className="flex-1 px-2.5 py-1.5 bg-slate-800 border border-slate-700 rounded text-xs text-white placeholder:text-slate-500 font-mono focus:outline-none focus:border-brand-500"
               />
               <button
                 type="submit"
                 disabled={pinInput.trim().length < 3 || isSubmittingPin}
-                className="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 disabled:bg-slate-800 disabled:text-slate-600 text-xs font-semibold rounded transition-colors whitespace-nowrap cursor-pointer"
+                className="px-3 py-1.5 bg-brand-600 hover:bg-brand-500 disabled:bg-slate-800 disabled:text-slate-600 text-xs font-semibold rounded transition-colors whitespace-nowrap cursor-pointer"
               >
                 {hasTeacherPin ? 'Unlock' : 'Set PIN'}
               </button>
@@ -650,7 +658,7 @@ export default function Chat({
                         className={cn(
                           "w-full px-3 py-2 rounded-lg text-sm leading-relaxed border break-words",
                           isMe
-                            ? "bg-blue-50/70 border-blue-200/80 text-slate-900"
+                            ? "bg-brand-50/75 border-brand-200/80 text-slate-900"
                             : "bg-white border-slate-200/90 text-slate-800"
                         )}
                       >
@@ -670,12 +678,12 @@ export default function Chat({
                 value={inputText}
                 onChange={(e) => setInputText(e.target.value)}
                 placeholder="Message the class..."
-                className="w-full pl-3.5 pr-10 py-2 bg-slate-100 border border-transparent rounded-lg text-sm text-slate-900 placeholder:text-slate-400 focus:bg-white focus:border-blue-500 focus:outline-none transition-colors"
+                className="w-full pl-3.5 pr-10 py-2 bg-slate-100 border border-transparent rounded-lg text-sm text-slate-900 placeholder:text-slate-400 focus:bg-white focus:border-brand-500 focus:outline-none transition-colors"
               />
               <button
                 type="submit"
                 disabled={!inputText.trim()}
-                className="absolute right-1.5 p-1.5 text-blue-600 hover:bg-blue-50 rounded-md disabled:text-slate-300 disabled:hover:bg-transparent transition-colors cursor-pointer"
+                className="absolute right-1.5 p-1.5 text-brand-600 hover:bg-brand-50 rounded-md disabled:text-slate-300 disabled:hover:bg-transparent transition-colors cursor-pointer"
                 title="Send message"
               >
                 <Send size={16} />
@@ -716,11 +724,11 @@ export default function Chat({
                           placeholder="New name..."
                           autoFocus
                           maxLength={28}
-                          className="w-full px-2 py-0.5 bg-slate-50 border border-slate-300 rounded text-xs text-slate-900 focus:outline-none focus:border-blue-500"
+                          className="w-full px-2 py-0.5 bg-slate-50 border border-slate-300 rounded text-xs text-slate-900 focus:outline-none focus:border-brand-500"
                         />
                         <button
                           type="submit"
-                          className="p-1 bg-blue-600 text-white rounded hover:bg-blue-700 cursor-pointer shrink-0"
+                          className="p-1 bg-brand-600 text-white rounded hover:bg-brand-700 cursor-pointer shrink-0"
                           title="Save & lock student name"
                         >
                           <Check size={12} />
@@ -787,7 +795,7 @@ export default function Chat({
                           setConfirmRemoveUserId(null);
                           setConfirmEraseUserId(null);
                         }}
-                        className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-md transition-colors cursor-pointer"
+                        className="p-1.5 text-slate-400 hover:text-brand-600 hover:bg-brand-50 rounded-md transition-colors cursor-pointer"
                         title={`Rename ${participant.name} (locks student from changing it back)`}
                       >
                         <Edit2 size={13} />
@@ -941,13 +949,13 @@ export default function Chat({
               type="text"
               value={nameDraft}
               onChange={(e) => setNameDraft(e.target.value)}
-              className="flex-1 px-2.5 py-1 bg-white border border-slate-300 rounded text-xs text-slate-900 focus:outline-none focus:border-blue-500"
+              className="flex-1 px-2.5 py-1 bg-white border border-slate-300 rounded text-xs text-slate-900 focus:outline-none focus:border-brand-500"
               autoFocus
               maxLength={28}
             />
             <button
               type="submit"
-              className="p-1.5 bg-blue-600 text-white rounded hover:bg-blue-700 cursor-pointer"
+              className="p-1.5 bg-brand-600 text-white rounded hover:bg-brand-700 cursor-pointer"
               title="Save name"
             >
               <Check size={13} />
@@ -1011,8 +1019,8 @@ export default function Chat({
           className={cn(
             "w-0.5 h-full transition-colors",
             isResizing
-              ? "bg-blue-600"
-              : "bg-transparent group-hover:bg-blue-400 group-focus-visible:bg-blue-500"
+              ? "bg-brand-600"
+              : "bg-transparent group-hover:bg-brand-400 group-focus-visible:bg-brand-500"
           )}
         />
         <div
@@ -1020,7 +1028,7 @@ export default function Chat({
           className={cn(
             "absolute top-1/2 -translate-y-1/2 w-1 h-8 rounded-full transition-all",
             isResizing
-              ? "bg-blue-600 opacity-100 scale-y-110"
+              ? "bg-brand-600 opacity-100 scale-y-110"
               : "bg-slate-400/80 opacity-0 group-hover:opacity-100 group-focus-visible:opacity-100"
           )}
         />

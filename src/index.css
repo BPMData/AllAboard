@@ -4,6 +4,16 @@
   --font-sans: "DM Sans", ui-sans-serif, system-ui, sans-serif;
   --font-display: "Plus Jakarta Sans", ui-sans-serif, system-ui, sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+  --color-brand-50: #f1f9f8;
+  --color-brand-100: #d9f0ed;
+  --color-brand-200: #b2dfd9;
+  --color-brand-300: #90c5c0;
+  --color-brand-400: #57a8a0;
+  --color-brand-500: #1b9387;
+  --color-brand-600: #087f73;
+  --color-brand-700: #06665c;
+  --color-brand-800: #065049;
+  --color-brand-900: #083f3a;
 }
 
 body {

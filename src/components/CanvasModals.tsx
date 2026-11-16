@@ -103,7 +103,7 @@ export function LiveGridOverview({
               <button
                 type="button"
                 onClick={() => onSendClassToRound(viewingRound.id)}
-                className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-blue-600 text-white hover:bg-blue-700 cursor-pointer"
+                className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-brand-600 text-white hover:bg-brand-700 cursor-pointer"
                 title={`Move the whole class into ${viewingRound.title} with their saved work intact`}
               >
                 Send Class to Round {viewingRound.number}
@@ -149,7 +149,7 @@ export function LiveGridOverview({
             }}
             className={cn(
               "bg-white rounded-xl border p-4 cursor-pointer transition-all hover:shadow-md flex flex-col justify-between gap-3",
-              activeBoardId === 'main' ? "border-blue-600 ring-2 ring-blue-600/20" : "border-slate-200"
+              activeBoardId === 'main' ? "border-brand-600 ring-2 ring-brand-600/20" : "border-slate-200"
             )}
           >
             <div className="flex items-center justify-between">
@@ -174,7 +174,7 @@ export function LiveGridOverview({
             </div>
             <div className="flex items-center justify-between text-xs text-slate-500">
               <span>Whole-class shared stage</span>
-              <span className="text-blue-600 font-semibold">Open Board →</span>
+              <span className="text-brand-600 font-semibold">Open Board →</span>
             </div>
           </div>
 
@@ -193,7 +193,7 @@ export function LiveGridOverview({
                 }}
                 className={cn(
                   "bg-white rounded-xl border p-4 cursor-pointer transition-all hover:shadow-md flex flex-col justify-between gap-3",
-                  activeBoardId === sb.id ? "border-blue-600 ring-2 ring-blue-600/20" : "border-slate-200"
+                  activeBoardId === sb.id ? "border-brand-600 ring-2 ring-brand-600/20" : "border-slate-200"
                 )}
               >
                 <div>
@@ -201,7 +201,7 @@ export function LiveGridOverview({
                     <span className="font-display font-bold text-sm text-slate-900 truncate">
                       {showRoundPrefix ? `${roundShortLabel(sb.roundId)} · ` : ''}{sb.title}
                     </span>
-                    <span className="font-mono tabular-nums text-xs text-blue-600 font-semibold shrink-0">
+                    <span className="font-mono tabular-nums text-xs text-brand-600 font-semibold shrink-0">
                       {sb.elements.length} {sb.elements.length === 1 ? 'stroke' : 'strokes'}
                     </span>
                   </div>
@@ -244,7 +244,7 @@ export function LiveGridOverview({
 
                 <div className="flex items-center justify-between text-xs text-slate-500">
                   <span>{sb.messages.length} group messages</span>
-                  <span className="text-blue-600 font-semibold">Inspect & Draw →</span>
+                  <span className="text-brand-600 font-semibold">Inspect & Draw →</span>
                 </div>
               </div>
             );
@@ -402,7 +402,7 @@ export function BreakoutManagerModal({
               onClick={() => onChangeDraftRoundAction('update-current')}
               className={cn(
                 "p-3 rounded-xl border text-left transition-colors cursor-pointer",
-                draftRoundAction === 'update-current' ? "bg-blue-50/80 border-blue-600" : "bg-white border-slate-200 hover:border-slate-300"
+                draftRoundAction === 'update-current' ? "bg-brand-50/80 border-brand-600" : "bg-white border-slate-200 hover:border-slate-300"
               )}
             >
               <div className="font-display font-semibold text-xs text-slate-900">
@@ -419,7 +419,7 @@ export function BreakoutManagerModal({
               onClick={() => onChangeDraftRoundAction('new-round')}
               className={cn(
                 "p-3 rounded-xl border text-left transition-colors cursor-pointer",
-                draftRoundAction === 'new-round' ? "bg-blue-50/80 border-blue-600" : "bg-white border-slate-200 hover:border-slate-300"
+                draftRoundAction === 'new-round' ? "bg-brand-50/80 border-brand-600" : "bg-white border-slate-200 hover:border-slate-300"
               )}
             >
               <div className="font-display font-semibold text-xs text-slate-900">Start New Round {nextRoundNumber}</div>
@@ -448,7 +448,7 @@ export function BreakoutManagerModal({
                     className={cn(
                       "px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors cursor-pointer flex items-center gap-1.5",
                       isSelected
-                        ? "bg-blue-600 text-white border-blue-600"
+                        ? "bg-brand-600 text-white border-brand-600"
                         : "bg-white text-slate-800 border-slate-300 hover:bg-slate-100"
                     )}
                   >
@@ -457,7 +457,7 @@ export function BreakoutManagerModal({
                       <span
                         className={cn(
                           "px-1.5 py-0.2 rounded text-[10px] font-semibold",
-                          isSelected ? "bg-blue-500 text-white" : "bg-emerald-100 text-emerald-800"
+                          isSelected ? "bg-brand-500 text-white" : "bg-emerald-100 text-emerald-800"
                         )}
                       >
                         Live
@@ -479,7 +479,7 @@ export function BreakoutManagerModal({
               className={cn(
                 "p-3 rounded-xl border text-left transition-colors cursor-pointer",
                 draftBreakoutMode === 'individual'
-                  ? "bg-blue-50/80 border-blue-600"
+                  ? "bg-brand-50/80 border-brand-600"
                   : "bg-white border-slate-200 hover:border-slate-300"
               )}
             >
@@ -502,7 +502,7 @@ export function BreakoutManagerModal({
               className={cn(
                 "p-3 rounded-xl border text-left transition-colors cursor-pointer",
                 draftBreakoutMode === 'groups'
-                  ? "bg-blue-50/80 border-blue-600"
+                  ? "bg-brand-50/80 border-brand-600"
                   : "bg-white border-slate-200 hover:border-slate-300"
               )}
             >
@@ -540,7 +540,7 @@ export function BreakoutManagerModal({
                       className={cn(
                         "w-7 h-7 rounded-md font-mono text-xs font-semibold cursor-pointer",
                         draftGroupCount === n
-                          ? "bg-blue-600 text-white"
+                          ? "bg-brand-600 text-white"
                           : "bg-white border border-slate-300 text-slate-700 hover:bg-slate-100"
                       )}
                     >
@@ -619,7 +619,7 @@ export function BreakoutManagerModal({
                 type="checkbox"
                 checked={draftAllowSelfSelect}
                 onChange={(e) => setDraftAllowSelfSelect(e.target.checked)}
-                className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                className="rounded border-slate-300 text-brand-600 focus:ring-brand-500"
               />
               <span>Allow students to freely switch between breakout groups themselves</span>
             </label>
@@ -639,7 +639,7 @@ export function BreakoutManagerModal({
                 className={cn(
                   "p-2.5 rounded-lg border text-left cursor-pointer",
                   draftWorksheetChoice === 'frayer'
-                    ? "bg-blue-50 border-blue-600 font-semibold text-slate-900"
+                    ? "bg-brand-50 border-brand-600 font-semibold text-slate-900"
                     : "border-slate-200 text-slate-700"
                 )}
               >
@@ -651,7 +651,7 @@ export function BreakoutManagerModal({
                 className={cn(
                   "p-2.5 rounded-lg border text-left cursor-pointer",
                   draftWorksheetChoice === 'checkin'
-                    ? "bg-blue-50 border-blue-600 font-semibold text-slate-900"
+                    ? "bg-brand-50 border-brand-600 font-semibold text-slate-900"
                     : "border-slate-200 text-slate-700"
                 )}
               >
@@ -663,7 +663,7 @@ export function BreakoutManagerModal({
                 className={cn(
                   "p-2.5 rounded-lg border text-left cursor-pointer",
                   draftWorksheetChoice === 'corners'
-                    ? "bg-blue-50 border-blue-600 font-semibold text-slate-900"
+                    ? "bg-brand-50 border-brand-600 font-semibold text-slate-900"
                     : "border-slate-200 text-slate-700"
                 )}
               >
@@ -675,7 +675,7 @@ export function BreakoutManagerModal({
                 className={cn(
                   "p-2.5 rounded-lg border text-left cursor-pointer",
                   draftWorksheetChoice === 'current'
-                    ? "bg-blue-50 border-blue-600 font-semibold text-slate-900"
+                    ? "bg-brand-50 border-brand-600 font-semibold text-slate-900"
                     : "border-slate-200 text-slate-700"
                 )}
               >
@@ -696,7 +696,7 @@ export function BreakoutManagerModal({
                   type="text"
                   value={draftWorksheetTopic}
                   onChange={(e) => setDraftWorksheetTopic(e.target.value)}
-                  className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg text-xs text-slate-900 focus:bg-white focus:border-blue-600 focus:outline-none"
+                  className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg text-xs text-slate-900 focus:bg-white focus:border-brand-600 focus:outline-none"
                 />
               </div>
             )}
@@ -766,7 +766,7 @@ export function BreakoutManagerModal({
                 checked={autoDraftEnabled}
                 disabled={!hasTeacherPin}
                 onChange={(e) => setAutoDraftEnabled(e.target.checked)}
-                className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                className="rounded border-slate-300 text-brand-600 focus:ring-brand-500"
               />
               <span>Enable</span>
             </label>
@@ -813,7 +813,7 @@ export function BreakoutManagerModal({
                   value={autoWorksheetTopic}
                   onChange={(e) => setAutoWorksheetTopic(e.target.value)}
                   placeholder="Worksheet Header / Concept Prompt..."
-                  className="w-full px-2.5 py-1.5 bg-white border border-slate-300 rounded-lg text-xs text-slate-900 focus:border-blue-600 focus:outline-none"
+                  className="w-full px-2.5 py-1.5 bg-white border border-slate-300 rounded-lg text-xs text-slate-900 focus:border-brand-600 focus:outline-none"
                 />
               )}
             </div>
@@ -916,7 +916,7 @@ export function BreakoutManagerModal({
               onClose();
               onShowLiveGridOverview(payload.action !== 'update-current');
             }}
-            className="px-4 py-2 rounded-lg text-xs font-semibold bg-blue-600 text-white hover:bg-blue-500 cursor-pointer"
+            className="px-4 py-2 rounded-lg text-xs font-semibold bg-brand-600 text-white hover:bg-brand-500 cursor-pointer"
           >
             {isEditing && targetRound
               ? isSwitchingOrResuming
@@ -987,7 +987,7 @@ export function WorksheetTemplateModal({
                 className={cn(
                   "w-full text-left p-3.5 rounded-xl border transition-colors flex items-start justify-between gap-3 cursor-pointer",
                   isSelected
-                    ? "bg-blue-50/70 border-blue-600"
+                    ? "bg-brand-50/70 border-brand-600"
                     : "bg-white border-slate-200 hover:border-slate-300"
                 )}
               >
@@ -997,7 +997,7 @@ export function WorksheetTemplateModal({
                   </div>
                   <p className="text-xs text-slate-600 mt-0.5">{tpl.description}</p>
                 </div>
-                {isSelected && <Check size={16} className="text-blue-600 shrink-0 mt-0.5" />}
+                {isSelected && <Check size={16} className="text-brand-600 shrink-0 mt-0.5" />}
               </button>
             );
           })}
@@ -1019,7 +1019,7 @@ export function WorksheetTemplateModal({
               BUILT_IN_TEMPLATES.find((t) => t.id === selectedTemplateId)?.promptPlaceholder
             }
             maxLength={80}
-            className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-sm text-slate-900 focus:bg-white focus:border-blue-600 focus:outline-none"
+            className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-sm text-slate-900 focus:bg-white focus:border-brand-600 focus:outline-none"
           />
         </div>
 
@@ -1041,7 +1041,7 @@ export function WorksheetTemplateModal({
               onClose();
               await onApplyTemplate(generatedBg);
             }}
-            className="px-4 py-2 rounded-lg text-xs font-semibold bg-blue-600 text-white hover:bg-blue-500 transition-colors cursor-pointer"
+            className="px-4 py-2 rounded-lg text-xs font-semibold bg-brand-600 text-white hover:bg-brand-500 transition-colors cursor-pointer"
           >
             Apply Worksheet to Board
           </button>
@@ -1138,7 +1138,7 @@ export function RestoreSnapshotModal({
                 className={cn(
                   "w-full text-left p-3 rounded-xl border transition-colors flex items-start justify-between gap-3 cursor-pointer",
                   importMode === 'replace'
-                    ? "bg-blue-50/70 border-blue-600"
+                    ? "bg-brand-50/70 border-brand-600"
                     : "bg-white border-slate-200 hover:border-slate-300"
                 )}
               >
@@ -1150,7 +1150,7 @@ export function RestoreSnapshotModal({
                     Replaces the current room's boards, worksheets, and chat with this snapshot and leaves the board unlocked.
                   </p>
                 </div>
-                {importMode === 'replace' && <Check size={16} className="text-blue-600 shrink-0 mt-0.5" />}
+                {importMode === 'replace' && <Check size={16} className="text-brand-600 shrink-0 mt-0.5" />}
               </button>
 
               <button
@@ -1159,7 +1159,7 @@ export function RestoreSnapshotModal({
                 className={cn(
                   "w-full text-left p-3 rounded-xl border transition-colors flex items-start justify-between gap-3 cursor-pointer",
                   importMode === 'readonly'
-                    ? "bg-blue-50/70 border-blue-600"
+                    ? "bg-brand-50/70 border-brand-600"
                     : "bg-white border-slate-200 hover:border-slate-300"
                 )}
               >
@@ -1171,7 +1171,7 @@ export function RestoreSnapshotModal({
                     Loads the snapshot and automatically locks the board so students can pan, zoom, and read without modifying anything.
                   </p>
                 </div>
-                {importMode === 'readonly' && <Check size={16} className="text-blue-600 shrink-0 mt-0.5" />}
+                {importMode === 'readonly' && <Check size={16} className="text-brand-600 shrink-0 mt-0.5" />}
               </button>
 
               <button
@@ -1180,7 +1180,7 @@ export function RestoreSnapshotModal({
                 className={cn(
                   "w-full text-left p-3 rounded-xl border transition-colors flex items-start justify-between gap-3 cursor-pointer",
                   importMode === 'merge'
-                    ? "bg-blue-50/70 border-blue-600"
+                    ? "bg-brand-50/70 border-brand-600"
                     : "bg-white border-slate-200 hover:border-slate-300"
                 )}
               >
@@ -1192,7 +1192,7 @@ export function RestoreSnapshotModal({
                     Keeps everything currently in #{roomId} and combines the snapshot's drawings, sub-boards, and messages.
                   </p>
                 </div>
-                {importMode === 'merge' && <Check size={16} className="text-blue-600 shrink-0 mt-0.5" />}
+                {importMode === 'merge' && <Check size={16} className="text-brand-600 shrink-0 mt-0.5" />}
               </button>
             </div>
           </>
@@ -1211,7 +1211,7 @@ export function RestoreSnapshotModal({
               type="button"
               disabled={isImporting}
               onClick={onConfirmImport}
-              className="px-4 py-2 rounded-lg text-xs font-semibold bg-blue-600 text-white hover:bg-blue-500 disabled:bg-slate-300 transition-colors cursor-pointer"
+              className="px-4 py-2 rounded-lg text-xs font-semibold bg-brand-600 text-white hover:bg-brand-500 disabled:bg-slate-300 transition-colors cursor-pointer"
             >
               {isImporting ? 'Restoring...' : 'Restore Room Snapshot'}
             </button>
@@ -1395,7 +1395,7 @@ export function PdfPageRangeModal({
                 value={firstText}
                 onChange={(e) => setFirstText(e.target.value)}
                 onBlur={handleBlur}
-                className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-sm text-slate-900 focus:bg-white focus:border-blue-600 focus:outline-none"
+                className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-sm text-slate-900 focus:bg-white focus:border-brand-600 focus:outline-none"
               />
             </div>
             <div>
@@ -1413,7 +1413,7 @@ export function PdfPageRangeModal({
                 value={lastText}
                 onChange={(e) => setLastText(e.target.value)}
                 onBlur={handleBlur}
-                className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-sm text-slate-900 focus:bg-white focus:border-blue-600 focus:outline-none"
+                className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-sm text-slate-900 focus:bg-white focus:border-brand-600 focus:outline-none"
               />
             </div>
           </div>
@@ -1443,7 +1443,7 @@ export function PdfPageRangeModal({
                     className={cn(
                       'px-2 py-1 rounded-md font-mono font-semibold text-xs transition-colors cursor-pointer',
                       isActive
-                        ? 'bg-blue-600 text-white shadow-xs'
+                        ? 'bg-brand-600 text-white shadow-xs'
                         : 'bg-white text-slate-700 border border-slate-200 hover:bg-slate-100'
                     )}
                   >
@@ -1478,7 +1478,7 @@ export function PdfPageRangeModal({
                     className={cn(
                       'flex flex-col items-center gap-1.5 p-1.5 rounded-lg border transition-all cursor-pointer select-none',
                       inRange
-                        ? 'border-blue-500 bg-blue-50 ring-1 ring-blue-500/40'
+                        ? 'border-brand-500 bg-brand-50 ring-1 ring-brand-500/40'
                         : 'border-slate-200 bg-white opacity-60 hover:opacity-100 hover:border-slate-300'
                     )}
                   >
@@ -1494,7 +1494,7 @@ export function PdfPageRangeModal({
                     <span
                       className={cn(
                         'text-[11px] font-medium tabular-nums',
-                        inRange ? 'text-blue-700 font-semibold' : 'text-slate-600'
+                        inRange ? 'text-brand-700 font-semibold' : 'text-slate-600'
                       )}
                     >
                       {pageNum}
@@ -1522,7 +1522,7 @@ export function PdfPageRangeModal({
                 selectedScale
               )
             }
-            className="px-4 py-2 rounded-lg text-xs font-semibold bg-blue-600 text-white hover:bg-blue-500 transition-colors cursor-pointer"
+            className="px-4 py-2 rounded-lg text-xs font-semibold bg-brand-600 text-white hover:bg-brand-500 transition-colors cursor-pointer"
           >
             Import pages
           </button>
@@ -1624,7 +1624,7 @@ export function DriveSaveModal({
                 e.target.setSelectionRange(0, dot > 0 ? dot : e.target.value.length);
               }}
               maxLength={200}
-              className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-sm text-slate-900 focus:bg-white focus:border-blue-600 focus:outline-none"
+              className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-sm text-slate-900 focus:bg-white focus:border-brand-600 focus:outline-none"
             />
           </div>
 
@@ -1731,7 +1731,7 @@ export function DriveSaveModal({
           <button
             type="submit"
             disabled={Boolean(busy)}
-            className="px-4 py-2 rounded-lg text-xs font-semibold bg-blue-600 text-white hover:bg-blue-500 transition-colors cursor-pointer disabled:opacity-60"
+            className="px-4 py-2 rounded-lg text-xs font-semibold bg-brand-600 text-white hover:bg-brand-500 transition-colors cursor-pointer disabled:opacity-60"
           >
             {busy === 'saving' ? 'Saving...' : willReplace ? 'Replace' : 'Save'}
           </button>

@@ -147,12 +147,12 @@ export default function RoomExistsModal({
                 }}
                 placeholder="custom-room-code"
                 maxLength={24}
-                className="flex-1 min-w-0 px-2.5 py-1.5 bg-white border border-slate-300 rounded-lg font-mono text-xs text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-blue-500"
+                className="flex-1 min-w-0 px-2.5 py-1.5 bg-white border border-slate-300 rounded-lg font-mono text-xs text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-brand-500"
               />
               <button
                 type="submit"
                 disabled={!canSubmitCustom || isBusy}
-                className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-blue-600 hover:bg-blue-500 text-white transition-colors cursor-pointer disabled:opacity-40 shrink-0"
+                className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-brand-600 hover:bg-brand-500 text-white transition-colors cursor-pointer disabled:opacity-40 shrink-0"
                 title="Use this custom room code"
               >
                 <Check size={13} />
@@ -194,7 +194,7 @@ export default function RoomExistsModal({
             type="button"
             disabled={isBusy}
             onClick={onCreateFreshRoom}
-            className="flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-xs font-semibold bg-blue-600 hover:bg-blue-500 text-white transition-colors cursor-pointer disabled:opacity-40"
+            className="flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-xs font-semibold bg-brand-600 hover:bg-brand-500 text-white transition-colors cursor-pointer disabled:opacity-40"
           >
             <PlusCircle size={13} />
             <span>Create Fresh Room</span>

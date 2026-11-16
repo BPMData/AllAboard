@@ -1557,24 +1557,27 @@ export default function App() {
 
   if (!isJoined) {
     return (
-      <div className="min-h-screen bg-slate-950 flex items-center justify-center p-4">
+      <div className="min-h-screen bg-slate-950 bg-[radial-gradient(ellipse_at_top,_rgba(8,127,115,0.16),_transparent_55%)] flex items-center justify-center p-4">
         <motion.div
           initial={{ opacity: 0, scale: 0.96 }}
           animate={{ opacity: 1, scale: 1 }}
           transition={{ duration: 0.16 }}
-          className="bg-slate-900 border border-slate-800 p-8 rounded-2xl shadow-xl w-full max-w-md"
+          className="bg-slate-900 border border-slate-800/90 p-8 rounded-2xl shadow-xl w-full max-w-md"
         >
           <div className="flex justify-center mb-5">
-            <div className="w-14 h-14 bg-blue-600 rounded-xl flex items-center justify-center">
-              <Users className="text-white" size={28} />
-            </div>
+            <img
+              src="/assets/aistudio/icon-192_ea534733.png"
+              alt="AllAboard"
+              referrerPolicy="no-referrer"
+              className="w-14 h-14 rounded-xl shadow-md object-contain"
+            />
           </div>
 
           <h1 className="font-display text-2xl font-bold text-white text-center mb-1.5 text-balance">
             Welcome to AllAboard
           </h1>
           <p className="text-slate-400 text-center mb-6 text-sm">
-            Enter your name to join room <span className="font-mono text-slate-200">#{effectiveRoomId}</span>
+            Enter your name to join room <span className="font-mono text-brand-200">#{effectiveRoomId}</span>
           </p>
 
           {kickNotice && (
@@ -1599,7 +1602,7 @@ export default function App() {
                 placeholder="e.g. Alex"
                 autoFocus
                 maxLength={28}
-                className="w-full px-4 py-3 bg-slate-800 border border-slate-700 rounded-xl text-white placeholder:text-slate-500 focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors outline-none"
+                className="w-full px-4 py-3 bg-slate-800 border border-slate-700 rounded-xl text-white placeholder:text-slate-500 focus:ring-2 focus:ring-brand-500 focus:border-transparent transition-colors outline-none"
               />
             </div>
 
@@ -1621,7 +1624,7 @@ export default function App() {
                     setRoomId((prev) => prev.replace(/^-|-$/g, ''));
                   }}
                   maxLength={24}
-                  className="bg-slate-900 border border-slate-700 px-2 py-1 rounded font-mono text-xs text-white placeholder:text-slate-500 w-28 flex-1 min-w-[6.5rem] focus:outline-none focus:border-blue-500"
+                  className="bg-slate-900 border border-slate-700 px-2 py-1 rounded font-mono text-xs text-white placeholder:text-slate-500 w-28 flex-1 min-w-[6.5rem] focus:outline-none focus:border-brand-500"
                 />
               </div>
               <div className="flex items-center gap-1.5 shrink-0">
@@ -1634,7 +1637,7 @@ export default function App() {
                     setRoomId('');
                     roomCodeInputRef.current?.focus();
                   }}
-                  className="flex items-center gap-1 text-blue-400 hover:text-blue-300 font-medium whitespace-nowrap cursor-pointer disabled:opacity-50"
+                  className="flex items-center gap-1 text-brand-400 hover:text-brand-300 font-medium whitespace-nowrap cursor-pointer disabled:opacity-50"
                   title="Type a custom room code"
                 >
                   <PlusCircle size={13} />
@@ -1704,7 +1707,7 @@ export default function App() {
             <button
               type="submit"
               disabled={!userName.trim() || isCheckingRoom}
-              className="w-full py-3 px-4 bg-blue-600 hover:bg-blue-500 disabled:bg-slate-800 disabled:text-slate-600 text-white font-semibold rounded-xl transition-colors flex items-center justify-center gap-2 cursor-pointer"
+              className="w-full py-3 px-4 bg-brand-600 hover:bg-brand-500 disabled:bg-slate-800 disabled:text-slate-600 text-white font-semibold rounded-xl transition-colors flex items-center justify-center gap-2 cursor-pointer"
             >
               <LogIn size={18} />
               <span>{isCheckingRoom ? 'Checking Room...' : 'Join Classroom'}</span>
