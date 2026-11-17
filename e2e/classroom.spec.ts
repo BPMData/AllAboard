@@ -39,6 +39,50 @@ test.describe('lobby', () => {
     await expect(page.getByPlaceholder('Message the class...')).toBeVisible();
     await expect(page.getByText('Alex', { exact: true }).first()).toBeVisible();
   });
+
+  test('room history records visited rooms, shows live/saved status, and lets users select or clear them', async ({ browser }) => {
+    const roomA = uniqueRoom('hist-a');
+    const roomB = uniqueRoom('hist-b');
+    const user = await newUser(browser);
+    const other = await newUser(browser);
+
+    // Another user stays in roomA so it remains live even after the main user moves to roomB
+    await joinRoom(other.page, roomA, 'Sam');
+
+    // Main user visits roomA, then moves to roomB
+    await joinRoom(user.page, roomA, 'Ms T', PIN);
+    await joinRoom(user.page, roomB, 'Ms T', PIN);
+
+    // Open History in the Chat sidebar: both rooms should appear as Live · 1 online
+    await user.page.getByRole('button', { name: 'History' }).click();
+    const chatMenu = user.page.getByRole('region', { name: 'Recent room history' });
+    await expect(chatMenu).toBeVisible();
+    await expect(chatMenu.getByText(roomB)).toBeVisible();
+    await expect(chatMenu.getByText(roomA)).toBeVisible();
+    await expect(chatMenu.getByRole('button', { name: new RegExp(`^${roomA}.*Live · 1 online`) })).toBeVisible();
+
+    // Once the other user leaves roomA, refreshing status shows roomA as Saved · rejoinable
+    await other.context.close();
+    await user.page.waitForTimeout(100);
+    await chatMenu.getByRole('button', { name: 'Refresh room status' }).click();
+    await expect(chatMenu.getByRole('button', { name: new RegExp(`^${roomA}.*Saved · rejoinable`) })).toBeVisible();
+
+    // Return to Lobby (fresh visit), open History, and select roomA to fill the Room Code input
+    await user.page.goto('/');
+    await expect(user.page.getByRole('button', { name: 'Join Classroom' })).toBeVisible();
+    await user.page.getByRole('button', { name: 'History' }).click();
+    const lobbyMenu = user.page.getByRole('region', { name: 'Recent room history' });
+    await expect(lobbyMenu.getByText(roomA)).toBeVisible();
+    await lobbyMenu.getByRole('button', { name: new RegExp(`^${roomA}`) }).click();
+    await expect(user.page.getByLabel('Room Code')).toHaveValue(roomA);
+
+    // Clear history empties the list
+    await user.page.getByRole('button', { name: 'History' }).click();
+    await user.page.getByRole('region', { name: 'Recent room history' }).getByRole('button', { name: 'Clear' }).click();
+    await expect(user.page.getByRole('region', { name: 'Recent room history' }).getByText('No rooms visited on this browser yet.')).toBeVisible();
+
+    await user.context.close();
+  });
 });
 
 test.describe('teacher and students', () => {

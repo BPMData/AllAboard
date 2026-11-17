@@ -188,6 +188,11 @@ export async function startServer(options: StartServerOptions = {}) {
     res.status(200).json({ status: 'ok' });
   });
 
+  app.get('/api/rooms/:roomId', (req, res) => {
+    res.setHeader('Cache-Control', 'no-store');
+    res.status(200).json(getRoomAvailability(String(req.params.roomId || '')));
+  });
+
   app.get('/api/assets/:hash', async (req, res) => {
     const hash = req.params.hash;
     if (!isValidAssetHash(hash)) {
