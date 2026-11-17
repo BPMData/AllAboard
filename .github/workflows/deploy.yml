@@ -101,7 +101,7 @@ jobs:
                 yq -i ".spec.template.spec.containers[0].image = \"$IMAGE\"" /tmp/service.yaml
                 echo "image=$IMAGE" >> "$GITHUB_OUTPUT"
               fi
-              yq -i 'del(.spec.template.metadata.annotations["run.googleapis.com/sources"], .spec.template.metadata.annotations["run.googleapis.com/base-images"], .spec.template.metadata.name, .spec.template.spec.runtimeClassName, .spec.template.spec.volumes, .spec.template.spec.containers[0].command, .spec.template.spec.containers[0].args, .spec.template.spec.containers[0].workingDir, .spec.template.spec.containers[0].dependsOn, .spec.template.spec.containers[0].volumeMounts)' /tmp/service.yaml
+              yq -i 'del(.spec.template.metadata.annotations["run.googleapis.com/sources"], .spec.template.metadata.annotations["run.googleapis.com/base-images"], .spec.template.metadata.annotations["run.googleapis.com/container-dependencies"], .spec.template.metadata.name, .spec.template.spec.runtimeClassName, .spec.template.spec.volumes, .spec.template.spec.containers[0].command, .spec.template.spec.containers[0].args, .spec.template.spec.containers[0].workingDir, .spec.template.spec.containers[0].dependsOn, .spec.template.spec.containers[0].volumeMounts)' /tmp/service.yaml
               CONTAINER_COUNT="$(yq '.spec.template.spec.containers | length' /tmp/service.yaml)"
               if [ "$CONTAINER_COUNT" = "1" ]; then
                 yq -i '.spec.template.spec.containers[0].name = "allaboard"' /tmp/service.yaml
