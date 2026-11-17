@@ -1,0 +1,137 @@
+name: Deploy to Cloud Run
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-cloudrun-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    name: Verify and deploy allaboard
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci --no-audit --no-fund
+
+      - name: Typecheck
+        run: npm run lint
+
+      - name: Run unit and server tests
+        run: npm test
+
+      - name: Production build
+        run: npm run build
+
+      - name: Node 22 production type-stripping check
+        run: node -e "import('./server.ts').then(() => console.log('OK'))"
+
+      - name: Production boot smoke check
+        run: |
+          DATA_DIR="$(mktemp -d)"
+          LOG="$(mktemp)"
+          NODE_ENV=production PORT=3456 DATA_DIR="$DATA_DIR" node server.ts >"$LOG" 2>&1 &
+          SERVER_PID=$!
+          trap 'kill "$SERVER_PID" 2>/dev/null || true' EXIT
+          for _ in $(seq 1 30); do
+            kill -0 "$SERVER_PID" 2>/dev/null || { cat "$LOG"; exit 1; }
+            if curl -sf http://127.0.0.1:3456/healthz >/dev/null; then break; fi
+            sleep 1
+          done
+          curl -sf http://127.0.0.1:3456/healthz | grep -q '"status":"ok"'
+          curl -sf http://127.0.0.1:3456/ | grep -q '<div id="root">'
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v3
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - name: Clear AI Studio source annotations before first GitHub deploy
+        id: migrate
+        run: |
+          gcloud run services describe allaboard --region us-east1 --project loyal-rookery-403218 --format export > /tmp/service.yaml
+          if [ "$(yq '.metadata.labels["managed-by"] // ""' /tmp/service.yaml)" != "github-actions" ]; then
+            echo "Inspecting pre-migration annotations and container entrypoints:"
+            yq '.spec.template.metadata.annotations' /tmp/service.yaml
+            yq '.spec.template.spec.containers[].name' /tmp/service.yaml
+            yq '.spec.template.spec.containers[].image' /tmp/service.yaml
+            yq '.spec.template.spec.containers[].command' /tmp/service.yaml
+            yq '.spec.template.spec.containers[].args' /tmp/service.yaml
+
+            ORIG_CONTAINER_COUNT="$(yq '.spec.template.spec.containers | length' /tmp/service.yaml)"
+            if [ "$ORIG_CONTAINER_COUNT" -gt 1 ]; then
+              echo "Collapsing $ORIG_CONTAINER_COUNT-container AI Studio service to single app container"
+              yq -i '.spec.template.spec.containers = [(.spec.template.spec.containers[] | select(.name != "nginx-container" and .name != "nginx"))]' /tmp/service.yaml
+              if [ "$(yq '.spec.template.spec.containers | length' /tmp/service.yaml)" -gt 1 ]; then
+                yq -i '.spec.template.spec.containers = [.spec.template.spec.containers[0]]' /tmp/service.yaml
+              fi
+            fi
+
+            CURRENT_IMAGE="$(yq '.spec.template.spec.containers[0].image // ""' /tmp/service.yaml)"
+            HAS_SOURCES=false
+            if yq -e '.spec.template.metadata.annotations["run.googleapis.com/sources"] != null or .spec.template.metadata.annotations["run.googleapis.com/base-images"] != null' /tmp/service.yaml >/dev/null 2>&1; then
+              HAS_SOURCES=true
+            fi
+
+            if [ "$CURRENT_IMAGE" = "scratch" ] || [ -z "$CURRENT_IMAGE" ] || [ "$HAS_SOURCES" = "true" ] || [ "$ORIG_CONTAINER_COUNT" -gt 1 ]; then
+              if [ "$CURRENT_IMAGE" = "scratch" ] || [ -z "$CURRENT_IMAGE" ]; then
+                REPO_NAME="$(gcloud artifacts repositories list --project loyal-rookery-403218 --location us-east1 --filter='format=DOCKER' --format='value(name)' | grep '/cloud-run-source-deploy$' | head -n1 || true)"
+                if [ -n "$REPO_NAME" ]; then
+                  IMAGE="us-east1-docker.pkg.dev/loyal-rookery-403218/cloud-run-source-deploy/allaboard:${{ github.sha }}"
+                else
+                  IMAGE="gcr.io/loyal-rookery-403218/allaboard:${{ github.sha }}"
+                fi
+                if gcloud container images describe "$IMAGE" --project loyal-rookery-403218 >/dev/null 2>&1; then
+                  echo "Reusing existing Buildpacks image: $IMAGE"
+                else
+                  echo "Replacing placeholder image=scratch with Buildpacks image: $IMAGE"
+                  gcloud builds submit --pack "image=$IMAGE" --project loyal-rookery-403218 .
+                fi
+                yq -i ".spec.template.spec.containers[0].image = \"$IMAGE\"" /tmp/service.yaml
+                echo "image=$IMAGE" >> "$GITHUB_OUTPUT"
+              fi
+              yq -i 'del(.spec.template.metadata.annotations["run.googleapis.com/sources"], .spec.template.metadata.annotations["run.googleapis.com/base-images"], .spec.template.metadata.name, .spec.template.spec.runtimeClassName, .spec.template.spec.volumes, .spec.template.spec.containers[0].command, .spec.template.spec.containers[0].args, .spec.template.spec.containers[0].workingDir, .spec.template.spec.containers[0].dependsOn, .spec.template.spec.containers[0].volumeMounts)' /tmp/service.yaml
+              CONTAINER_COUNT="$(yq '.spec.template.spec.containers | length' /tmp/service.yaml)"
+              if [ "$CONTAINER_COUNT" = "1" ]; then
+                yq -i '.spec.template.spec.containers[0].name = "allaboard"' /tmp/service.yaml
+                yq -i '.spec.template.spec.containers[0].ports = [{"containerPort": 3000}]' /tmp/service.yaml
+              fi
+              gcloud run services replace /tmp/service.yaml --region us-east1 --project loyal-rookery-403218
+            fi
+          fi
+
+      # Call gcloud directly: deploy-cloudrun's flag parser turns `--command=` into a bare
+      # `--command`, which gcloud rejects. --command="" / --args="" reset AI Studio's leftover
+      # entrypoint override so the Buildpacks launcher runs `npm start` (`node server.ts`) on 3000.
+      - name: Deploy to Cloud Run
+        env:
+          MIGRATED_IMAGE: ${{ steps.migrate.outputs.image }}
+        run: |
+          if [ -n "$MIGRATED_IMAGE" ]; then
+            SOURCE_ARGS=(--image "$MIGRATED_IMAGE")
+          else
+            SOURCE_ARGS=(--source .)
+          fi
+          gcloud run deploy allaboard \
+            "${SOURCE_ARGS[@]}" \
+            --region us-east1 \
+            --project loyal-rookery-403218 \
+            --allow-unauthenticated \
+            --port 3000 \
+            --max-instances 1 \
+            --session-affinity \
+            --command "" \
+            --args "" \
+            --update-labels "managed-by=github-actions,commit-sha=${GITHUB_SHA}" \
+            --quiet
