@@ -119,19 +119,27 @@ interface SerializedRoom {
  */
 const DEFAULT_BACKUP_BUCKET = 'allaboard-data';
 
+function isProductionRuntime(): boolean {
+  return (
+    process.env.NODE_ENV === 'production' ||
+    (process.env.NODE_ENV !== 'development' && Boolean(process.env.K_SERVICE))
+  );
+}
+
 /**
  * Picks where rooms are backed up. Candidates, tried in this order; the first one whose probe
  * succeeds wins:
  *   1. BACKUP_DIR (or options.backupDir) → plain files in that folder (local dev, or a mounted bucket)
  *   2. The bucket: options.backupBackend (tests only), else BACKUP_BUCKET (set "off" to disable),
- *      else DEFAULT_BACKUP_BUCKET when running on Cloud Run in production (K_SERVICE + NODE_ENV=production)
+ *      else DEFAULT_BACKUP_BUCKET when running on Cloud Run in production (K_SERVICE + non-dev NODE_ENV)
  * A candidate that fails its probe is skipped (and logged), so a stale BACKUP_DIR left behind by an
  * AI Studio redeploy (env var kept, volume mount dropped) falls through to the bucket API instead of
  * disabling backups. Returns null if nothing works. Never throws.
  */
 async function openBackupMirror(store: RoomStore, options: StartServerOptions): Promise<BackupMirror | null> {
   const dir = options.backupDir ?? process.env.BACKUP_DIR ?? '';
-  const onCloudRun = Boolean(process.env.K_SERVICE) && process.env.NODE_ENV === 'production';
+  const isProd = isProductionRuntime();
+  const onCloudRun = Boolean(process.env.K_SERVICE) && isProd;
   const bucket = process.env.BACKUP_BUCKET ?? (onCloudRun ? DEFAULT_BACKUP_BUCKET : '');
 
   const candidates: BackupBackend[] = [];
@@ -148,7 +156,7 @@ async function openBackupMirror(store: RoomStore, options: StartServerOptions): 
       console.error(`Backup target ${backend.label} is unusable, skipping:`, err);
     }
   }
-  if (candidates.length > 0 || process.env.NODE_ENV === 'production') {
+  if (candidates.length > 0 || isProd) {
     console.warn('Backups are OFF: rooms will NOT survive a cold start or redeploy.');
   }
   return null;
@@ -1993,7 +2001,7 @@ export async function startServer(options: StartServerOptions = {}) {
     });
   });
 
-  if (!options.skipVite && process.env.NODE_ENV !== 'production') {
+  if (!options.skipVite && !isProductionRuntime()) {
     const vite = await createViteServer({
       server: { middlewareMode: true },
       appType: 'spa',

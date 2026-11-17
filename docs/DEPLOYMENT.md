@@ -9,12 +9,11 @@
 
 ## 1. The one-paragraph version
 
-The app is published from **Google AI Studio** to **Cloud Run** (service `allaboard`). Cloud Run's disk is
+The app is deployed via **GitHub Actions** (`.github/workflows/deploy.yml`, Google Cloud Buildpacks, no Dockerfile) to **Cloud Run** (service `allaboard`, `https://allaboard-606573080592.us-east1.run.app/`). Cloud Run's disk is
 **in-memory and wiped** on every cold start (~15 min idle) and every redeploy. So rooms live in a
 local SQLite file as a fast working copy, and are **backed up to the Cloud Storage bucket
-`gs://allaboard-data` directly over the Cloud Storage HTTP API**. That copy survives. **AI Studio's
-Publish button rewrites the Cloud Run service config**, so anything that must keep working is
-**configured in code, never in the Cloud Run console.**
+`gs://allaboard-data` directly over the Cloud Storage HTTP API**. That copy survives.
+Because `allaboard` was migrated off **AI Studio** (whose Publish button rewrote Cloud Run config), keep all required runtime config **in code or in `.github/workflows/deploy.yml`**, never only in console edits.
 
 ---
 
@@ -23,14 +22,14 @@ Publish button rewrites the Cloud Run service config**, so anything that must ke
 | Thing | Value |
 |---|---|
 | GCP project | `loyal-rookery-403218` (project number `606573080592`) |
-| Cloud Run service | `allaboard`, region `us-east1`, public URL `https://allaboard.ai.studio` |
-| Deployed by | AI Studio "Publish/Deploy". Logs carry the label `managed-by: google-ai-studio`. |
-| Containers | **Two.** `nginx-container` is the ingress: it listens on **8080** and forwards to `app-container`. `app-container` runs `node server.ts` and listens on **3000**. |
-| Scaling | **max instances = 1** (required), min instances = 0, session affinity on |
-| Runtime | Node 22.23 base image. Start command: `node server.ts`, which uses **Node's built-in TypeScript type stripping, not tsx**. |
-| Service account | `606573080592-compute@developer.gserviceaccount.com` (the default compute SA) |
-| Backup bucket | `gs://allaboard-data` (us-east1). The SA has **`roles/storage.objectUser`** on it. |
-| Junk bucket | `run-sources-loyal-rookery-403218-us-east1` holds Cloud Run's uploaded sources (~80 MB per deploy). It's safe to add a lifecycle rule deleting objects older than 30 days. |
+| Cloud Run service | `allaboard`, region `us-east1`, public URL `https://allaboard-606573080592.us-east1.run.app/` (shortlink `https://bpmdata.github.io/allaboard/`) |
+| Deployed by | `.github/workflows/deploy.yml` on push to `main` (migrated off AI Studio's two-container nginx + app-container template). |
+| Container | **One** Buildpacks Node 22 container running `npm start` (`node server.ts`) on port **3000** (`--port 3000`). |
+| Scaling | **max instances = 1** (required), min instances = 0, session affinity on (`--session-affinity`) |
+| Runtime | Node 22 (`engines.node: "22.x"`). Buildpacks runs `gcp-build` (`npm run build` → `dist/`) and starts `node server.ts` using **Node's built-in TypeScript type stripping, not tsx**. |
+| Service account | `606573080592-compute@developer.gserviceaccount.com` (runtime SA), `github-deployer@loyal-rookery-403218.iam.gserviceaccount.com` (CI/CD deployer via `GCP_SA_KEY`). |
+| Backup bucket | `gs://allaboard-data` (us-east1). The runtime SA has **`roles/storage.objectUser`** on it. |
+| Junk bucket | `run-sources-loyal-rookery-403218-us-east1` holds legacy AI Studio uploaded sources (~80 MB per deploy). Safe to add a 30-day lifecycle rule. |
 
 ---
 
@@ -90,14 +89,13 @@ All storage setup **fails open**. `RoomStore` falls back to a temp dir; the back
 | Backup engine | `backupMirror.ts` → `BackupMirror` | Batches changed rooms and writes every **10 s**. Writes images **before** the room that references them. Retries on failure. Flushes immediately on SIGTERM. |
 | Bucket backend | `backupMirror.ts` → `GcsBackend` | Cloud Storage JSON API over `fetch`. Auth is a token from `http://metadata.google.internal/…/token` (built into Cloud Run, no keys). 20 s timeout per request. |
 | Folder backend | `backupMirror.ts` → `DirBackend` | Plain files. Used for local dev, tests, and `BACKUP_DIR`. |
-| Choosing a target | `server.ts` → `openBackupMirror` | Tries `BACKUP_DIR`, then the bucket (`BACKUP_BUCKET`, else `allaboard-data` when `K_SERVICE` is set **and** `NODE_ENV=production`). **The first one whose probe succeeds wins**, and the rest are logged as skipped. |
+| Choosing a target | `server.ts` → `openBackupMirror` | Tries `BACKUP_DIR`, then the bucket (`BACKUP_BUCKET`, else `allaboard-data` when `K_SERVICE` is set and `NODE_ENV !== 'development'`, or `NODE_ENV=production`). **The first one whose probe succeeds wins**, and the rest are logged as skipped. |
 | Restore | `server.ts` → `restoreFromBackup` | At boot, **before listening**: copies every backed-up room into SQLite. Images are restored lazily by `GET /api/assets/:hash`. |
 
 **Bucket layout:** `rooms/<roomId>.json.gz` and `assets/<sha256>`. The old `rooms-store.json` in the bucket
 root is legacy and harmless.
 
-**Known fragility:** automatic bucket backups need `NODE_ENV=production` on `app-container`, which comes from
-AI Studio's template. If a publish ever drops it, the log shows `Backups are OFF`. Fix that in code; don't add an env var.
+**Production detection:** `server.ts` treats either `NODE_ENV=production` or `K_SERVICE` (when `NODE_ENV !== 'development'`) as production, so both `dist/` serving and automatic `gs://allaboard-data` backups keep working on Cloud Run even if `NODE_ENV` is unset.
 
 ---
 
