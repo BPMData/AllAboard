@@ -26,7 +26,9 @@ import Chat, { getUserColor } from './components/Chat';
 import Canvas from './components/Canvas';
 import RoomExistsModal from './components/RoomExistsModal';
 import PurgeContributionsModal from './components/PurgeContributionsModal';
+import RoomHistoryDropdown from './components/RoomHistoryDropdown';
 import { normalizeRoomCode, sanitizeRoomCodeDraft } from './lib/roomCode';
+import { recordRoomHistory } from './lib/roomHistory';
 import { motion } from 'motion/react';
 import { LogIn, Users, KeyRound, PlusCircle, Shuffle } from 'lucide-react';
 
@@ -116,6 +118,7 @@ export default function App() {
   const [kickNotice, setKickNotice] = useState<string | null>(null);
   const [showTeacherSetupOnJoin, setShowTeacherSetupOnJoin] = useState<boolean>(false);
   const [initialTeacherPin, setInitialTeacherPin] = useState<string>('');
+  const [historyVersion, setHistoryVersion] = useState<number>(0);
 
   const [isJoined, setIsJoined] = useState<boolean>(() => {
     try {
@@ -137,6 +140,8 @@ export default function App() {
   const userNameRef = useRef<string>(userName);
   const isJoinedRef = useRef<boolean>(isJoined);
   const roomCodeInputRef = useRef<HTMLInputElement | null>(null);
+  const displayNameInputRef = useRef<HTMLInputElement | null>(null);
+  const teacherPinInputRef = useRef<HTMLInputElement | null>(null);
   useEffect(() => {
     userNameRef.current = userName;
   }, [userName]);
@@ -364,6 +369,8 @@ export default function App() {
             // Ignore
           }
         }
+        recordRoomHistory(initRoom?.roomId || effectiveRoomId);
+        setHistoryVersion((v) => v + 1);
         setKickNotice(null);
       }
     );
@@ -1595,6 +1602,7 @@ export default function App() {
                 Your Display Name
               </label>
               <input
+                ref={displayNameInputRef}
                 id="display-name-input"
                 type="text"
                 value={userName}
@@ -1654,6 +1662,24 @@ export default function App() {
                   <Shuffle size={12} />
                   <span>Random</span>
                 </button>
+                <span className="text-slate-700" aria-hidden="true">·</span>
+                <RoomHistoryDropdown
+                  theme="dark"
+                  align="right"
+                  disabled={isCheckingRoom}
+                  historyVersion={historyVersion}
+                  hintText="Click a room to fill its code, then join."
+                  onSelectRoom={(code) => {
+                    setKickNotice(null);
+                    setHasEditedLobbyRoom(true);
+                    setRoomId(code);
+                    if (showTeacherSetupOnJoin) {
+                      teacherPinInputRef.current?.focus();
+                    } else if (!userName.trim()) {
+                      displayNameInputRef.current?.focus();
+                    }
+                  }}
+                />
               </div>
             </div>
 
@@ -1679,6 +1705,7 @@ export default function App() {
                   </button>
                 </div>
                 <input
+                  ref={teacherPinInputRef}
                   id="teacher-pin-input"
                   type="password"
                   value={initialTeacherPin}
@@ -1737,6 +1764,7 @@ export default function App() {
       {!isChatHidden && (
         <Chat
           roomId={roomId}
+          historyVersion={historyVersion}
           hasTeacherPin={roomSettings.hasTeacherPin}
           messages={activeMessages}
           users={users}

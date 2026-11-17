@@ -28,9 +28,11 @@ import {
   getMaxChatWidth,
 } from '../lib/chatSidebar';
 import { normalizeRoomCode, sanitizeRoomCodeDraft } from '../lib/roomCode';
+import RoomHistoryDropdown from './RoomHistoryDropdown';
 
 interface ChatProps {
   roomId: string;
+  historyVersion?: number;
   hasTeacherPin: boolean;
   messages: ChatMessage[];
   users: User[];
@@ -74,6 +76,7 @@ export function getUserColor(userId: string) {
 
 export default function Chat({
   roomId,
+  historyVersion = 0,
   hasTeacherPin,
   messages,
   users,
@@ -427,22 +430,35 @@ export default function Chat({
             </form>
           ) : (
             <>
-              <div className="min-w-0">
-                <div className="text-[10px] uppercase tracking-wide text-brand-800/70 font-medium">ROOM</div>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setRoomDraft(roomId);
-                    setIsEditingRoom(true);
+              <div className="flex items-start justify-between gap-2">
+                <div className="min-w-0">
+                  <div className="text-[10px] uppercase tracking-wide text-brand-800/70 font-medium">ROOM</div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setRoomDraft(roomId);
+                      setIsEditingRoom(true);
+                    }}
+                    className="text-lg font-bold font-mono text-slate-900 hover:text-brand-600 break-all text-left leading-tight cursor-pointer"
+                    title="Click to enter a different room code"
+                  >
+                    {roomId}
+                  </button>
+                </div>
+                <RoomHistoryDropdown
+                  theme="light"
+                  align="left"
+                  currentRoomId={roomId}
+                  historyVersion={historyVersion}
+                  hintText="Click a room to switch to it."
+                  onSelectRoom={(code) => {
+                    setIsEditingRoom(false);
+                    onSwitchRoom(code);
                   }}
-                  className="text-lg font-bold font-mono text-slate-900 hover:text-brand-600 break-all text-left leading-tight cursor-pointer"
-                  title="Click to enter a different room code"
-                >
-                  {roomId}
-                </button>
+                />
               </div>
 
-              <div className="flex items-center gap-1">
+              <div className="flex flex-wrap items-center gap-1">
                 <button
                   type="button"
                   onClick={handleCopyRoomLink}
