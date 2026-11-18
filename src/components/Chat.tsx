@@ -19,6 +19,8 @@ import {
   PanelLeftClose,
   Shuffle,
   LogOut,
+  Eye,
+  EyeOff,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '../lib/utils';
@@ -119,6 +121,7 @@ export default function Chat({
   // Room & Teacher PIN Popover states
   const [showPinPrompt, setShowPinPrompt] = useState(false);
   const [pinInput, setPinInput] = useState('');
+  const [showPinInput, setShowPinInput] = useState(false);
   const [pinError, setPinError] = useState<string | null>(null);
   const [isSubmittingPin, setIsSubmittingPin] = useState(false);
   const [copiedLink, setCopiedLink] = useState(false);
@@ -307,6 +310,7 @@ export default function Chat({
     if (res.ok) {
       setShowPinPrompt(false);
       setPinInput('');
+      setShowPinInput(false);
       setPinError(null);
     } else {
       setPinError(res.error || 'Invalid Teacher PIN.');
@@ -350,6 +354,7 @@ export default function Chat({
                 type="button"
                 onClick={() => {
                   setShowPinPrompt(!showPinPrompt);
+                  setShowPinInput(false);
                   setPinError(null);
                 }}
                 className={cn(
@@ -511,6 +516,7 @@ export default function Chat({
                 type="button"
                 onClick={() => {
                   setShowPinPrompt(false);
+                  setShowPinInput(false);
                   setPinError(null);
                 }}
                 className="text-slate-400 hover:text-white cursor-pointer"
@@ -525,16 +531,37 @@ export default function Chat({
                 : 'No teacher has claimed this room yet. Choose a 4+ character PIN so students cannot access teacher controls.'}
             </p>
 
-            <form onSubmit={handlePinSubmit} className="flex items-center gap-1.5">
-              <input
-                type="password"
-                value={pinInput}
-                onChange={(e) => setPinInput(e.target.value)}
-                placeholder={hasTeacherPin ? 'Enter room PIN...' : 'Create 4+ digit PIN...'}
-                autoFocus
-                maxLength={16}
-                className="flex-1 px-2.5 py-1.5 bg-slate-800 border border-slate-700 rounded text-xs text-white placeholder:text-slate-500 font-mono focus:outline-none focus:border-brand-500"
-              />
+            <form onSubmit={handlePinSubmit} autoComplete="off" className="flex items-center gap-1.5">
+              <div className="relative flex-1 min-w-0">
+                <input
+                  type="text"
+                  aria-label="Room Teacher PIN"
+                  value={pinInput}
+                  onChange={(e) => setPinInput(e.target.value)}
+                  placeholder={hasTeacherPin ? 'Enter room PIN...' : 'Create 4+ digit PIN...'}
+                  autoFocus
+                  maxLength={16}
+                  autoComplete="off"
+                  autoCorrect="off"
+                  autoCapitalize="off"
+                  spellCheck={false}
+                  data-lpignore="true"
+                  data-1p-ignore="true"
+                  className={cn(
+                    'w-full pl-2.5 pr-8 py-1.5 bg-slate-800 border border-slate-700 rounded text-xs text-white placeholder:text-slate-500 font-mono focus:outline-none focus:border-brand-500',
+                    !showPinInput && 'pin-masked'
+                  )}
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPinInput((v) => !v)}
+                  aria-label={showPinInput ? 'Hide PIN' : 'Show PIN'}
+                  title={showPinInput ? 'Hide PIN' : 'Show PIN'}
+                  className="absolute right-1.5 top-1/2 -translate-y-1/2 p-0.5 text-slate-400 hover:text-slate-200 cursor-pointer"
+                >
+                  {showPinInput ? <EyeOff size={13} /> : <Eye size={13} />}
+                </button>
+              </div>
               <button
                 type="submit"
                 disabled={pinInput.trim().length < 3 || isSubmittingPin}

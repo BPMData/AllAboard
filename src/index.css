@@ -24,3 +24,7 @@ body {
   user-select: none;
 }
 
+.pin-masked {
+  -webkit-text-security: disc;
+}
+

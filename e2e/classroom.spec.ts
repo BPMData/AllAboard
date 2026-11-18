@@ -235,6 +235,40 @@ test.describe('teacher and students', () => {
     await teacher.context.close();
     await imposter.context.close();
   });
+
+  test('teacher PIN inputs use masked text fields without password autofill and support show/hide', async ({ page }) => {
+    const room = uniqueRoom('pinmask');
+    await page.goto(`/?room=${room}`);
+    await page.getByLabel('Your Display Name').fill('Ms T');
+    await page.getByText('Instructor? Set or enter a room Teacher PIN').click();
+
+    const lobbyPin = page.locator('#teacher-pin-input');
+    await expect(lobbyPin).toHaveAttribute('type', 'text');
+    await expect(lobbyPin).toHaveAttribute('autocomplete', 'off');
+    await expect(lobbyPin).toHaveClass(/pin-masked/);
+
+    await page.getByRole('button', { name: 'Show Teacher PIN' }).click();
+    await expect(lobbyPin).not.toHaveClass(/pin-masked/);
+    await page.getByRole('button', { name: 'Hide Teacher PIN' }).click();
+    await expect(lobbyPin).toHaveClass(/pin-masked/);
+
+    // Join without claiming teacher, then claim teacher via the in-room drawer
+    await page.getByRole('button', { name: 'Cancel', exact: true }).click();
+    await page.getByRole('button', { name: 'Join Classroom' }).click();
+    await expect(page.getByPlaceholder('Message the class...')).toBeVisible();
+
+    await page.getByRole('button', { name: 'Claim Teacher' }).click();
+    const drawerPin = page.getByLabel('Room Teacher PIN');
+    await expect(drawerPin).toHaveAttribute('type', 'text');
+    await expect(drawerPin).toHaveAttribute('autocomplete', 'off');
+    await expect(drawerPin).toHaveClass(/pin-masked/);
+
+    await page.getByRole('button', { name: 'Show PIN' }).click();
+    await expect(drawerPin).not.toHaveClass(/pin-masked/);
+    await drawerPin.fill(PIN);
+    await page.getByRole('button', { name: 'Set PIN' }).click();
+    await expect(page.getByText('Teacher Active')).toBeVisible();
+  });
 });
 
 test.describe('chat sidebar', () => {
