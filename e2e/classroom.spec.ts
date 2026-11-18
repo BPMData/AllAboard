@@ -39,6 +39,50 @@ test.describe('lobby', () => {
     await expect(page.getByPlaceholder('Message the class...')).toBeVisible();
     await expect(page.getByText('Alex', { exact: true }).first()).toBeVisible();
   });
+
+  test('room history records visited rooms, shows live/saved status, and lets users select or clear them', async ({ browser }) => {
+    const roomA = uniqueRoom('hist-a');
+    const roomB = uniqueRoom('hist-b');
+    const user = await newUser(browser);
+    const other = await newUser(browser);
+
+    // Another user stays in roomA so it remains live even after the main user moves to roomB
+    await joinRoom(other.page, roomA, 'Sam');
+
+    // Main user visits roomA, then moves to roomB
+    await joinRoom(user.page, roomA, 'Ms T', PIN);
+    await joinRoom(user.page, roomB, 'Ms T', PIN);
+
+    // Open History in the Chat sidebar: both rooms should appear as Live · 1 online
+    await user.page.getByRole('button', { name: 'History' }).click();
+    const chatMenu = user.page.getByRole('region', { name: 'Recent room history' });
+    await expect(chatMenu).toBeVisible();
+    await expect(chatMenu.getByText(roomB)).toBeVisible();
+    await expect(chatMenu.getByText(roomA)).toBeVisible();
+    await expect(chatMenu.getByRole('button', { name: new RegExp(`^${roomA}.*Live · 1 online`) })).toBeVisible();
+
+    // Once the other user leaves roomA, refreshing status shows roomA as Saved · rejoinable
+    await other.context.close();
+    await user.page.waitForTimeout(100);
+    await chatMenu.getByRole('button', { name: 'Refresh room status' }).click();
+    await expect(chatMenu.getByRole('button', { name: new RegExp(`^${roomA}.*Saved · rejoinable`) })).toBeVisible();
+
+    // Return to Lobby (fresh visit), open History, and select roomA to fill the Room Code input
+    await user.page.goto('/');
+    await expect(user.page.getByRole('button', { name: 'Join Classroom' })).toBeVisible();
+    await user.page.getByRole('button', { name: 'History' }).click();
+    const lobbyMenu = user.page.getByRole('region', { name: 'Recent room history' });
+    await expect(lobbyMenu.getByText(roomA)).toBeVisible();
+    await lobbyMenu.getByRole('button', { name: new RegExp(`^${roomA}`) }).click();
+    await expect(user.page.getByLabel('Room Code')).toHaveValue(roomA);
+
+    // Clear history empties the list
+    await user.page.getByRole('button', { name: 'History' }).click();
+    await user.page.getByRole('region', { name: 'Recent room history' }).getByRole('button', { name: 'Clear' }).click();
+    await expect(user.page.getByRole('region', { name: 'Recent room history' }).getByText('No rooms visited on this browser yet.')).toBeVisible();
+
+    await user.context.close();
+  });
 });
 
 test.describe('teacher and students', () => {
@@ -190,6 +234,40 @@ test.describe('teacher and students', () => {
 
     await teacher.context.close();
     await imposter.context.close();
+  });
+
+  test('teacher PIN inputs use masked text fields without password autofill and support show/hide', async ({ page }) => {
+    const room = uniqueRoom('pinmask');
+    await page.goto(`/?room=${room}`);
+    await page.getByLabel('Your Display Name').fill('Ms T');
+    await page.getByText('Instructor? Set or enter a room Teacher PIN').click();
+
+    const lobbyPin = page.locator('#teacher-pin-input');
+    await expect(lobbyPin).toHaveAttribute('type', 'text');
+    await expect(lobbyPin).toHaveAttribute('autocomplete', 'off');
+    await expect(lobbyPin).toHaveClass(/pin-masked/);
+
+    await page.getByRole('button', { name: 'Show Teacher PIN' }).click();
+    await expect(lobbyPin).not.toHaveClass(/pin-masked/);
+    await page.getByRole('button', { name: 'Hide Teacher PIN' }).click();
+    await expect(lobbyPin).toHaveClass(/pin-masked/);
+
+    // Join without claiming teacher, then claim teacher via the in-room drawer
+    await page.getByRole('button', { name: 'Cancel', exact: true }).click();
+    await page.getByRole('button', { name: 'Join Classroom' }).click();
+    await expect(page.getByPlaceholder('Message the class...')).toBeVisible();
+
+    await page.getByRole('button', { name: 'Claim Teacher' }).click();
+    const drawerPin = page.getByLabel('Room Teacher PIN');
+    await expect(drawerPin).toHaveAttribute('type', 'text');
+    await expect(drawerPin).toHaveAttribute('autocomplete', 'off');
+    await expect(drawerPin).toHaveClass(/pin-masked/);
+
+    await page.getByRole('button', { name: 'Show PIN' }).click();
+    await expect(drawerPin).not.toHaveClass(/pin-masked/);
+    await drawerPin.fill(PIN);
+    await page.getByRole('button', { name: 'Set PIN' }).click();
+    await expect(page.getByText('Teacher Active')).toBeVisible();
   });
 });
 

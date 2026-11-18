@@ -1003,6 +1003,49 @@ describe('AllAboard server & Socket.IO integration tests', () => {
     });
   });
 
+  it('serves room availability via GET /api/rooms/:roomId for live, saved, and missing rooms', async () => {
+    const missingRes = await fetch(`http://127.0.0.1:${srv.port}/api/rooms/${encodeURIComponent('  Missing Room! ')}`);
+    assert.equal(missingRes.status, 200);
+    assert.equal(missingRes.headers.get('cache-control'), 'no-store');
+    assert.deepEqual(await missingRes.json(), {
+      roomId: 'missing-room',
+      exists: false,
+      activeUserCount: 0,
+      hasTeacherPin: false,
+      hasContent: false,
+    });
+
+    const { socket: teacher } = await joinTracked({
+      roomId: 'History Room',
+      userId: 't-hist',
+      name: 'Ms. History',
+    });
+    await emitAck(teacher, 'teacher:auth', { pin: '4321' });
+
+    const liveRes = await fetch(`http://127.0.0.1:${srv.port}/api/rooms/history-room`);
+    assert.equal(liveRes.status, 200);
+    assert.deepEqual(await liveRes.json(), {
+      roomId: 'history-room',
+      exists: true,
+      activeUserCount: 1,
+      hasTeacherPin: true,
+      hasContent: false,
+    });
+
+    teacher.disconnect();
+    await delay(50);
+
+    const savedRes = await fetch(`http://127.0.0.1:${srv.port}/api/rooms/history-room`);
+    assert.equal(savedRes.status, 200);
+    assert.deepEqual(await savedRes.json(), {
+      roomId: 'history-room',
+      exists: true,
+      activeUserCount: 0,
+      hasTeacherPin: true,
+      hasContent: false,
+    });
+  });
+
   it('purges all messages, drawings, and annotations for a target user across main and sub-boards', async () => {
     const { socket: teacher } = await joinTracked({
       roomId: 'purge-room',

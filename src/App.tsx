@@ -26,9 +26,11 @@ import Chat, { getUserColor } from './components/Chat';
 import Canvas from './components/Canvas';
 import RoomExistsModal from './components/RoomExistsModal';
 import PurgeContributionsModal from './components/PurgeContributionsModal';
+import RoomHistoryDropdown from './components/RoomHistoryDropdown';
 import { normalizeRoomCode, sanitizeRoomCodeDraft } from './lib/roomCode';
+import { recordRoomHistory } from './lib/roomHistory';
 import { motion } from 'motion/react';
-import { LogIn, Users, KeyRound, PlusCircle, Shuffle } from 'lucide-react';
+import { LogIn, Users, KeyRound, PlusCircle, Shuffle, Eye, EyeOff } from 'lucide-react';
 import { POINT_FLUSH_MS } from './lib/drawThrottle';
 import { applyDigest, type BoardDigest } from './lib/boardDigest';
 import {
@@ -128,6 +130,8 @@ export default function App() {
   const [kickNotice, setKickNotice] = useState<string | null>(null);
   const [showTeacherSetupOnJoin, setShowTeacherSetupOnJoin] = useState<boolean>(false);
   const [initialTeacherPin, setInitialTeacherPin] = useState<string>('');
+  const [showInitialTeacherPin, setShowInitialTeacherPin] = useState<boolean>(false);
+  const [historyVersion, setHistoryVersion] = useState<number>(0);
 
   const [isJoined, setIsJoined] = useState<boolean>(() => {
     try {
@@ -149,6 +153,8 @@ export default function App() {
   const userNameRef = useRef<string>(userName);
   const isJoinedRef = useRef<boolean>(isJoined);
   const roomCodeInputRef = useRef<HTMLInputElement | null>(null);
+  const displayNameInputRef = useRef<HTMLInputElement | null>(null);
+  const teacherPinInputRef = useRef<HTMLInputElement | null>(null);
   useEffect(() => {
     userNameRef.current = userName;
   }, [userName]);
@@ -414,6 +420,8 @@ export default function App() {
             // Ignore
           }
         }
+        recordRoomHistory(initRoom?.roomId || effectiveRoomId);
+        setHistoryVersion((v) => v + 1);
         setKickNotice(null);
       }
     );
@@ -1654,7 +1662,7 @@ export default function App() {
             </div>
           )}
 
-          <form onSubmit={handleJoin} className="space-y-4">
+          <form onSubmit={handleJoin} autoComplete="off" className="space-y-4">
             <div>
               <label
                 htmlFor="display-name-input"
@@ -1663,6 +1671,7 @@ export default function App() {
                 Your Display Name
               </label>
               <input
+                ref={displayNameInputRef}
                 id="display-name-input"
                 type="text"
                 value={userName}
@@ -1722,6 +1731,24 @@ export default function App() {
                   <Shuffle size={12} />
                   <span>Random</span>
                 </button>
+                <span className="text-slate-700" aria-hidden="true">·</span>
+                <RoomHistoryDropdown
+                  theme="dark"
+                  align="right"
+                  disabled={isCheckingRoom}
+                  historyVersion={historyVersion}
+                  hintText="Click a room to fill its code, then join."
+                  onSelectRoom={(code) => {
+                    setKickNotice(null);
+                    setHasEditedLobbyRoom(true);
+                    setRoomId(code);
+                    if (showTeacherSetupOnJoin) {
+                      teacherPinInputRef.current?.focus();
+                    } else if (!userName.trim()) {
+                      displayNameInputRef.current?.focus();
+                    }
+                  }}
+                />
               </div>
             </div>
 
@@ -1740,21 +1767,42 @@ export default function App() {
                     onClick={() => {
                       setShowTeacherSetupOnJoin(false);
                       setInitialTeacherPin('');
+                      setShowInitialTeacherPin(false);
                     }}
                     className="text-[11px] text-slate-400 hover:text-slate-200 cursor-pointer"
                   >
                     Cancel
                   </button>
                 </div>
-                <input
-                  id="teacher-pin-input"
-                  type="password"
-                  value={initialTeacherPin}
-                  onChange={(e) => setInitialTeacherPin(e.target.value)}
-                  placeholder="Choose a 4+ digit PIN (e.g. 4829)"
-                  maxLength={16}
-                  className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-xs text-white font-mono placeholder:text-slate-500 focus:outline-none focus:border-amber-500"
-                />
+                <div className="relative">
+                  <input
+                    ref={teacherPinInputRef}
+                    id="teacher-pin-input"
+                    type="text"
+                    value={initialTeacherPin}
+                    onChange={(e) => setInitialTeacherPin(e.target.value)}
+                    placeholder="Choose a 4+ digit PIN (e.g. 4829)"
+                    maxLength={16}
+                    autoComplete="off"
+                    autoCorrect="off"
+                    autoCapitalize="off"
+                    spellCheck={false}
+                    data-lpignore="true"
+                    data-1p-ignore="true"
+                    className={`w-full pl-3 pr-9 py-2 bg-slate-900 border border-slate-700 rounded-lg text-xs text-white font-mono placeholder:text-slate-500 focus:outline-none focus:border-amber-500${
+                      showInitialTeacherPin ? '' : ' pin-masked'
+                    }`}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowInitialTeacherPin((v) => !v)}
+                    aria-label={showInitialTeacherPin ? 'Hide Teacher PIN' : 'Show Teacher PIN'}
+                    title={showInitialTeacherPin ? 'Hide PIN' : 'Show PIN'}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-slate-200 cursor-pointer"
+                  >
+                    {showInitialTeacherPin ? <EyeOff size={14} /> : <Eye size={14} />}
+                  </button>
+                </div>
                 <p className="text-[11px] text-slate-400 leading-snug">
                   The first person to set a PIN in a room locks Teacher Mode so students cannot click it.
                 </p>
@@ -1805,6 +1853,7 @@ export default function App() {
       {!isChatHidden && (
         <Chat
           roomId={roomId}
+          historyVersion={historyVersion}
           hasTeacherPin={roomSettings.hasTeacherPin}
           messages={activeMessages}
           users={users}
