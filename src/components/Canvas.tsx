@@ -112,6 +112,13 @@ import {
   translateElement,
 } from '../lib/inkCore';
 import {
+  authorKeyOf,
+  describeSelectionAuthors,
+  formatSelectionAuthors,
+  summarizeSelectionAuthors,
+} from '../lib/selectionAuthors';
+import { hasNameStamp } from '../lib/stamps';
+import {
   Eraser,
   Undo2,
   Redo2,
@@ -187,6 +194,7 @@ interface CanvasProps {
   onTeacherClearStatus: (targetUserId?: string) => void;
   isCanvasLocked: boolean;
   hideStudentCursors: boolean;
+  oneNameStamp: boolean;
   hasTeacherPin?: boolean;
   isTeacher: boolean;
   userId: string;
@@ -208,6 +216,7 @@ interface CanvasProps {
   onClearMine: () => void;
   onTeacherToggleLock: (locked: boolean) => void;
   onTeacherToggleHideCursors: (hide: boolean) => void;
+  onTeacherToggleOneNameStamp: (enabled: boolean) => void;
   onTeacherClearAll: () => void;
   onTeacherSetBackground: (bg: RoomBackground | null) => Promise<{ ok: boolean; error?: string }>;
   onTeacherUpdateBackground: (patch: Partial<RoomBackground>) => void;
@@ -473,6 +482,8 @@ function HollowStrokeShape({
   );
 }
 
+const UNFOCUSED_INK_OPACITY = 0.12;
+
 /**
  * Dedicated Konva Layer whose underlying HTML5 canvas uses `mix-blend-mode: multiply`,
  * matching OverBoard's `#ink-hl` multiply highlighter layer so printed worksheet text stays crisp black.
@@ -482,12 +493,14 @@ function MultiplyHighlightLayer({
   y,
   scaleX,
   scaleY,
+  screenOpacity,
   children,
 }: {
   x: number;
   y: number;
   scaleX: number;
   scaleY: number;
+  screenOpacity: number;
   children: React.ReactNode;
 }) {
   const layerRef = useRef<any>(null);
@@ -499,8 +512,44 @@ function MultiplyHighlightLayer({
     }
   }, []);
 
+  useLayerScreenOpacity(layerRef, screenOpacity);
+
   return (
     <Layer ref={layerRef} x={x} y={y} scaleX={scaleX} scaleY={scaleY} listening={false}>
+      {children}
+    </Layer>
+  );
+}
+
+/**
+ * Fades a layer's canvas with CSS: no redraw, erasers still work, and exports are unaffected.
+ * (Konva's own opacity would make erasers only partly erase.)
+ */
+function useLayerScreenOpacity(layerRef: React.RefObject<any>, screenOpacity: number) {
+  useEffect(() => {
+    const domCanvas: HTMLCanvasElement | undefined = layerRef.current?.getCanvas?.()?._canvas;
+    if (domCanvas) {
+      domCanvas.style.opacity = screenOpacity === 1 ? '' : String(screenOpacity);
+    }
+  }, [layerRef, screenOpacity]);
+}
+
+function InkLayer({
+  screenOpacity,
+  children,
+  ...layerProps
+}: {
+  x: number;
+  y: number;
+  scaleX: number;
+  scaleY: number;
+  screenOpacity: number;
+  children: React.ReactNode;
+}) {
+  const layerRef = useRef<any>(null);
+  useLayerScreenOpacity(layerRef, screenOpacity);
+  return (
+    <Layer ref={layerRef} {...layerProps} listening={false}>
       {children}
     </Layer>
   );
@@ -583,6 +632,7 @@ export default function Canvas({
   onTeacherClearStatus,
   isCanvasLocked,
   hideStudentCursors,
+  oneNameStamp,
   hasTeacherPin = true,
   isTeacher,
   userId,
@@ -604,6 +654,7 @@ export default function Canvas({
   onClearMine,
   onTeacherToggleLock,
   onTeacherToggleHideCursors,
+  onTeacherToggleOneNameStamp,
   onTeacherClearAll,
   onTeacherSetBackground,
   onTeacherUpdateBackground,
@@ -1315,6 +1366,27 @@ export default function Canvas({
   const selectedTextElements = useMemo(
     () => selectedElements.filter((el) => el.tool === 'text'),
     [selectedElements]
+  );
+
+  const selectionAuthors = useMemo(() => {
+    if (!isTeacher || selectedElements.length === 0) return [];
+    const rosterNames = new Map(users.map((user) => [user.userId, user.name]));
+    return summarizeSelectionAuthors(selectedElements, rosterNames, userId);
+  }, [isTeacher, selectedElements, users, userId]);
+
+  // Teacher-only view of one author's ink. Local to this browser; never changes the board.
+  const [inkFocusKey, setInkFocusKey] = useState<string | null>(null);
+  const boardInkAuthors = useMemo(() => {
+    if (!isTeacher) return [];
+    const rosterNames = new Map(users.map((user) => [user.userId, user.name]));
+    return summarizeSelectionAuthors(elements, rosterNames, userId);
+  }, [isTeacher, elements, users, userId]);
+  const focusedInkAuthor = boardInkAuthors.some((author) => author.key === inkFocusKey) ? inkFocusKey : null;
+  useEffect(() => setInkFocusKey(null), [activeBoardId]);
+
+  const nameStampTaken = useMemo(
+    () => oneNameStamp && !isTeacher && hasNameStamp(elements, userId),
+    [oneNameStamp, isTeacher, elements, userId]
   );
 
   const selectionBounds = useMemo(() => {
@@ -2726,6 +2798,10 @@ export default function Canvas({
     if (strokeTool === 'stamp') {
       const effectiveStampKind: StampKind =
         !isTeacher && isTeacherStampKind(stampKind) ? 'check' : stampKind;
+      if (effectiveStampKind === 'username' && nameStampTaken) {
+        setTool('select'); // Their stamp is already down, so let them drag it instead
+        return;
+      }
       const customText =
         effectiveStampKind === 'teacher-custom'
           ? customTeacherStampText.trim().slice(0, 24) || 'FEEDBACK'
@@ -4055,13 +4131,18 @@ export default function Canvas({
                   key={st.kind}
                   type="button"
                   onClick={() => setStampKind(st.kind)}
+                  disabled={st.kind === 'username' && nameStampTaken}
                   className={cn(
-                    "px-2 h-6 rounded flex items-center justify-center text-xs font-bold transition-colors cursor-pointer whitespace-nowrap",
+                    "px-2 h-6 rounded flex items-center justify-center text-xs font-bold transition-colors cursor-pointer whitespace-nowrap disabled:opacity-40 disabled:cursor-not-allowed",
                     stampKind === st.kind
                       ? "bg-brand-600 text-white shadow-xs"
                       : "bg-white text-slate-700 hover:bg-brand-100"
                   )}
-                  title={st.label}
+                  title={
+                    st.kind === 'username' && nameStampTaken
+                      ? 'You already placed your name stamp. Drag it to move it, or delete it to place it again.'
+                      : st.label
+                  }
                 >
                   {st.kind === 'username' ? `[ ${userName} ]` : st.symbol}
                 </button>
@@ -5054,6 +5135,44 @@ export default function Canvas({
               <span>{hideStudentCursors ? 'Show Student Cursors' : 'Hide Student Cursors'}</span>
             </button>
 
+            <button
+              type="button"
+              onClick={() => onTeacherToggleOneNameStamp(!oneNameStamp)}
+              aria-pressed={oneNameStamp}
+              title="Limit each student to one name stamp per board. They can still drag or delete it."
+              className={cn(
+                "flex items-center gap-1.5 px-3 py-1 rounded-md text-xs font-medium transition-colors whitespace-nowrap shrink-0 cursor-pointer",
+                oneNameStamp
+                  ? "bg-amber-600 text-white hover:bg-amber-700"
+                  : "bg-white text-amber-900 border border-amber-300 hover:bg-amber-100/60"
+              )}
+            >
+              <span>One Name Stamp: {oneNameStamp ? 'On' : 'Off'}</span>
+            </button>
+
+            <label
+              className={cn(
+                "flex items-center gap-1 px-2 py-0.5 rounded-md border text-xs shrink-0",
+                focusedInkAuthor ? "bg-amber-600 border-amber-600 text-white" : "bg-white border-amber-300 text-amber-900"
+              )}
+              title="Fade everyone else's ink on your screen. Students and exports are not affected."
+            >
+              <span className="font-medium whitespace-nowrap">Ink by:</span>
+              <select
+                aria-label="Focus ink by student"
+                value={focusedInkAuthor ?? ''}
+                onChange={(e) => setInkFocusKey(e.target.value || null)}
+                className="max-w-[160px] bg-transparent font-semibold focus:outline-none cursor-pointer"
+              >
+                <option value="" className="text-slate-900">Everyone</option>
+                {boardInkAuthors.map((author) => (
+                  <option key={author.key} value={author.key} className="text-slate-900">
+                    {author.name} ({author.itemCount})
+                  </option>
+                ))}
+              </select>
+            </label>
+
             {confirmClearAll ? (
               <div className="flex items-center gap-1.5 bg-white px-2.5 py-1 rounded-md border border-red-300">
                 <span className="text-xs font-medium text-red-700 whitespace-nowrap">
@@ -5358,34 +5477,39 @@ export default function Canvas({
 
           {/* Layer 2..N: Per-Student Isolated Multiply-Highlight Layer + Top Ink Layer (OverBoard architecture) */}
           {elementsGroupedByUser.map(
-            ({ userId: groupUserId, userElements, goneNoteIds, hasSeeThroughHighlights }) => (
-              <React.Fragment key={groupUserId}>
-                {hasSeeThroughHighlights && (
-                  <MultiplyHighlightLayer
+            ({ userId: groupUserId, userElements, goneNoteIds, hasSeeThroughHighlights }) => {
+              const screenOpacity =
+                focusedInkAuthor && authorKeyOf(groupUserId) !== focusedInkAuthor ? UNFOCUSED_INK_OPACITY : 1;
+              return (
+                <React.Fragment key={groupUserId}>
+                  {hasSeeThroughHighlights && (
+                    <MultiplyHighlightLayer
+                      x={stagePos.x}
+                      y={stagePos.y}
+                      scaleX={stageScale}
+                      scaleY={stageScale}
+                      screenOpacity={screenOpacity}
+                    >
+                      {userElements
+                        .filter((el) => isSeeThroughHighlight(el) || el.tool === 'eraser')
+                        .map((el) => renderElement(el, goneNoteIds))}
+                    </MultiplyHighlightLayer>
+                  )}
+
+                  <InkLayer
                     x={stagePos.x}
                     y={stagePos.y}
                     scaleX={stageScale}
                     scaleY={stageScale}
+                    screenOpacity={screenOpacity}
                   >
                     {userElements
-                      .filter((el) => isSeeThroughHighlight(el) || el.tool === 'eraser')
+                      .filter((el) => !isSeeThroughHighlight(el))
                       .map((el) => renderElement(el, goneNoteIds))}
-                  </MultiplyHighlightLayer>
-                )}
-
-                <Layer
-                  x={stagePos.x}
-                  y={stagePos.y}
-                  scaleX={stageScale}
-                  scaleY={stageScale}
-                  listening={false}
-                >
-                  {userElements
-                    .filter((el) => !isSeeThroughHighlight(el))
-                    .map((el) => renderElement(el, goneNoteIds))}
-                </Layer>
-              </React.Fragment>
-            )
+                  </InkLayer>
+                </React.Fragment>
+              );
+            }
           )}
 
           {/* Top Overlay Layer: Live Remote Cursors (filtered to current activeBoardId) & Local Brush/Stamp Preview */}
@@ -5536,6 +5660,16 @@ export default function Canvas({
             <span className="font-semibold text-indigo-300 px-1 whitespace-nowrap">
               {selectedElements.length} selected
             </span>
+
+            {selectionAuthors.length > 0 && (
+              <span
+                data-testid="selection-authors"
+                title={describeSelectionAuthors(selectionAuthors)}
+                className="max-w-[220px] truncate px-1 font-medium text-slate-100"
+              >
+                {formatSelectionAuthors(selectionAuthors)}
+              </span>
+            )}
 
             {selectedTextElements.length > 0 && (
               <>

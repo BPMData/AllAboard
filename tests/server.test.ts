@@ -8,6 +8,7 @@ import { io as ioClient, Socket } from 'socket.io-client';
 import { startServer } from '../server';
 import { GcsBackend } from '../backupMirror.ts';
 import { createFakeGcs } from './fakeGcs.ts';
+import { getVisibleStrokeRuns } from '../src/lib/inkCore.ts';
 
 type ServerHandle = Awaited<ReturnType<typeof startServer>>;
 
@@ -1811,7 +1812,7 @@ describe('AllAboard server & Socket.IO integration tests', () => {
       assert.equal(main.elements.length, 1);
       assert.notEqual(main.elements[0].id, 'original');
       assert.equal(main.elements[0].boardId, 'main');
-      assert.equal(main.elements[0].userId, 't1');
+      assert.match(main.elements[0].userId, /^anon_[0-9a-f-]{36}$/);
       assert.equal(main.elements[0].userName, 'Class Example');
       const bg = await backgroundSync;
       assert.equal(bg.boardId, 'main');
@@ -1829,6 +1830,98 @@ describe('AllAboard server & Socket.IO integration tests', () => {
       assert.equal(namedElements[0].userId, 's1');
       assert.equal(namedElements[1].stamp, 'username');
       assert.equal(namedElements[1].userName, 'Sam');
+    });
+
+    it('keeps each author’s erasers separate when a group board is shared anonymously', async () => {
+      const { teacher, s1, s2 } = await setupClass('spotlight-erasers');
+      const configured = await emitAck<any>(teacher, 'teacher:configure-breakout', {
+        action: 'new-round',
+        mode: 'groups',
+        groups: [{ id: 'grp_1', title: 'Red', assignedUserIds: ['s1', 's2'] }],
+      });
+      assert.equal(configured.ok, true);
+      const source = 'r1_grp_1';
+      const points = [0, 50, 50, 50, 100, 50, 150, 50, 200, 50];
+      s1.emit('element-start', { ...stroke('ada-1', source, 's1'), strokeWidth: 6, points });
+      s1.emit('element-start', { ...stroke('ada-2', source, 's1'), points: [0, 200, 200, 200] });
+      await delay(50);
+      s2.emit('element-start', {
+        ...stroke('sam-eraser', source, 's2'),
+        tool: 'eraser',
+        strokeWidth: 40,
+        points: [100, 0, 100, 25, 100, 50, 100, 75, 100, 100],
+      });
+      await delay(50);
+
+      const shared = await emitAck<any>(teacher, 'teacher:spotlight-board', { sourceBoardId: source });
+      assert.equal(shared.ok, true);
+
+      const { init } = await joinTracked({ roomId: 'spotlight-erasers', userId: 'late', name: 'Late' });
+      const [adaFirst, adaSecond, samEraser] = init.elements;
+      assert.equal(init.elements.length, 3);
+      assert.equal(adaFirst.userId, adaSecond.userId);
+      assert.notEqual(adaFirst.userId, samEraser.userId);
+      assert.deepEqual(getVisibleStrokeRuns(adaFirst, init.elements), [points]);
+    });
+
+    it('limits students to one name stamp per board while the teacher rule is on', async () => {
+      const { teacher, s1, s2 } = await setupClass('one-stamp');
+      const nameStamp = (id: string, userId: string) => ({ ...stroke(id, 'main', userId), tool: 'stamp', stamp: 'username', x: 1, y: 1 });
+      const mainIds = async () => {
+        const { init, socket } = await joinTracked({ roomId: 'one-stamp', userId: 'checker', name: 'Checker' });
+        socket.disconnect();
+        return init.elements.map((el: any) => el.id);
+      };
+
+      s1.emit('teacher:set-one-name-stamp', true);
+      s1.emit('element-start', nameStamp('free-1', 's1'));
+      s1.emit('element-start', nameStamp('free-2', 's1'));
+      await delay(100);
+      assert.deepEqual(await mainIds(), ['free-1', 'free-2']); // Off by default; students can't turn it on
+
+      s1.emit('elements-batch-remove', { boardId: 'main', ids: ['free-1', 'free-2'] });
+      const turnedOn = waitForEvent<any>(s1, 'room-settings');
+      teacher.emit('teacher:set-one-name-stamp', true);
+      assert.equal((await turnedOn).oneNameStamp, true);
+
+      s1.emit('element-start', nameStamp('first', 's1'));
+      await delay(50);
+      const corrected = waitForEvent<any>(s1, 'state-sync');
+      s1.emit('element-start', nameStamp('second', 's1'));
+      assert.deepEqual((await corrected).elements.map((el: any) => el.id), ['first']);
+
+      s2.emit('elements-batch-add', { boardId: 'main', elements: [nameStamp('batch-1', 's2'), nameStamp('batch-2', 's2')] });
+      teacher.emit('element-start', nameStamp('teacher-1', 't1'));
+      teacher.emit('element-start', nameStamp('teacher-2', 't1'));
+      await delay(100);
+      assert.deepEqual(await mainIds(), ['first', 'batch-1', 'teacher-1', 'teacher-2']);
+
+      // Moving your stamp still works, and deleting it frees the slot
+      s1.emit('element-update', { id: 'first', boardId: 'main', x: 50 });
+      await delay(50);
+      s1.emit('element-remove', { id: 'first', boardId: 'main' });
+      s1.emit('element-start', nameStamp('replacement', 's1'));
+      await delay(100);
+      const ids = await mainIds();
+      assert.equal(ids.includes('first'), false);
+      assert.equal(ids.includes('replacement'), true);
+    });
+
+    it('refuses to let anyone join as an anonymous author', async () => {
+      const { teacher, s1 } = await setupClass('spotlight-anon-id');
+      await startIndividualRound(teacher, s1);
+      s1.emit('element-start', stroke('original', 'r1_ind_s1', 's1'));
+      await delay(50);
+      await emitAck(teacher, 'teacher:spotlight-board', { sourceBoardId: 'r1_ind_s1' });
+      const { init } = await joinTracked({ roomId: 'spotlight-anon-id', userId: 'late', name: 'Late' });
+
+      const intruder = ioClient(`http://127.0.0.1:${srv.port}`, { transports: ['websocket'], forceNew: true, reconnection: false });
+      openSockets.push(intruder);
+      await waitForEvent(intruder, 'connect');
+      const events = record(intruder);
+      intruder.emit('join-room', { roomId: 'spotlight-anon-id', userId: init.elements[0].userId, name: 'Intruder' });
+      await delay(100);
+      assert.equal(events.some(({ ev }) => ev === 'init'), false);
     });
 
     it('scopes ephemeral laser pulses to the teacher’s board and rejects invalid senders and payloads', async () => {
