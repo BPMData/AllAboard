@@ -24,7 +24,11 @@
  */
 import fs from 'node:fs';
 import path from 'node:path';
-import { gzipSync, gunzipSync } from 'node:zlib';
+import { promisify } from 'node:util';
+import { gzip, gunzipSync } from 'node:zlib';
+
+/** Async gzip runs on libuv's thread pool, so compressing a multi-MB room doesn't freeze live drawing. */
+const gzipAsync = promisify(gzip);
 
 const ASSET_URL_RE = /\/api\/assets\/([a-f0-9]{64})/g;
 const HASH_RE = /^[a-f0-9]{64}$/;
@@ -355,7 +359,7 @@ export class BackupMirror {
     for (const m of json.matchAll(ASSET_URL_RE)) {
       await this.ensureAsset(m[1]);
     }
-    await this.backend.write(key, gzipSync(json), 'application/gzip');
+    await this.backend.write(key, await gzipAsync(json), 'application/gzip');
   }
 
   private async ensureAsset(hash: string): Promise<void> {
