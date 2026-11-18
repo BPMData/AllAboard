@@ -200,8 +200,10 @@ Cloud Run service "allaboard"  ── one container :3000 (node server.ts, Build
 - **Read `DEPLOYMENT.md` before touching** server startup, storage, env vars, or anything Cloud Run.
 - **Merging to `main` ships to production** (`deploy.yml`). Service settings live in that workflow; configuration that
   matters lives **in code**, not in console edits.
-- **`.env.example` is partly an AI Studio leftover.** Its `GEMINI_API_KEY` / `APP_URL` comments describe AI Studio
-  injection, which no longer happens and nothing in production reads. Don't treat it as deployment config.
+- **`.env.example` documents local-dev variables only.** Production config lives in `deploy.yml` and in code.
+- **No client-side secrets.** The AI Studio template's `vite.config.ts` `define` that baked `GEMINI_API_KEY` into the
+  public bundle has been removed. Never add a `define` (or a `VITE_*` variable) holding a key: anything in the client
+  bundle is public.
 - **Plans for other agents** (Codex/Terra/Antigravity) use the `PLANS_*.md` format: phases, exact code, a checkpoint per
   phase. **Pre-validate every checkpoint independently** on a scratch copy. Once code is fully written and tested, ship
   it and have the agent **review** rather than retype.

@@ -16,6 +16,7 @@ test-results/
 *.log
 .env*
 !.env.example
+# The app uses npm (package-lock.json). A bun.lock in the upload can make Buildpacks pick bun instead.
 bun.lock
 PLANS_*.md
 TODO.md
