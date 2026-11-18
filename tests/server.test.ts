@@ -1617,6 +1617,29 @@ describe('AllAboard server & Socket.IO integration tests', () => {
       assert.deepEqual(full.elements, []);
     });
 
+    it('students get only their own board’s ink in breakout-sync and init; teachers get all of it', async () => {
+      const { teacher, s1, s2 } = await setupClass('chan-trim');
+      await startIndividualRound(teacher, s2);
+      s1.emit('element-start', stroke('mine1', 'r1_ind_s1', 's1'));
+      s2.emit('element-start', stroke('mine2', 'r1_ind_s2', 's2'));
+      await delay(100);
+
+      const [tSync, s1Sync] = await Promise.all([
+        waitForEvent<any>(teacher, 'breakout-sync'),
+        waitForEvent<any>(s1, 'breakout-sync'),
+        emitAck(teacher, 'teacher:configure-breakout', { action: 'update-current', chatScope: 'board' }),
+      ]);
+      assert.equal(tSync.subBoards['r1_ind_s1'].elements.length, 1);
+      assert.equal(tSync.subBoards['r1_ind_s2'].elements.length, 1);
+      assert.equal(s1Sync.subBoards['r1_ind_s1'].elements.length, 1);
+      assert.equal(s1Sync.subBoards['r1_ind_s2'].elements.length, 0, 'other board: metadata only');
+      assert.deepEqual(s1Sync.subBoards['r1_ind_s2'].assignedUserIds, ['s2']);
+
+      const { init } = await joinTracked({ roomId: 'chan-trim', userId: 's2', name: 'Ada' });
+      assert.equal(init.subBoards['r1_ind_s2'].elements.length, 1);
+      assert.equal(init.subBoards['r1_ind_s1'].elements.length, 0);
+    });
+
     it('delivers ink to students sharing a group board', async () => {
       const { teacher, s1, s2 } = await setupClass('chan-group');
       const synced = waitForEvent<any>(s2, 'breakout-sync');

@@ -47,6 +47,7 @@ Teachers are identified by a per-room **PIN**, not a login.
 | `src/lib/worksheetLoader.ts` | ~390 | PDF/image → `BackgroundPage[]` (browser-side render to JPEG data URLs). Built-in templates (`four-corners`, `frayer-model`, `checkin-columns`). `MAX_PDF_PAGES = 10`. |
 | `src/lib/batchPdfExport.ts` | ~590 | Export boards to PDF (renders background plus ink). |
 | `src/lib/inkCore.ts` | — | Ink smoothing, highlighter/cover, text-note logic (from OverBoard). |
+| `staticAssets.ts` | — | Production `dist/` serving: hashed `/assets` cached 1 year (`immutable`) and gzipped once in memory; `index.html` `no-cache`. |
 | `src/lib/pointBatcher.ts`, `src/lib/drawThrottle.ts`, `src/lib/boardDigest.ts` | — | Client-side coalescing of streaming ink (send every 50 ms, apply incoming once per frame) and the network pacing constants (ink 50 ms, cursor 100 ms). Teacher overview digests (1.5 s). |
 | `scripts/loadtest.ts` | — | `npx tsx scripts/loadtest.ts --mode main\|individual --client legacy\|batched` — N fake drawing students, prints msg/s in and out and server CPU. |
 | `src/lib/roomCode.ts` | — | `normalizeRoomCode` (**must match** server `normalizeRoomId`), `sanitizeRoomCodeDraft`. |
@@ -150,7 +151,11 @@ Cloud Run service "allaboard"  ── nginx-container :8080 (ingress) ──► 
   `OVERVIEW_SYNC_MS` (1.5 s, `src/lib/boardDigest.ts`) each teacher gets one `boards-digest` with the **changed elements**
   of every other board (`upserts`/`removed`, or the whole board after a clear or reorder). That's enough for the live
   grid and moderation. **If you add a delta event, send it to `boardAudience` *and* call `noteChange`.**
-  Consequence: a student's copy of other boards is only as fresh as the last `breakout-sync`, and a teacher's is ≤ 1.5 s old.
+- **Students only hold their own board's ink.** `init` and `breakout-sync` are built per socket (`subBoardsFor`):
+  teachers get every board; students get every board's metadata, background and chat, but `elements: []` except on
+  their own board (`placeSocket` sends the real contents when they move). So a student's Save .JSON contains only their
+  own board's ink, and a teacher's copy of boards they aren't viewing is ≤ 1.5 s old. (`room-restored` after an import
+  is still full, room-wide.)
 - **Ink pacing (client).** `element-append-points` is queued and sent every 50 ms; any other drawing emit goes through
   `emitDrawing`, which flushes the queue first so the server sees actions in order. Incoming points are applied once per
   animation frame; an `onAny` hook flushes them before any other event is handled. Cursors: at most 10/s plus a trailing send.

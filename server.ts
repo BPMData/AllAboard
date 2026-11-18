@@ -23,6 +23,7 @@ import {
   resolveBreakoutAction,
   uniqueStrings,
 } from './src/lib/breakoutRounds.ts';
+import { distRouter } from './staticAssets.ts';
 import { RoomStore, internBackground, isValidAssetHash } from './roomStore.ts';
 import { BackupMirror, DirBackend, GcsBackend, sniffMime, type BackupBackend } from './backupMirror.ts';
 import { isTeacherStampKind } from './src/lib/stamps.ts';
@@ -705,12 +706,30 @@ export async function startServer(options: StartServerOptions = {}) {
   }, 1000);
   timerTickInterval.unref();
 
+  /**
+   * Sub-boards as one user should receive them. Teachers get everything. Students get every board's metadata,
+   * background and chat but only their *own* board's ink, since they never see the rest (and placeSocket sends a
+   * fresh copy when they move). In a 20-board breakout this makes each student's copy ~20x smaller.
+   */
+  function subBoardsFor(room: RoomState, userId: string): Record<string, SubBoardState> {
+    const all = serializeSubBoards(room.subBoards);
+    if (room.usersByUserId.get(userId)?.isTeacher) return all;
+    const mine = findStudentBoardId(room.subBoards, room.breakoutConfig, userId);
+    const out: Record<string, SubBoardState> = {};
+    for (const [id, sb] of Object.entries(all)) out[id] = id === mine ? sb : { ...sb, elements: [] };
+    return out;
+  }
+
   function broadcastBreakoutSync(room: RoomState) {
     syncBoardChannels(room);
-    io.to(room.id).emit('breakout-sync', {
-      breakoutConfig: room.breakoutConfig,
-      subBoards: serializeSubBoards(room.subBoards),
-    });
+    const ids = io.sockets.adapter.rooms.get(room.id);
+    if (!ids) return;
+    const full = serializeSubBoards(room.subBoards);
+    for (const id of ids) {
+      const meta = socketMeta.get(id);
+      const subBoards = !meta || meta.inTeachers ? full : subBoardsFor(room, meta.userId);
+      io.to(id).emit('breakout-sync', { breakoutConfig: room.breakoutConfig, subBoards });
+    }
   }
 
   function cloneBackground(bg: any | null | undefined): any | null {
@@ -931,7 +950,7 @@ export async function startServer(options: StartServerOptions = {}) {
         messages: room.messages,
         elements: room.elements,
         background: room.background,
-        subBoards: serializeSubBoards(room.subBoards),
+        subBoards: subBoardsFor(room, userId),
         users: getRosterPayload(room),
         roomSettings: getRoomSettingsPayload(room),
         isTeacher: isVerifiedTeacher,
@@ -2184,11 +2203,7 @@ export async function startServer(options: StartServerOptions = {}) {
     });
     app.use(vite.middlewares);
   } else if (!options.skipVite) {
-    const distPath = path.join(process.cwd(), 'dist');
-    app.use(express.static(distPath));
-    app.get('*', (req, res) => {
-      res.sendFile(path.join(distPath, 'index.html'));
-    });
+    app.use(distRouter(path.join(process.cwd(), 'dist')));
   }
 
   await new Promise<void>((resolve) => {
