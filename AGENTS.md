@@ -3,13 +3,15 @@
 **New here? Read [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) first (the system map).** Before touching deployment,
 storage, env vars, Cloud Run settings, or server startup code, read [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md). The non-negotiables:
 
-1. **AI Studio Publish rewrites the Cloud Run service config.** Console-added volume mounts vanish and env vars
-   come and go. Anything that must persist is configured **in code**. Code must tolerate stale env vars.
+1. **Every merge to `main` deploys to production.** `.github/workflows/deploy.yml` builds with Google Cloud
+   Buildpacks (no Dockerfile) and runs `gcloud run deploy`. Service settings live in that workflow; anything else that
+   must persist lives **in code**, never only in a console edit. Code must still tolerate stale env vars left over
+   from the old AI Studio deploys (e.g. `BACKUP_DIR`, `DATA_DIR`).
 2. **Production runs `node server.ts` (type stripping), and tests run `tsx`.** No parameter properties, `enum`,
    `namespace`, or `import x = require()` in server-side code. Always run:
    `node -e "import('./server.ts').then(() => console.log('OK'))"`
-3. **Two containers:** nginx on 8080 forwards to `app-container` on 3000. Keep `PORT=3000` on app-container.
-   Never move the probe to 8080.
+3. **One container on port 3000**, set by `--port 3000` in `deploy.yml`; Cloud Run injects `PORT` itself. Never add
+   `PORT` as an env var (it's reserved and the deploy fails). The old nginx + `app-container` setup is gone.
 4. **Cloud Run disk is wiped** on cold start and redeploy. Durable copy: `gs://allaboard-data`, written over the
    Cloud Storage JSON API (`backupMirror.ts`, `GcsBackend`). Never put SQLite on a bucket mount. Never "fix" a
    storage error with `/tmp`.

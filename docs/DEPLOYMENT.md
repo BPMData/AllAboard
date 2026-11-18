@@ -35,16 +35,16 @@ Because `allaboard` was migrated off **AI Studio** (whose Publish button rewrote
 
 ## 3. 🔴 Hard rules (each one cost hours)
 
-### R1. AI Studio Publish rewrites the Cloud Run service config. Never depend on console settings.
-Every AI Studio publish **replaces** the revision template. Things observed:
-- **Volume mounts added in the console disappear.** The `/backup` bucket mount vanished on the next publish.
-- **Env vars added in the console may disappear, or survive while what they point to doesn't.**
-  `BACKUP_DIR=/backup` survived after its mount was gone, and that turned backups off.
-- **Env vars you deleted can come back.** `DATA_DIR=/data` reappeared after being removed.
+### R1. Every merge to `main` deploys. Config lives in `deploy.yml` or in code, never only in the console.
+`.github/workflows/deploy.yml` runs on every push to `main`: typecheck, unit tests, build, a plain-node boot check,
+then `gcloud run deploy --source .` (Buildpacks). The service settings that matter (`--port 3000`, `--max-instances 1`,
+`--session-affinity`, `--allow-unauthenticated`) are flags in that file. Change them **there**, in a PR.
 
-**So:** anything that must persist (bucket name, feature flags) lives **in code**. Example:
-`DEFAULT_BACKUP_BUCKET` in `server.ts`. Code must also **tolerate** stale env vars instead of trusting them.
-After every publish, glance at **Cloud Run → allaboard → Containers → app-container**.
+**History, and why code must tolerate stale env vars:** before the migration, AI Studio's Publish button
+**replaced** the revision template each time. Console-added volume mounts vanished (the `/backup` mount),
+env vars came and went (`BACKUP_DIR=/backup` outlived its mount and turned backups off; `DATA_DIR=/data` kept
+reappearing). Some of those may still be set on the service, so anything that must persist (bucket name, feature
+flags) lives **in code**, e.g. `DEFAULT_BACKUP_BUCKET` in `server.ts`, and code never trusts stale env vars.
 
 ### R2. Production runs `node server.ts` (type stripping). The test suite runs `tsx`.
 Node's type stripping **rejects** TypeScript-only runtime syntax:
@@ -59,10 +59,11 @@ This nearly shipped once. Every change to server-side code must pass:
 node -e "import('./server.ts').then(() => console.log('OK: loads under plain node'))"
 ```
 
-### R3. Keep `PORT=3000` on `app-container`. Never "fix" the port.
-nginx owns 8080 and forwards to 3000. Without `PORT=3000`, the app grabs Cloud Run's default 8080, collides with
-nginx, and the startup probe on 3000 fails: *"STARTUP TCP probe failed … on port 3000"*. Do **not** follow advice to
-point the probe at 8080. That "fixes" the probe and breaks every request.
+### R3. One container on port 3000. Never set `PORT` as an env var.
+`deploy.yml` passes `--port 3000`, and Cloud Run injects `PORT=3000` itself. `PORT` is **reserved**: adding it as an env
+var makes the deploy fail (PR #38). The old AI Studio template ran nginx on 8080 in front of an `app-container` on
+3000; the migration collapsed that to one container named `allaboard`. If you see advice about nginx or
+`app-container`, it's out of date.
 
 ### R4. Never put SQLite on a Cloud Storage bucket mount.
 A bucket mount (gcsfuse) has no file locking. SQLite there corrupts or crawls. The bucket is only ever written as
@@ -99,7 +100,7 @@ root is legacy and harmless.
 
 ---
 
-## 5. After every publish: the 60-second check
+## 5. After every deploy: the 60-second check
 
 1. **Cloud Run → allaboard → Observability → Logs**, then search `Backing up`. You want:
    ```
@@ -113,13 +114,13 @@ root is legacy and harmless.
 
 | You see | Cause | Fix |
 |---|---|---|
-| `failed to start and listen on the port defined … PORT=8080` | App crashed before listening, or `PORT` is wrong | Read the app-container logs. Check that `PORT=3000` is on app-container (R3). |
-| `STARTUP TCP probe failed … on port 3000` | `PORT=3000` missing from app-container | Re-add `PORT=3000` (R3) |
+| `failed to start and listen on the port defined …` | App crashed before listening, or the port is wrong | Read the container logs. Check `--port 3000` in `deploy.yml` (R3). |
+| Deploy fails: `The following reserved env names were provided: PORT` | `PORT` set as an env var | Remove it; `--port 3000` is enough (R3) |
 | `ERR_UNSUPPORTED_TYPESCRIPT_SYNTAX` at boot | TS-only syntax in server code | Remove it (R2). Add the plain-node check to the PR. |
 | `Backup target folder "/backup" is unusable, skipping` | Stale `BACKUP_DIR` from an old console setting | Harmless (falls through to the bucket). Optionally delete the env var. |
 | `Backup target bucket … unusable … HTTP 403` | SA lost `roles/storage.objectUser` on `allaboard-data` | Bucket → Permissions → grant it again |
 | `Backups are OFF: rooms will NOT survive…` | No usable target: no `K_SERVICE`, no `NODE_ENV=production`, or every probe failed | Read the skipped-target lines above it |
-| Room empty after republish, bucket has no `rooms/` folder | Backups never ran on the old revision | Check the logs from the **previous** revision for the lines in §5 |
+| Room empty after a redeploy, bucket has no `rooms/` folder | Backups never ran on the old revision | Check the logs from the **previous** revision for the lines in §5 |
 | `EACCES … mkdir '/data'` | Stale `DATA_DIR=/data` | Harmless (`RoomStore` falls back to the temp dir). Optionally delete it. |
 
 ---
