@@ -19,6 +19,7 @@ export type ToolType =
   | 'pan'
   | 'select'
   | 'move-bg'
+  | 'laser'
   | 'solid'
   | 'hollow'
   | 'spray'
@@ -40,7 +41,7 @@ export interface CanvasElement {
   boardId?: string;
   userId: string;
   userName: string;
-  tool: Exclude<ToolType, 'pan' | 'select' | 'move-bg'>;
+  tool: Exclude<ToolType, 'pan' | 'select' | 'move-bg' | 'laser'>;
   color: string;
   strokeWidth: number;
   hollowShape?: HollowShapeKind; // Shape tip for hollow tool: circle, square, triangle, diamond, star
@@ -89,12 +90,16 @@ export interface ChatMessage {
 
 export type GridMode = 'blank' | 'dots' | 'graph' | 'isometric';
 
+export type StudentStatus = 'none' | 'need-help' | 'got-it' | 'done';
+
 export interface User {
   userId: string;
   name: string;
   color: string;
   isTeacher: boolean;
   isNameLocked?: boolean;
+  status?: StudentStatus;
+  statusUpdatedAt?: number;
   onlineCount?: number;
 }
 
@@ -185,9 +190,17 @@ export interface TimerControlPayload {
   autoLockOnExpire?: boolean;
 }
 
+export interface SpotlightPayload {
+  sourceBoardId: string;
+  anonymize: boolean;
+  copyBackground: boolean;
+  returnToMain: boolean;
+}
+
 export interface RoomSettings {
   roomId: string;
   isCanvasLocked: boolean;
+  hideStudentCursors?: boolean;
   hasTeacherPin: boolean;
   lastSavedAt?: number;
   breakoutConfig?: BreakoutConfig;

@@ -5,6 +5,8 @@ import {
   ChatMessage,
   User,
   RoomSettings,
+  StudentStatus,
+  SpotlightPayload,
   RoomBackground,
   RemoteCursor,
   ImportRestoreMode,
@@ -240,6 +242,7 @@ export default function App() {
   const [roomSettings, setRoomSettings] = useState<RoomSettings>({
     roomId: getInitialRoomId(),
     isCanvasLocked: false,
+    hideStudentCursors: false,
     hasTeacherPin: false,
     breakoutConfig: {
       mode: 'main',
@@ -925,6 +928,16 @@ export default function App() {
     },
     [socket]
   );
+
+  const handleSpotlightBoard = useCallback((payload: SpotlightPayload): Promise<{ ok: boolean; error?: string }> => {
+    return new Promise((resolve) => {
+      if (!socket) return resolve({ ok: false, error: 'Not connected to server.' });
+      socket.emit('teacher:spotlight-board', payload, (result: { ok: boolean; error?: string }) => {
+        if (result?.ok) setTeacherSelectedBoardId('main');
+        resolve(result || { ok: false, error: 'No response from server.' });
+      });
+    });
+  }, [socket]);
 
   const handleAssignUserToBoard = useCallback(
     (targetBoardId: string, targetUserId?: string) => {
@@ -1641,6 +1654,17 @@ export default function App() {
     [socket]
   );
 
+  const handleTeacherToggleHideCursors = useCallback((hide: boolean) => {
+    socket?.emit('teacher:set-hide-cursors', hide);
+  }, [socket]);
+
+  const handleSetStatus = useCallback((status: StudentStatus) => {
+    socket?.emit('user:set-status', { status });
+  }, [socket]);
+  const handleClearStatus = useCallback((targetUserId?: string) => {
+    socket?.emit('teacher:clear-status', { targetUserId });
+  }, [socket]);
+
   const handleTeacherClearAll = useCallback(() => {
     if (socket) {
       emitDrawing(socket, 'teacher:clear-all', { boardId: activeBoardId });
@@ -1901,6 +1925,7 @@ export default function App() {
           onTeacherDeleteMessage={handleTeacherDeleteMessage}
           onTeacherKickUser={handleTeacherKickUser}
           onTeacherUnbanUser={handleTeacherUnbanUser}
+          onTeacherClearStatus={handleClearStatus}
           width={chatWidth}
           onWidthChange={setChatWidth}
           onResetWidth={() =>
@@ -1927,7 +1952,11 @@ export default function App() {
           breakoutConfig={breakoutConfig}
           users={users}
           remoteCursors={remoteCursors}
+          laserSocket={socket}
+          onSetStatus={handleSetStatus}
+          onTeacherClearStatus={handleClearStatus}
           isCanvasLocked={roomSettings.isCanvasLocked}
+          hideStudentCursors={Boolean(roomSettings.hideStudentCursors)}
           hasTeacherPin={roomSettings.hasTeacherPin}
           isTeacher={isTeacher}
           userId={userId}
@@ -1935,6 +1964,7 @@ export default function App() {
           userColor={userColor}
           onSelectBoard={setTeacherSelectedBoardId}
           onConfigureBreakout={handleConfigureBreakout}
+          onSpotlightBoard={handleSpotlightBoard}
           onAssignUserToBoard={handleAssignUserToBoard}
           onElementStart={handleElementStart}
           onElementAppendPoints={handleElementAppendPoints}
@@ -1947,6 +1977,7 @@ export default function App() {
           onUndo={handleUndo}
           onClearMine={handleClearMine}
           onTeacherToggleLock={handleTeacherToggleLock}
+          onTeacherToggleHideCursors={handleTeacherToggleHideCursors}
           onTeacherClearAll={handleTeacherClearAll}
           onTeacherSetBackground={handleTeacherSetBackground}
           onTeacherUpdateBackground={handleTeacherUpdateBackground}

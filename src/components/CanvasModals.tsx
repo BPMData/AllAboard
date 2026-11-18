@@ -12,6 +12,7 @@ import {
   RoomBackground,
   SubBoardData,
   User,
+  SpotlightPayload,
 } from '../types';
 import {
   BUILT_IN_TEMPLATES,
@@ -31,6 +32,7 @@ import {
 } from '../lib/googleDrive';
 import { AlertCircle, Check, Download, FolderOpen, Shuffle, X } from 'lucide-react';
 import { cn } from '../lib/utils';
+import { StudentStatusBadge } from './StudentStatusBadge';
 
 export type { PendingSnapshotData };
 
@@ -46,6 +48,8 @@ interface LiveGridOverviewProps {
   onSendClassToRound?: (roundId: string) => void;
   activeRoundGroupBoards: SubBoardData[];
   onAssignUserToBoard: (targetBoardId: string, targetUserId?: string) => void;
+  onTeacherClearStatus: (targetUserId?: string) => void;
+  onSpotlightBoard: (payload: SpotlightPayload) => Promise<{ ok: boolean; error?: string }>;
   users: User[];
   fullMainElements: CanvasElement[];
   fullMainBackground: RoomBackground | null;
@@ -71,6 +75,8 @@ export function LiveGridOverview({
   onSendClassToRound,
   activeRoundGroupBoards,
   onAssignUserToBoard,
+  onTeacherClearStatus,
+  onSpotlightBoard,
   users,
   fullMainElements,
   fullMainBackground,
@@ -80,6 +86,13 @@ export function LiveGridOverview({
   onSelectBoard,
   onClose,
 }: LiveGridOverviewProps) {
+  const [shareBoard, setShareBoard] = useState<SubBoardData | null>(null);
+  const [anonymize, setAnonymize] = useState(true);
+  const [copyBackground, setCopyBackground] = useState(true);
+  const [returnToMain, setReturnToMain] = useState(currentMode !== 'main');
+  const [sharing, setSharing] = useState(false);
+  const [shareError, setShareError] = useState('');
+
   const canSendClassToViewingRound = Boolean(
     viewingRound &&
       onSendClassToRound &&
@@ -208,6 +221,12 @@ export function LiveGridOverview({
                   <p className="text-xs text-slate-500 truncate mt-0.5">
                     {assignedNames || 'No students assigned yet'}
                   </p>
+                  <div className="flex flex-wrap gap-1 mt-1">
+                    {sb.assignedUserIds.map((uid) => {
+                      const student = users.find((u) => u.userId === uid);
+                      return student?.status && student.status !== 'none' ? <span key={uid} className="inline-flex items-center gap-1 text-xs text-slate-600">{sb.assignedUserIds.length > 1 && student.name}<StudentStatusBadge status={student.status} name={student.name} onClear={() => onTeacherClearStatus(uid)} /></span> : null;
+                    })}
+                  </div>
                   {sb.kind === 'group' && sb.roundId === activeRoundId && sb.assignedUserIds.length > 0 && (
                     <div className="space-y-1 mt-2" onClick={(e) => e.stopPropagation()}>
                       {sb.assignedUserIds.map((uid) => (
@@ -244,12 +263,37 @@ export function LiveGridOverview({
 
                 <div className="flex items-center justify-between text-xs text-slate-500">
                   <span>{sb.messages.length} group messages</span>
+                  <button type="button" onClick={(e) => { e.stopPropagation(); setShareBoard(sb); setAnonymize(true); setCopyBackground(true); setReturnToMain(currentMode !== 'main'); setShareError(''); }} className="text-brand-700 font-semibold hover:underline cursor-pointer">Share to Main</button>
                   <span className="text-brand-600 font-semibold">Inspect & Draw →</span>
                 </div>
               </div>
             );
           })}
         </div>
+        {shareBoard && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 p-4" role="dialog" aria-modal="true" aria-labelledby="share-board-title">
+            <div className="w-full max-w-md rounded-xl bg-white p-5 shadow-xl space-y-4">
+              <h3 id="share-board-title" className="font-bold text-slate-900">Share {shareBoard.title} to Main</h3>
+              <p className="text-sm text-slate-600">This replaces the ink currently on Main. Review the work for names written in the drawing or worksheet before sharing.</p>
+              <div className="space-y-2 text-sm text-slate-800">
+                <label className="flex gap-2"><input type="checkbox" checked={anonymize} onChange={(e) => setAnonymize(e.target.checked)} /> Anonymize authors and remove name stamps</label>
+                <label className="flex gap-2"><input type="checkbox" checked={copyBackground} onChange={(e) => setCopyBackground(e.target.checked)} /> Copy worksheet to Main</label>
+                <label className="flex gap-2"><input type="checkbox" checked={returnToMain} onChange={(e) => setReturnToMain(e.target.checked)} /> Bring class to Main</label>
+              </div>
+              {shareError && <p role="alert" className="text-sm text-red-700">{shareError}</p>}
+              <div className="flex justify-end gap-2">
+                <button type="button" disabled={sharing} onClick={() => setShareBoard(null)} className="px-3 py-1.5 text-sm rounded bg-slate-100 cursor-pointer">Cancel</button>
+                <button type="button" disabled={sharing} onClick={async () => {
+                  setSharing(true);
+                  const result = await onSpotlightBoard({ sourceBoardId: shareBoard.id, anonymize, copyBackground, returnToMain });
+                  setSharing(false);
+                  if (!result.ok) { setShareError(result.error || 'Could not share this board.'); return; }
+                  setShareBoard(null); onSelectBoard('main'); onClose();
+                }} className="px-3 py-1.5 text-sm rounded bg-brand-600 text-white disabled:opacity-50 cursor-pointer">{sharing ? 'Sharing…' : 'Share to Main'}</button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

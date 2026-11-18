@@ -1,3 +1,4 @@
+import type { Socket } from 'socket.io-client';
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { Stage, Layer, Line, Circle, Rect, Text as KonvaText, Group, Image as KonvaImage, Shape } from 'react-konva';
 import {
@@ -20,6 +21,8 @@ import {
   User,
   ClassroomTimerState,
   TimerControlPayload,
+  StudentStatus,
+  SpotlightPayload,
 } from '../types';
 import {
   getActiveRound,
@@ -156,9 +159,11 @@ import {
   PanelLeftOpen,
   HardDrive,
   Keyboard,
+  Crosshair,
 } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { CURSOR_EMIT_MS } from '../lib/drawThrottle';
+import { STATUS_OPTIONS } from './StudentStatusBadge';
 
 type HistoryAction =
   | { kind: 'add'; items: CanvasElement[] }
@@ -177,7 +182,11 @@ interface CanvasProps {
   breakoutConfig: BreakoutConfig;
   users: User[];
   remoteCursors: Record<string, RemoteCursor>;
+  laserSocket: Socket | null;
+  onSetStatus: (status: StudentStatus) => void;
+  onTeacherClearStatus: (targetUserId?: string) => void;
   isCanvasLocked: boolean;
+  hideStudentCursors: boolean;
   hasTeacherPin?: boolean;
   isTeacher: boolean;
   userId: string;
@@ -185,6 +194,7 @@ interface CanvasProps {
   userColor: string;
   onSelectBoard: (boardId: string) => void;
   onConfigureBreakout: (payload: ConfigureBreakoutPayload) => Promise<{ ok: boolean; error?: string }>;
+  onSpotlightBoard: (payload: SpotlightPayload) => Promise<{ ok: boolean; error?: string }>;
   onAssignUserToBoard: (targetBoardId: string, targetUserId?: string) => void;
   onElementStart: (element: CanvasElement) => void;
   onElementAppendPoints: (id: string, newPoints: number[]) => void;
@@ -197,6 +207,7 @@ interface CanvasProps {
   onUndo: () => void;
   onClearMine: () => void;
   onTeacherToggleLock: (locked: boolean) => void;
+  onTeacherToggleHideCursors: (hide: boolean) => void;
   onTeacherClearAll: () => void;
   onTeacherSetBackground: (bg: RoomBackground | null) => Promise<{ ok: boolean; error?: string }>;
   onTeacherUpdateBackground: (patch: Partial<RoomBackground>) => void;
@@ -567,7 +578,11 @@ export default function Canvas({
   breakoutConfig,
   users,
   remoteCursors,
+  laserSocket,
+  onSetStatus,
+  onTeacherClearStatus,
   isCanvasLocked,
+  hideStudentCursors,
   hasTeacherPin = true,
   isTeacher,
   userId,
@@ -575,6 +590,7 @@ export default function Canvas({
   userColor,
   onSelectBoard,
   onConfigureBreakout,
+  onSpotlightBoard,
   onAssignUserToBoard,
   onElementStart,
   onElementAppendPoints,
@@ -587,6 +603,7 @@ export default function Canvas({
   onUndo,
   onClearMine,
   onTeacherToggleLock,
+  onTeacherToggleHideCursors,
   onTeacherClearAll,
   onTeacherSetBackground,
   onTeacherUpdateBackground,
@@ -677,7 +694,7 @@ export default function Canvas({
   // Active Drawing / Shape / Smoothing State
   const [isDrawing, setIsDrawing] = useState(false);
   const [currentElementId, setCurrentElementId] = useState<string | null>(null);
-  const activeStrokeToolRef = useRef<Exclude<ToolType, 'pan' | 'select' | 'move-bg'> | null>(null);
+  const activeStrokeToolRef = useRef<Exclude<ToolType, 'pan' | 'select' | 'move-bg' | 'laser'> | null>(null);
   const activeStrokePointsRef = useRef<number[]>([]);
   const liveSmoothRef = useRef<LiveSmoothState | null>(null);
   const downAtRef = useRef<number>(0);
@@ -996,7 +1013,65 @@ export default function Canvas({
     },
     []
   );
+  useEffect(() => {
+    if (!laserSocket) return;
+    const resetHistory = ({ boardId }: { boardId: string }) => {
+      delete historyByBoardRef.current[boardId];
+      setHistoryTick((tick) => tick + 1);
+      if (boardId === activeBoardId) {
+        setSelectedIds([]);
+        setEditingNote(null);
+      }
+    };
+    laserSocket.on('board-replaced', resetHistory);
+    return () => { laserSocket.off('board-replaced', resetHistory); };
+  }, [laserSocket, activeBoardId]);
   const [dimensions, setDimensions] = useState({ width: 800, height: 600 });
+  type LaserPoint = { x: number; y: number; userId: string; strokeId: string; time: number; id: number };
+  const [laserPoints, setLaserPoints] = useState<LaserPoint[]>([]);
+  const laserIdRef = useRef(0);
+  const laserStrokeRef = useRef<string | null>(null);
+  const lastLaserEmitRef = useRef(0);
+  const [laserNow, setLaserNow] = useState(0);
+  const addLaserPoint = useCallback((point: { x: number; y: number; userId: string; strokeId: string }) => {
+    const time = performance.now();
+    const id = ++laserIdRef.current;
+    setLaserPoints((prev) => [...prev.filter((p) => time - p.time < 1200), { ...point, time, id }]);
+    setLaserNow(time);
+  }, []);
+  useEffect(() => {
+    setLaserPoints([]);
+    if (laserStrokeRef.current) activePointerIdRef.current = null;
+    laserStrokeRef.current = null;
+    if (!laserSocket) return;
+    const receive = (point: { boardId: string; x: number; y: number; userId: string; strokeId: string }) => {
+      if (point.boardId === activeBoardId) addLaserPoint(point);
+    };
+    laserSocket.on('laser-pulse', receive);
+    return () => { laserSocket.off('laser-pulse', receive); };
+  }, [laserSocket, activeBoardId, addLaserPoint]);
+  useEffect(() => {
+    if (!laserPoints.length) return;
+    let frame = 0;
+    const tick = () => {
+      const now = performance.now();
+      setLaserNow(now);
+      setLaserPoints((prev) => prev.filter((p) => now - p.time < 1200));
+      frame = requestAnimationFrame(tick);
+    };
+    frame = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(frame);
+  }, [laserPoints.length > 0]);
+  const sendLaserPoint = (world: { x: number; y: number }, force = false) => {
+    if (!isTeacher || !laserStrokeRef.current) return;
+    const now = performance.now();
+    if (!force && now - lastLaserEmitRef.current < 35) return;
+    lastLaserEmitRef.current = now;
+    const point = { ...world, boardId: activeBoardId, strokeId: laserStrokeRef.current };
+    addLaserPoint({ ...point, userId });
+    laserSocket?.emit('laser-pulse', point);
+  };
+
 
   const canDraw = !isCanvasLocked || isTeacher;
   const effectiveTool: ToolType = !canDraw
@@ -1004,6 +1079,8 @@ export default function Canvas({
     : isSpacePressed
     ? 'pan'
     : tool === 'move-bg' && (!isTeacher || !background)
+    ? 'pan'
+    : tool === 'laser' && !isTeacher
     ? 'pan'
     : tool;
 
@@ -2463,6 +2540,15 @@ export default function Canvas({
       return;
     }
 
+    if (effectiveTool === 'laser' && isTeacher) {
+      activePointerIdRef.current = e.pointerId;
+      laserStrokeRef.current = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+      try { containerRef.current?.setPointerCapture(e.pointerId); } catch { /* Capture may fail if pointer ended. */ }
+      sendLaserPoint(world, true);
+      e.preventDefault();
+      return;
+    }
+
     // Teacher dragging background worksheet
     if (effectiveTool === 'move-bg') {
       if (isTeacher && background) {
@@ -2633,8 +2719,8 @@ export default function Canvas({
     const id = Math.random().toString(36).substring(2, 11);
 
     // SMART Board palm / pen-eraser automatically erases regardless of selected tool (OverBoard `pointerKind(e) === 'palm'`)
-    const strokeTool: Exclude<ToolType, 'pan' | 'select' | 'move-bg'> =
-      kind === 'palm' ? 'eraser' : (effectiveTool as Exclude<ToolType, 'pan' | 'select' | 'move-bg'>);
+    const strokeTool: Exclude<ToolType, 'pan' | 'select' | 'move-bg' | 'laser'> =
+      kind === 'palm' ? 'eraser' : (effectiveTool as Exclude<ToolType, 'pan' | 'select' | 'move-bg' | 'laser'>);
 
     // One-click Stamp placement (when not using palm eraser)
     if (strokeTool === 'stamp') {
@@ -2833,6 +2919,11 @@ export default function Canvas({
 
     if (e.pointerId !== activePointerIdRef.current) return;
 
+    if (laserStrokeRef.current) {
+      sendLaserPoint(world);
+      return;
+    }
+
     // Direct text note drag preview in Type mode
     if (draggingNoteRef.current) {
       const drag = draggingNoteRef.current;
@@ -2981,6 +3072,14 @@ export default function Canvas({
   const handleViewportPointerUp = (e: React.PointerEvent<HTMLDivElement>) => {
     if (e.pointerId !== activePointerIdRef.current) return;
     activePointerIdRef.current = null;
+    if (laserStrokeRef.current) {
+      if (e.type === 'pointerup') {
+        const pos = getLocalPosFromEvent(e.clientX, e.clientY);
+        sendLaserPoint(screenToWorld(pos.x, pos.y), true);
+      }
+      laserStrokeRef.current = null;
+      return;
+    }
 
     const pos = getLocalPosFromEvent(e.clientX, e.clientY);
     const world = screenToWorld(pos.x, pos.y);
@@ -3527,6 +3626,15 @@ export default function Canvas({
           </div>
         )}
 
+        {!isTeacher && (
+          <div className="flex flex-wrap items-center gap-1" aria-label="My status">
+            {(Object.entries(STATUS_OPTIONS) as Array<[Exclude<StudentStatus, 'none'>, typeof STATUS_OPTIONS[keyof typeof STATUS_OPTIONS]]>).map(([value, option]) => {
+              const selected = users.find((user) => user.userId === userId)?.status === value;
+              return <button key={value} type="button" aria-pressed={selected} onClick={() => onSetStatus(selected ? 'none' : value)} className={cn('rounded-full border px-2 py-1 text-xs font-medium cursor-pointer', option.className, selected && 'ring-2 ring-offset-1 ring-slate-500')}>{option.label}</button>;
+            })}
+          </div>
+        )}
+
         {/* Navigation & Brush Tools */}
         <div className="flex items-center gap-0.5 bg-slate-100 p-1 rounded-lg border border-slate-200/80">
           <button
@@ -3558,6 +3666,14 @@ export default function Canvas({
             <Lasso size={16} />
             <span className="hidden md:inline">Select</span>
           </button>
+
+          {isTeacher && (
+            <button type="button" title="Laser pointer" aria-label="Laser pointer" aria-pressed={effectiveTool === 'laser'}
+              onClick={() => setTool('laser')}
+              className={cn("p-1.5 rounded-md transition-colors cursor-pointer", effectiveTool === 'laser' ? "bg-white text-red-600 shadow-xs" : "text-slate-600 hover:text-red-600")}>
+              <Crosshair size={17} />
+            </button>
+          )}
 
           <div className="h-4 w-px bg-slate-300 mx-0.5" />
 
@@ -4923,6 +5039,21 @@ export default function Canvas({
               <span>{isCanvasLocked ? 'Unlock Board' : 'Lock Board'}</span>
             </button>
 
+            <button
+              type="button"
+              onClick={() => onTeacherToggleHideCursors(!hideStudentCursors)}
+              aria-pressed={hideStudentCursors}
+              className={cn(
+                "flex items-center gap-1.5 px-3 py-1 rounded-md text-xs font-medium transition-colors whitespace-nowrap shrink-0 cursor-pointer",
+                hideStudentCursors
+                  ? "bg-amber-600 text-white hover:bg-amber-700"
+                  : "bg-white text-amber-900 border border-amber-300 hover:bg-amber-100/60"
+              )}
+            >
+              <MousePointer2 size={13} />
+              <span>{hideStudentCursors ? 'Show Student Cursors' : 'Hide Student Cursors'}</span>
+            </button>
+
             {confirmClearAll ? (
               <div className="flex items-center gap-1.5 bg-white px-2.5 py-1 rounded-md border border-red-300">
                 <span className="text-xs font-medium text-red-700 whitespace-nowrap">
@@ -5042,6 +5173,8 @@ export default function Canvas({
           }}
           activeRoundGroupBoards={activeRoundBoards.filter((sb) => sb.kind === 'group')}
           onAssignUserToBoard={onAssignUserToBoard}
+          onTeacherClearStatus={onTeacherClearStatus}
+          onSpotlightBoard={onSpotlightBoard}
           users={users}
           fullMainElements={fullMainElements}
           fullMainBackground={fullMainBackground}
@@ -5263,8 +5396,22 @@ export default function Canvas({
             scaleY={stageScale}
             listening={false}
           >
+            {laserPoints.map((point, index) => {
+              const previous = laserPoints[index - 1];
+              const opacity = Math.max(0, 1 - (laserNow - point.time) / 1200);
+              return (
+                <Group key={point.id} opacity={opacity}>
+                  {previous && previous.userId === point.userId && previous.strokeId === point.strokeId && (
+                    <Line points={[previous.x, previous.y, point.x, point.y]} stroke="#ef4444" strokeWidth={4 / stageScale} lineCap="round" lineJoin="round" />
+                  )}
+                  <Circle x={point.x} y={point.y} radius={6 / stageScale} fill="#ef4444" opacity={0.35} />
+                  <Circle x={point.x} y={point.y} radius={2.5 / stageScale} fill="#ff3030" />
+                </Group>
+              );
+            })}
             {(Object.values(remoteCursors) as RemoteCursor[]).map((rc) => {
               if (rc.userId === userId) return null;
+              if (hideStudentCursors && !users.find((user) => user.userId === rc.userId)?.isTeacher) return null;
               if ((rc.boardId || 'main') !== activeBoardId) return null;
               return (
                 <Group key={rc.userId} x={rc.x} y={rc.y}>
@@ -5287,7 +5434,8 @@ export default function Canvas({
               );
             })}
 
-            {effectiveTool !== 'pan' &&
+            {effectiveTool !== 'laser' &&
+              effectiveTool !== 'pan' &&
               effectiveTool !== 'move-bg' &&
               effectiveTool !== 'select' &&
               effectiveTool !== 'text' &&

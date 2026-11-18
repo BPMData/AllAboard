@@ -106,8 +106,8 @@ Cloud Run service "allaboard"  ── one container :3000 (node server.ts, Build
 | `subBoards: Map<boardId, SubBoardState>` | Breakout boards. Each has `elements`, `messages`, `background`, `assignedUserIds`, `roundId`, `kind` (`individual`/`group`) |
 | `breakoutConfig` | `mode` (`main`/`individual`/`groups`, i.e. where students are **now**), `activeRoundId`, `rounds[]`, `allowSelfSelect`, `chatScope`, `userBoardOverrides` |
 | `roundTemplates[roundId]` | The worksheet each round's boards start with (copied to late joiners) |
-| `timer`, `lockedNames`, `bannedUsers`, `isCanvasLocked`, `teacherPin`, `lastActiveAt` | As named |
-| `usersByUserId` | **Runtime only** (not persisted): roster, `sockets` set, `isTeacher` |
+| `timer`, `lockedNames`, `bannedUsers`, `isCanvasLocked`, `hideStudentCursors`, `teacherPin`, `lastActiveAt` | As named |
+| `usersByUserId` | **Runtime only** (not persisted): roster, `sockets` set, `isTeacher`, student status |
 
 **Breakout rounds** (`teacher:configure-breakout` with `action`):
 - `new-round` creates round N+1 with fresh boards (ids like `r2_ind_<userId>`, `r2_grp_1`). Its worksheet is either
@@ -124,10 +124,10 @@ Cloud Run service "allaboard"  ── one container :3000 (node server.ts, Build
 ## 7. Real-time protocol (Socket.IO)
 
 **Client → server:**
-- Room and identity: `check-room` (ack, no side effects), `join-room`, `update-profile`, `cursor-move`, `disconnect`
+- Room and identity: `check-room` (ack, no side effects), `join-room`, `update-profile`, `user:set-status`, `cursor-move`, `disconnect`
 - Teacher actions: `teacher:auth`, `teacher:step-down`, `teacher:configure-breakout`, `teacher:set-background`,
   `teacher:update-background`, `teacher:rename-user`, `teacher:delete-message`, `teacher:unban-user`,
-  `teacher:purge-user-contributions`, `teacher:set-lock`, `teacher:clear-all`, `teacher:import-room`
+  `teacher:purge-user-contributions`, `teacher:set-lock`, `teacher:set-hide-cursors`, `teacher:clear-status`, `teacher:spotlight-board`, `laser-pulse`, `teacher:clear-all`, `teacher:import-room`
 - Breakouts: `breakout:join-board`
 - Chat: `chat-message`
 - Drawing: `element-start`, `element-append-points` (streaming ink), `element-update`, `elements-batch-update`,
@@ -135,8 +135,8 @@ Cloud Run service "allaboard"  ── one container :3000 (node server.ts, Build
 
 **Server → client:**
 - Full state: `init` (everything on join), `state-sync`, `room-restored` (after import)
-- Room-level updates: `roster-sync`, `room-settings`, `breakout-sync`, `background-sync`
-- Drawing deltas: `element-*` / `elements-batch-*` deltas, `cursor-move` / `cursor-leave`
+- Room-level updates: `roster-sync`, `room-settings`, `breakout-sync`, `background-sync`, `board-replaced`
+- Drawing deltas: `element-*` / `elements-batch-*` deltas, `cursor-move` / `cursor-leave`, ephemeral teacher `laser-pulse`
 - Chat and moderation: `chat-message`, `message-deleted`, `user-renamed`, `user-contributions-purged`, `room-kicked`
 
 **Patterns:**
