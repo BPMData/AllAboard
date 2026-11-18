@@ -29,6 +29,16 @@ import PurgeContributionsModal from './components/PurgeContributionsModal';
 import { normalizeRoomCode, sanitizeRoomCodeDraft } from './lib/roomCode';
 import { motion } from 'motion/react';
 import { LogIn, Users, KeyRound, PlusCircle, Shuffle } from 'lucide-react';
+import { POINT_FLUSH_MS } from './lib/drawThrottle';
+import { applyDigest, type BoardDigest } from './lib/boardDigest';
+import {
+  appendPointBatches,
+  createPointQueue,
+  frameScheduler,
+  timeoutScheduler,
+  type PointBatch,
+  type PointQueue,
+} from './lib/pointBatcher';
 
 const STORAGE_KEYS = {
   USER_ID: 'drawchat_user_id',
@@ -84,6 +94,8 @@ function generateFreshRoomCode(): string {
 
 export default function App() {
   const [socket, setSocket] = useState<Socket | null>(null);
+  /** Our own streaming ink, sent every POINT_FLUSH_MS instead of on every pointer move. */
+  const outgoingInkRef = useRef<PointQueue | null>(null);
   const [userId] = useState<string>(() => getOrCreatePersistentUserId());
   const [userColor] = useState<string>(() => getUserColor(getOrCreatePersistentUserId()));
   const [roomId, setRoomId] = useState<string>(() => getInitialRoomId());
@@ -290,6 +302,44 @@ export default function App() {
       reconnectionDelayMax: 5000,
     });
     setSocket(newSocket);
+
+    const outgoingInk = createPointQueue((batches) => {
+      for (const b of batches) {
+        newSocket.emit('element-append-points', { id: b.id, boardId: b.boardId, newPoints: b.points });
+      }
+    }, timeoutScheduler(POINT_FLUSH_MS));
+    outgoingInkRef.current = outgoingInk;
+
+    // Other people's streaming ink: apply once per frame (one state update) instead of once per message.
+    const applyIncomingInk = (batches: PointBatch[]) => {
+      const byBoard = new Map<string, PointBatch[]>();
+      for (const b of batches) {
+        const list = byBoard.get(b.boardId);
+        if (list) list.push(b);
+        else byBoard.set(b.boardId, [b]);
+      }
+      const mainBatches = byBoard.get('main');
+      byBoard.delete('main');
+      if (mainBatches) setElements((prev) => appendPointBatches(prev, mainBatches));
+      if (byBoard.size > 0) {
+        setSubBoards((prev) => {
+          let next = prev;
+          for (const [bId, list] of byBoard) {
+            const sb = next[bId];
+            if (!sb) continue;
+            const elementsNext = appendPointBatches(sb.elements, list);
+            if (elementsNext !== sb.elements) next = { ...next, [bId]: { ...sb, elements: elementsNext } };
+          }
+          return next;
+        });
+      }
+    };
+    const incomingInk = createPointQueue(applyIncomingInk, frameScheduler());
+    // Any other event may touch the same elements (update, remove, state-sync, breakout-sync…), so apply queued
+    // ink first to keep arrival order. onAny listeners run before the event's own handler.
+    newSocket.onAny((event: string) => {
+      if (event !== 'element-append-points' && event !== 'cursor-move') incomingInk.flush();
+    });
 
     newSocket.on('connect', () => {
       let savedName = userNameRef.current;
@@ -598,31 +648,7 @@ export default function App() {
     newSocket.on(
       'element-append-points',
       ({ id, boardId = 'main', newPoints }: { id: string; boardId?: string; newPoints: number[] }) => {
-        if (boardId === 'main') {
-          setElements((prev) =>
-            prev.map((el) =>
-              el.id === id && Array.isArray(el.points)
-                ? { ...el, points: [...el.points, ...newPoints] }
-                : el
-            )
-          );
-        } else {
-          setSubBoards((prev) => {
-            const sb = prev[boardId];
-            if (!sb) return prev;
-            return {
-              ...prev,
-              [boardId]: {
-                ...sb,
-                elements: sb.elements.map((el) =>
-                  el.id === id && Array.isArray(el.points)
-                    ? { ...el, points: [...el.points, ...newPoints] }
-                    : el
-                ),
-              },
-            };
-          });
-        }
+        incomingInk.add(boardId, id, newPoints);
       }
     );
 
@@ -754,6 +780,26 @@ export default function App() {
       }
     );
 
+    // Teachers: boards we aren't viewing arrive as periodic digests of changed elements (see boardDigest.ts).
+    newSocket.on('boards-digest', ({ boards }: { boards: BoardDigest<CanvasElement>[] }) => {
+      if (!Array.isArray(boards) || boards.length === 0) return;
+      const mainDigest = boards.find((d) => d.boardId === 'main');
+      if (mainDigest) setElements((prev) => applyDigest(prev, mainDigest));
+      const subDigests = boards.filter((d) => d.boardId !== 'main');
+      if (subDigests.length > 0) {
+        setSubBoards((prev) => {
+          let next = prev;
+          for (const d of subDigests) {
+            const sb = next[d.boardId];
+            if (!sb) continue;
+            const elementsNext = applyDigest(sb.elements, d);
+            if (elementsNext !== sb.elements) next = { ...next, [d.boardId]: { ...sb, elements: elementsNext } };
+          }
+          return next;
+        });
+      }
+    });
+
     newSocket.on('cursor-move', (cursor: Omit<RemoteCursor, 'updatedAt'>) => {
       setRemoteCursors((prev) => ({
         ...prev,
@@ -770,9 +816,30 @@ export default function App() {
     });
 
     return () => {
+      outgoingInk.flush();
+      if (outgoingInkRef.current === outgoingInk) outgoingInkRef.current = null;
+      incomingInk.clear();
       newSocket.close();
     };
   }, [userId, userColor, effectiveRoomId]);
+
+  // Teachers get live traffic only for the board they're looking at; tell the server whenever that changes
+  // (and after every reconnect, since the server forgets per-socket state).
+  useEffect(() => {
+    if (!socket || !isTeacher) return;
+    const announce = () => socket.emit('teacher:view-board', { boardId: activeBoardId });
+    announce();
+    socket.on('init', announce);
+    return () => {
+      socket.off('init', announce);
+    };
+  }, [socket, isTeacher, activeBoardId]);
+
+  /** Emit a drawing event after any of our queued ink, so the server sees our actions in order. */
+  const emitDrawing = useCallback((target: Socket, event: string, ...args: unknown[]) => {
+    outgoingInkRef.current?.flush();
+    target.emit(event, ...args);
+  }, []);
 
   const handleAuthenticateTeacher = useCallback(
     (pin: string): Promise<{ ok: boolean; error?: string; mode?: string }> => {
@@ -1248,7 +1315,8 @@ export default function App() {
       return;
     }
     setIsPurgingContributions(true);
-    socket.emit(
+    emitDrawing(
+      socket,
       'teacher:purge-user-contributions',
       { targetUserId },
       () => {
@@ -1314,7 +1382,7 @@ export default function App() {
         });
       }
       if (socket) {
-        socket.emit('element-start', withBoard);
+        emitDrawing(socket, 'element-start', withBoard);
       }
     },
     [socket, activeBoardId]
@@ -1348,7 +1416,7 @@ export default function App() {
         });
       }
       if (socket) {
-        socket.emit('element-append-points', { id, boardId: activeBoardId, newPoints });
+        outgoingInkRef.current?.add(activeBoardId, id, newPoints);
       }
     },
     [socket, activeBoardId]
@@ -1385,7 +1453,7 @@ export default function App() {
         return [...list.slice(0, idx), ...list.slice(idx + 1), updated];
       });
       if (socket) {
-        socket.emit('element-update', {
+        emitDrawing(socket, 'element-update', {
           ...cleanPatch,
           boardId: activeBoardId,
           bringToFront: Boolean(bringToFront),
@@ -1419,7 +1487,7 @@ export default function App() {
         return [...remaining, ...front];
       });
       if (socket) {
-        socket.emit('elements-batch-update', { boardId: activeBoardId, updates, bringToFront });
+        emitDrawing(socket, 'elements-batch-update', { boardId: activeBoardId, updates, bringToFront });
       }
     },
     [socket, activeBoardId, updateActiveBoardElements]
@@ -1459,7 +1527,7 @@ export default function App() {
         }
       }
       if (socket) {
-        socket.emit('elements-batch-add', { boardId: destBoardId, elements: normalized });
+        emitDrawing(socket, 'elements-batch-add', { boardId: destBoardId, elements: normalized });
       }
     },
     [socket, activeBoardId, updateActiveBoardElements]
@@ -1471,7 +1539,7 @@ export default function App() {
       const idSet = new Set(ids);
       updateActiveBoardElements((list) => list.filter((el) => !idSet.has(el.id)));
       if (socket) {
-        socket.emit('elements-batch-remove', { boardId: activeBoardId, ids });
+        emitDrawing(socket, 'elements-batch-remove', { boardId: activeBoardId, ids });
       }
     },
     [socket, activeBoardId, updateActiveBoardElements]
@@ -1495,7 +1563,7 @@ export default function App() {
         });
       }
       if (socket) {
-        socket.emit('element-remove', { id, boardId: activeBoardId });
+        emitDrawing(socket, 'element-remove', { id, boardId: activeBoardId });
       }
     },
     [socket, activeBoardId]
@@ -1512,20 +1580,20 @@ export default function App() {
 
   const handleUndo = useCallback(() => {
     if (socket) {
-      socket.emit('undo', { userId, boardId: activeBoardId });
+      emitDrawing(socket, 'undo', { userId, boardId: activeBoardId });
     }
   }, [socket, userId, activeBoardId]);
 
   const handleClearMine = useCallback(() => {
     if (socket) {
-      socket.emit('clear-user-drawings', { targetUserId: userId, boardId: activeBoardId });
+      emitDrawing(socket, 'clear-user-drawings', { targetUserId: userId, boardId: activeBoardId });
     }
   }, [socket, userId, activeBoardId]);
 
   const handleClearUserDrawings = useCallback(
     (targetUserId: string) => {
       if (socket) {
-        socket.emit('clear-user-drawings', { targetUserId, boardId: activeBoardId });
+        emitDrawing(socket, 'clear-user-drawings', { targetUserId, boardId: activeBoardId });
       }
     },
     [socket, activeBoardId]
@@ -1542,7 +1610,7 @@ export default function App() {
 
   const handleTeacherClearAll = useCallback(() => {
     if (socket) {
-      socket.emit('teacher:clear-all', { boardId: activeBoardId });
+      emitDrawing(socket, 'teacher:clear-all', { boardId: activeBoardId });
     }
   }, [socket, activeBoardId]);
 

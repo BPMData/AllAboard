@@ -18,13 +18,16 @@ import {
   makeIndividualBoardId,
   makeRoundId,
   migrateLegacyBreakout,
+  findStudentBoardId,
   normalizeBreakoutConfig,
   resolveBreakoutAction,
   uniqueStrings,
 } from './src/lib/breakoutRounds.ts';
+import { distRouter } from './staticAssets.ts';
 import { RoomStore, internBackground, isValidAssetHash } from './roomStore.ts';
 import { BackupMirror, DirBackend, GcsBackend, sniffMime, type BackupBackend } from './backupMirror.ts';
 import { isTeacherStampKind } from './src/lib/stamps.ts';
+import { OVERVIEW_SYNC_MS, buildDigest, emptyChanges, type BoardChanges, type BoardDigest } from './src/lib/boardDigest.ts';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -41,6 +44,8 @@ export interface StartServerOptions {
   /** Tests only: use this backup backend instead of picking one from the environment. */
   backupBackend?: BackupBackend;
   skipVite?: boolean;
+  /** Tests only: how often teachers get digests of boards they aren't viewing (default OVERVIEW_SYNC_MS). */
+  overviewSyncMs?: number;
 }
 
 interface ServerUserRecord {
@@ -212,7 +217,14 @@ export async function startServer(options: StartServerOptions = {}) {
   });
 
   const rooms: Map<string, RoomState> = new Map();
-  const socketMeta: Map<string, { roomId: string; userId: string }> = new Map();
+  /**
+   * `channel` = the board channel this socket gets live drawing traffic from (see placeSocket).
+   * `viewBoardId` = the board a teacher says they're looking at (`teacher:view-board`); ignored for students.
+   */
+  const socketMeta: Map<
+    string,
+    { roomId: string; userId: string; channel?: string; viewBoardId?: string; inTeachers?: boolean }
+  > = new Map();
 
   function serializeSubBoards(subBoards: Map<string, SubBoardState>): Record<string, SubBoardState> {
     const obj: Record<string, SubBoardState> = {};
@@ -538,11 +550,140 @@ export async function startServer(options: StartServerOptions = {}) {
     };
   }
 
+  // ---------- Board channels ----------
+  // Live traffic (ink deltas, state-sync, cursors) goes only to sockets viewing that board: students on their
+  // assigned board, teachers on the board they picked. Teachers get every *other* board as a `boards-digest` every
+  // OVERVIEW_SYNC_MS (just the changed elements), which is plenty for the live grid / moderation and far cheaper.
+  // Room-wide events (roster, settings, chat, backgrounds, breakout-sync) still go to room.id.
+  // A socket that changes board is sent a fresh copy of it (placeSocket), since it wasn't listening before.
+
+  function boardChannel(roomId: string, boardId: string): string {
+    return `${roomId}\u0000board:${boardId}`;
+  }
+
+  function teacherChannel(roomId: string): string {
+    return `${roomId}\u0000teachers`;
+  }
+
+  /** Who hears a live delta on `boardId`. Call noteChange too, so teachers elsewhere get it in the next digest. */
+  function boardAudience(roomId: string, boardId: string | undefined): string {
+    return boardChannel(roomId, boardId || 'main');
+  }
+
+  function boardElementsOf(room: RoomState, boardId: string): any[] | null {
+    if (boardId === 'main') return room.elements;
+    return room.subBoards.get(boardId)?.elements ?? null;
+  }
+
+  /** roomId → boardId → changes since the last digest. */
+  const pendingDigests = new Map<string, Map<string, BoardChanges>>();
+
+  function noteChange(
+    room: RoomState,
+    boardId: string | undefined,
+    change: { upsert?: string[]; removed?: string[]; full?: boolean }
+  ) {
+    const bId = boardId || 'main';
+    let boards = pendingDigests.get(room.id);
+    if (!boards) pendingDigests.set(room.id, (boards = new Map()));
+    let c = boards.get(bId);
+    if (!c) boards.set(bId, (c = emptyChanges()));
+    if (change.full) c.full = true;
+    for (const id of change.upsert ?? []) {
+      c.removed.delete(id);
+      c.upserts.add(id);
+    }
+    for (const id of change.removed ?? []) {
+      c.upserts.delete(id);
+      c.removed.add(id);
+    }
+  }
+
+  function flushDigests() {
+    for (const [roomId, boards] of pendingDigests) {
+      pendingDigests.delete(roomId);
+      const room = rooms.get(roomId);
+      const teacherIds = io.sockets.adapter.rooms.get(teacherChannel(roomId));
+      if (!room || !teacherIds || teacherIds.size === 0) continue;
+      const digests: BoardDigest[] = [];
+      for (const [boardId, changes] of boards) {
+        const elements = boardElementsOf(room, boardId);
+        if (elements) digests.push(buildDigest(boardId, changes, elements));
+      }
+      if (digests.length === 0) continue;
+      for (const id of teacherIds) {
+        const viewing = socketMeta.get(id)?.viewBoardId ?? 'main';
+        const forSocket = digests.filter((d) => d.boardId !== viewing); // that one is already live
+        if (forSocket.length) io.to(id).emit('boards-digest', { boards: forSocket });
+      }
+    }
+  }
+
+  const digestInterval = setInterval(flushDigests, options.overviewSyncMs ?? OVERVIEW_SYNC_MS);
+  digestInterval.unref();
+
+  /**
+   * Puts the socket in the right board channel (students: their assigned board; teachers: the board they view) and,
+   * for teachers, the digest channel. With `catchUp`, a socket that moved is sent the state it missed.
+   */
+  function placeSocket(socketId: string, room: RoomState, catchUp: boolean) {
+    const meta = socketMeta.get(socketId);
+    const socket = io.sockets.sockets.get(socketId);
+    if (!meta || !socket || meta.roomId !== room.id) return;
+    const isTeacher = Boolean(room.usersByUserId.get(meta.userId)?.isTeacher);
+    let boardId: string;
+    if (isTeacher) {
+      const wanted = meta.viewBoardId || 'main';
+      boardId = wanted === 'main' || room.subBoards.has(wanted) ? wanted : 'main';
+    } else {
+      boardId = findStudentBoardId(room.subBoards, room.breakoutConfig, meta.userId);
+    }
+
+    const becameTeacher = isTeacher && !meta.inTeachers;
+    if (isTeacher !== Boolean(meta.inTeachers)) {
+      if (isTeacher) socket.join(teacherChannel(room.id));
+      else socket.leave(teacherChannel(room.id));
+      meta.inTeachers = isTeacher;
+    }
+
+    const next = boardChannel(room.id, boardId);
+    const prev = meta.channel;
+    if (prev !== next) {
+      if (prev) {
+        socket.leave(prev);
+        socket.to(prev).emit('cursor-leave', { userId: meta.userId });
+      }
+      socket.join(next);
+      meta.channel = next;
+    }
+    if (!catchUp || !prev) return;
+    if (becameTeacher) {
+      // As a student it only heard its own board; now it needs everything.
+      socket.emit('state-sync', { boardId: 'main', elements: room.elements });
+      socket.emit('breakout-sync', {
+        breakoutConfig: room.breakoutConfig,
+        subBoards: serializeSubBoards(room.subBoards),
+      });
+    } else if (prev !== next) {
+      const elements = boardElementsOf(room, boardId);
+      if (elements) socket.emit('state-sync', { boardId, elements });
+    }
+  }
+
+  /** Re-places every socket in the room. Call whenever roles, breakout mode or board assignments may have changed. */
+  function syncBoardChannels(room: RoomState, catchUp = true) {
+    const ids = io.sockets.adapter.rooms.get(room.id);
+    if (!ids) return;
+    for (const id of Array.from(ids)) placeSocket(id, room, catchUp);
+  }
+
   function broadcastRoster(room: RoomState) {
+    syncBoardChannels(room);
     io.to(room.id).emit('roster-sync', getRosterPayload(room));
   }
 
   function broadcastRoomSettings(room: RoomState) {
+    syncBoardChannels(room);
     io.to(room.id).emit('room-settings', getRoomSettingsPayload(room));
   }
 
@@ -565,11 +706,30 @@ export async function startServer(options: StartServerOptions = {}) {
   }, 1000);
   timerTickInterval.unref();
 
+  /**
+   * Sub-boards as one user should receive them. Teachers get everything. Students get every board's metadata,
+   * background and chat but only their *own* board's ink, since they never see the rest (and placeSocket sends a
+   * fresh copy when they move). In a 20-board breakout this makes each student's copy ~20x smaller.
+   */
+  function subBoardsFor(room: RoomState, userId: string): Record<string, SubBoardState> {
+    const all = serializeSubBoards(room.subBoards);
+    if (room.usersByUserId.get(userId)?.isTeacher) return all;
+    const mine = findStudentBoardId(room.subBoards, room.breakoutConfig, userId);
+    const out: Record<string, SubBoardState> = {};
+    for (const [id, sb] of Object.entries(all)) out[id] = id === mine ? sb : { ...sb, elements: [] };
+    return out;
+  }
+
   function broadcastBreakoutSync(room: RoomState) {
-    io.to(room.id).emit('breakout-sync', {
-      breakoutConfig: room.breakoutConfig,
-      subBoards: serializeSubBoards(room.subBoards),
-    });
+    syncBoardChannels(room);
+    const ids = io.sockets.adapter.rooms.get(room.id);
+    if (!ids) return;
+    const full = serializeSubBoards(room.subBoards);
+    for (const id of ids) {
+      const meta = socketMeta.get(id);
+      const subBoards = !meta || meta.inTeachers ? full : subBoardsFor(room, meta.userId);
+      io.to(id).emit('breakout-sync', { breakoutConfig: room.breakoutConfig, subBoards });
+    }
   }
 
   function cloneBackground(bg: any | null | undefined): any | null {
@@ -711,6 +871,8 @@ export async function startServer(options: StartServerOptions = {}) {
       if (prevMeta && prevMeta.roomId !== normalizeRoomId(rawRoomId)) {
         const prevRoom = rooms.get(prevMeta.roomId);
         socket.leave(prevMeta.roomId);
+        if (prevMeta.channel) socket.leave(prevMeta.channel);
+        if (prevMeta.inTeachers) socket.leave(teacherChannel(prevMeta.roomId));
         if (prevRoom) {
           const prevUser = prevRoom.usersByUserId.get(prevMeta.userId);
           if (prevUser) {
@@ -741,7 +903,15 @@ export async function startServer(options: StartServerOptions = {}) {
 
       room.lastActiveAt = Date.now();
       socket.join(room.id);
-      socketMeta.set(socket.id, { roomId: room.id, userId });
+      // Same room again: keep the channel so placeSocket can move it if needed. New room: left above.
+      const same = prevMeta && prevMeta.roomId === room.id ? prevMeta : undefined;
+      socketMeta.set(socket.id, {
+        roomId: room.id,
+        userId,
+        channel: same?.channel,
+        viewBoardId: same?.viewBoardId,
+        inTeachers: same?.inTeachers,
+      });
 
       const lockedName = room.lockedNames[userId];
       const isNameLocked = Boolean(lockedName);
@@ -775,11 +945,12 @@ export async function startServer(options: StartServerOptions = {}) {
         }
       }
 
+      placeSocket(socket.id, room, false); // `init` below is the full, fresh state
       socket.emit('init', {
         messages: room.messages,
         elements: room.elements,
         background: room.background,
-        subBoards: serializeSubBoards(room.subBoards),
+        subBoards: subBoardsFor(room, userId),
         users: getRosterPayload(room),
         roomSettings: getRoomSettingsPayload(room),
         isTeacher: isVerifiedTeacher,
@@ -992,6 +1163,15 @@ export async function startServer(options: StartServerOptions = {}) {
         activeRoundId: room.breakoutConfig.activeRoundId,
         mode: room.breakoutConfig.mode,
       });
+    });
+
+    // Teacher picked a board to look at: give it live traffic for that board (others come as digests).
+    socket.on('teacher:view-board', (payload: { boardId?: string } | undefined) => {
+      const meta = socketMeta.get(socket.id);
+      if (!meta) return;
+      meta.viewBoardId = typeof payload?.boardId === 'string' ? payload.boardId : 'main';
+      const room = rooms.get(meta.roomId);
+      if (room) placeSocket(socket.id, room, true);
     });
 
     // Student self-select or Teacher manual student reassignment to a sub-board
@@ -1208,6 +1388,7 @@ export async function startServer(options: StartServerOptions = {}) {
           subBoards: serializeSubBoards(room.subBoards),
           roomSettings: getRoomSettingsPayload(room),
         });
+        syncBoardChannels(room, false); // room-restored carried everything
 
         callback?.({
           ok: true,
@@ -1560,7 +1741,8 @@ export async function startServer(options: StartServerOptions = {}) {
       }
       room.lastActiveAt = Date.now();
       scheduleSaveToDisk(room);
-      socket.to(room.id).emit('element-start', authoredElement);
+      noteChange(room, boardId, { upsert: [authoredElement.id] });
+      socket.to(boardAudience(room.id, boardId)).emit('element-start', authoredElement);
     });
 
     socket.on('element-append-points', ({ id, boardId = 'main', newPoints }) => {
@@ -1580,7 +1762,8 @@ export async function startServer(options: StartServerOptions = {}) {
         el.points.push(...newPoints);
         room.lastActiveAt = Date.now();
         scheduleSaveToDisk(room);
-        socket.to(room.id).emit('element-append-points', { id, boardId, newPoints });
+        noteChange(room, boardId, { upsert: [id] });
+        socket.to(boardAudience(room.id, boardId)).emit('element-append-points', { id, boardId, newPoints });
       }
     });
 
@@ -1614,7 +1797,8 @@ export async function startServer(options: StartServerOptions = {}) {
         }
         room.lastActiveAt = Date.now();
         scheduleSaveToDisk(room);
-        socket.to(room.id).emit('element-update', {
+        noteChange(room, boardId, bringToFront ? { full: true } : { upsert: [patch.id] });
+        socket.to(boardAudience(room.id, boardId)).emit('element-update', {
           ...cleanPatch,
           boardId,
           bringToFront: Boolean(bringToFront),
@@ -1672,7 +1856,8 @@ export async function startServer(options: StartServerOptions = {}) {
       if (appliedUpdates.length > 0) {
         room.lastActiveAt = Date.now();
         scheduleSaveToDisk(room);
-        socket.to(room.id).emit('elements-batch-updated', {
+        noteChange(room, boardId, bringToFront ? { full: true } : { upsert: appliedUpdates.map((u) => u.id) });
+        socket.to(boardAudience(room.id, boardId)).emit('elements-batch-updated', {
           boardId,
           updates: appliedUpdates,
           bringToFront: Boolean(bringToFront),
@@ -1739,7 +1924,8 @@ export async function startServer(options: StartServerOptions = {}) {
       if (added.length > 0) {
         room.lastActiveAt = Date.now();
         scheduleSaveToDisk(room);
-        socket.to(room.id).emit('elements-batch-added', { boardId, elements: added });
+        noteChange(room, boardId, { upsert: added.map((e) => e.id) });
+        socket.to(boardAudience(room.id, boardId)).emit('elements-batch-added', { boardId, elements: added });
       }
     });
 
@@ -1768,7 +1954,8 @@ export async function startServer(options: StartServerOptions = {}) {
       if (removedIds.length > 0) {
         room.lastActiveAt = Date.now();
         scheduleSaveToDisk(room);
-        socket.to(room.id).emit('elements-batch-removed', { boardId, ids: removedIds });
+        noteChange(room, boardId, { removed: removedIds });
+        socket.to(boardAudience(room.id, boardId)).emit('elements-batch-removed', { boardId, ids: removedIds });
       }
     });
 
@@ -1791,7 +1978,8 @@ export async function startServer(options: StartServerOptions = {}) {
           targetElements.splice(idx, 1);
           room.lastActiveAt = Date.now();
           scheduleSaveToDisk(room);
-          socket.to(room.id).emit('element-removed', { id, boardId });
+          noteChange(room, boardId, { removed: [id] });
+          socket.to(boardAudience(room.id, boardId)).emit('element-removed', { id, boardId });
         }
       }
     });
@@ -1799,7 +1987,9 @@ export async function startServer(options: StartServerOptions = {}) {
     socket.on('cursor-move', (cursorData) => {
       const meta = socketMeta.get(socket.id);
       if (!meta) return;
-      socket.to(meta.roomId).emit('cursor-move', cursorData);
+      if (!cursorData || typeof cursorData !== 'object') return;
+      const boardId = typeof cursorData.boardId === 'string' ? cursorData.boardId : 'main';
+      socket.to(boardAudience(meta.roomId, boardId)).emit('cursor-move', cursorData);
     });
 
     socket.on('undo', (payload) => {
@@ -1823,7 +2013,8 @@ export async function startServer(options: StartServerOptions = {}) {
           const removed = targetElements.splice(i, 1)[0];
           room.lastActiveAt = Date.now();
           scheduleSaveToDisk(room);
-          io.to(room.id).emit('element-removed', { id: removed.id, boardId });
+          noteChange(room, boardId, { removed: [removed.id] });
+          io.to(boardAudience(room.id, boardId)).emit('element-removed', { id: removed.id, boardId });
           break;
         }
       }
@@ -1849,12 +2040,14 @@ export async function startServer(options: StartServerOptions = {}) {
 
       if (boardId === 'main') {
         room.elements = room.elements.filter((el) => el.userId !== targetUserId);
-        io.to(room.id).emit('state-sync', { boardId: 'main', elements: room.elements });
+        noteChange(room, 'main', { full: true });
+        io.to(boardAudience(room.id, 'main')).emit('state-sync', { boardId: 'main', elements: room.elements });
       } else {
         const sb = room.subBoards.get(boardId);
         if (sb) {
           sb.elements = sb.elements.filter((el) => el.userId !== targetUserId);
-          io.to(room.id).emit('state-sync', { boardId, elements: sb.elements });
+          noteChange(room, boardId, { full: true });
+          io.to(boardAudience(room.id, boardId)).emit('state-sync', { boardId, elements: sb.elements });
         }
       }
 
@@ -1968,12 +2161,14 @@ export async function startServer(options: StartServerOptions = {}) {
       const boardId = payload?.boardId || 'main';
       if (boardId === 'main') {
         room.elements = [];
-        io.to(room.id).emit('state-sync', { boardId: 'main', elements: room.elements });
+        noteChange(room, 'main', { full: true });
+        io.to(boardAudience(room.id, 'main')).emit('state-sync', { boardId: 'main', elements: room.elements });
       } else {
         const sb = room.subBoards.get(boardId);
         if (sb) {
           sb.elements = [];
-          io.to(room.id).emit('state-sync', { boardId, elements: sb.elements });
+          noteChange(room, boardId, { full: true });
+          io.to(boardAudience(room.id, boardId)).emit('state-sync', { boardId, elements: sb.elements });
         }
       }
 
@@ -2008,11 +2203,7 @@ export async function startServer(options: StartServerOptions = {}) {
     });
     app.use(vite.middlewares);
   } else if (!options.skipVite) {
-    const distPath = path.join(process.cwd(), 'dist');
-    app.use(express.static(distPath));
-    app.get('*', (req, res) => {
-      res.sendFile(path.join(distPath, 'index.html'));
-    });
+    app.use(distRouter(path.join(process.cwd(), 'dist')));
   }
 
   await new Promise<void>((resolve) => {
@@ -2059,6 +2250,7 @@ export async function startServer(options: StartServerOptions = {}) {
   async function close() {
     clearInterval(housekeepingInterval);
     clearInterval(timerTickInterval);
+    clearInterval(digestInterval);
     if (saveTimeout) {
       clearTimeout(saveTimeout);
       saveTimeout = null;

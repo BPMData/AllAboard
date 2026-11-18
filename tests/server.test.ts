@@ -75,6 +75,7 @@ describe('AllAboard server & Socket.IO integration tests', () => {
       host: '127.0.0.1',
       dataDir: tmpDir,
       skipVite: true,
+      overviewSyncMs: 100,
     });
   });
 
@@ -1521,5 +1522,173 @@ describe('AllAboard server & Socket.IO integration tests', () => {
     });
   });
 
-});
+  describe('board channels (ink and cursors only reach the board that needs them)', () => {
+    async function setupClass(roomId: string) {
+      const { socket: teacher } = await joinTracked({ roomId, userId: 't1', name: 'Teacher' });
+      await emitAck(teacher, 'teacher:auth', { pin: '1234' });
+      const { socket: s1 } = await joinTracked({ roomId, userId: 's1', name: 'Sam' });
+      const { socket: s2 } = await joinTracked({ roomId, userId: 's2', name: 'Ada' });
+      return { teacher, s1, s2 };
+    }
 
+    function stroke(id: string, boardId: string, userId: string) {
+      return { id, boardId, userId, userName: userId, tool: 'solid', color: '#000', strokeWidth: 4, points: [0, 0], timestamp: Date.now() };
+    }
+
+    /** Collects every event a socket receives, so tests can assert what it did NOT get. */
+    function record(socket: Socket) {
+      const got: Array<{ ev: string; data: any }> = [];
+      socket.onAny((ev, data) => got.push({ ev, data }));
+      return got;
+    }
+
+    async function startIndividualRound(teacher: Socket, watcher: Socket) {
+      const synced = waitForEvent<any>(watcher, 'breakout-sync');
+      await emitAck(teacher, 'teacher:configure-breakout', { action: 'new-round', mode: 'individual' });
+      await synced;
+      await delay(50);
+    }
+
+    it('scopes ink and cursors to the board; a teacher elsewhere gets it as a periodic digest', async () => {
+      const { teacher, s1, s2 } = await setupClass('chan-scope');
+      await startIndividualRound(teacher, s2);
+
+      const t = record(teacher);
+      const r2 = record(s2);
+      s1.emit('element-start', stroke('ink1', 'r1_ind_s1', 's1'));
+      s1.emit('element-append-points', { id: 'ink1', boardId: 'r1_ind_s1', newPoints: [20, 20] });
+      s1.emit('cursor-move', { userId: 's1', boardId: 'r1_ind_s1', x: 1, y: 1 });
+      await delay(300);
+
+      assert.deepEqual(r2.map((e) => e.ev), [], 's2 is on another board and must hear nothing');
+      // Teacher is viewing main: no live ink or cursors from r1_ind_s1, just digests with the whole stroke.
+      assert.ok(t.every((e) => e.ev === 'boards-digest'), t.map((e) => e.ev).join());
+      const upserts = t.flatMap((e) => e.data.boards).filter((d: any) => d.boardId === 'r1_ind_s1');
+      assert.ok(upserts.length >= 1 && upserts.length <= 2, 'coalesced, not one per message');
+      assert.deepEqual(upserts.at(-1).upserts[0].points, [0, 0, 20, 20]);
+    });
+
+    it('a teacher viewing a board gets it live (after a fresh copy) and no digest for it', async () => {
+      const { teacher, s1, s2 } = await setupClass('chan-view');
+      await startIndividualRound(teacher, s2);
+      s1.emit('element-start', stroke('before', 'r1_ind_s1', 's1'));
+      await delay(250); // let that go out as a digest first
+
+      const fresh = waitForEvent<any>(teacher, 'state-sync');
+      teacher.emit('teacher:view-board', { boardId: 'r1_ind_s1' });
+      const sync = await fresh;
+      assert.equal(sync.boardId, 'r1_ind_s1');
+      assert.deepEqual(sync.elements.map((e: any) => e.id), ['before']);
+
+      const t = record(teacher);
+      s1.emit('element-start', stroke('live', 'r1_ind_s1', 's1'));
+      s1.emit('cursor-move', { userId: 's1', boardId: 'r1_ind_s1', x: 1, y: 1 });
+      s2.emit('element-start', stroke('other', 'r1_ind_s2', 's2'));
+      await delay(300);
+      const evs = t.map((e) => e.ev);
+      assert.ok(evs.includes('element-start') && evs.includes('cursor-move'));
+      const digested = t.filter((e) => e.ev === 'boards-digest').flatMap((e) => e.data.boards.map((d: any) => d.boardId));
+      assert.ok(digested.includes('r1_ind_s2'));
+      assert.ok(!digested.includes('r1_ind_s1'), 'viewed board is live, never digested');
+
+      // Students on that board see the teacher's ink live too.
+      const seen = waitForEvent<any>(s1, 'element-start');
+      teacher.emit('element-start', stroke('fromT', 'r1_ind_s1', 't1'));
+      assert.equal((await seen).id, 'fromT');
+    });
+
+    it('digests carry removals, and a full board after a clear', async () => {
+      const { teacher, s1, s2 } = await setupClass('chan-digest');
+      await startIndividualRound(teacher, s2);
+      s1.emit('element-start', stroke('a', 'r1_ind_s1', 's1'));
+      s1.emit('element-start', stroke('b', 'r1_ind_s1', 's1'));
+      await delay(250);
+
+      const t = record(teacher);
+      s1.emit('element-remove', { id: 'a', boardId: 'r1_ind_s1' });
+      await delay(250);
+      const rm = t.flatMap((e) => e.data?.boards ?? []).find((d: any) => d.boardId === 'r1_ind_s1');
+      assert.deepEqual(rm.removed, ['a']);
+
+      t.length = 0;
+      teacher.emit('teacher:clear-all', { boardId: 'r1_ind_s1' });
+      await delay(250);
+      const full = t.flatMap((e) => e.data?.boards ?? []).find((d: any) => d.boardId === 'r1_ind_s1');
+      assert.deepEqual(full.elements, []);
+    });
+
+    it('students get only their own board’s ink in breakout-sync and init; teachers get all of it', async () => {
+      const { teacher, s1, s2 } = await setupClass('chan-trim');
+      await startIndividualRound(teacher, s2);
+      s1.emit('element-start', stroke('mine1', 'r1_ind_s1', 's1'));
+      s2.emit('element-start', stroke('mine2', 'r1_ind_s2', 's2'));
+      await delay(100);
+
+      const [tSync, s1Sync] = await Promise.all([
+        waitForEvent<any>(teacher, 'breakout-sync'),
+        waitForEvent<any>(s1, 'breakout-sync'),
+        emitAck(teacher, 'teacher:configure-breakout', { action: 'update-current', chatScope: 'board' }),
+      ]);
+      assert.equal(tSync.subBoards['r1_ind_s1'].elements.length, 1);
+      assert.equal(tSync.subBoards['r1_ind_s2'].elements.length, 1);
+      assert.equal(s1Sync.subBoards['r1_ind_s1'].elements.length, 1);
+      assert.equal(s1Sync.subBoards['r1_ind_s2'].elements.length, 0, 'other board: metadata only');
+      assert.deepEqual(s1Sync.subBoards['r1_ind_s2'].assignedUserIds, ['s2']);
+
+      const { init } = await joinTracked({ roomId: 'chan-trim', userId: 's2', name: 'Ada' });
+      assert.equal(init.subBoards['r1_ind_s2'].elements.length, 1);
+      assert.equal(init.subBoards['r1_ind_s1'].elements.length, 0);
+    });
+
+    it('delivers ink to students sharing a group board', async () => {
+      const { teacher, s1, s2 } = await setupClass('chan-group');
+      const synced = waitForEvent<any>(s2, 'breakout-sync');
+      await emitAck(teacher, 'teacher:configure-breakout', {
+        action: 'new-round',
+        mode: 'groups',
+        groups: [{ id: 'g', title: 'Team', assignedUserIds: ['s1', 's2'] }],
+      });
+      const { subBoards } = await synced;
+      const groupId = Object.keys(subBoards).find((id) => subBoards[id].kind === 'group')!;
+      await delay(50);
+
+      const got = waitForEvent<any>(s2, 'element-append-points');
+      s1.emit('element-start', stroke('g1', groupId, 's1'));
+      s1.emit('element-append-points', { id: 'g1', boardId: groupId, newPoints: [5, 5] });
+      assert.deepEqual((await got).newPoints, [5, 5]);
+    });
+
+    it('catches a student up on the main board they missed during a breakout', async () => {
+      const { teacher, s1 } = await setupClass('chan-catchup');
+      await startIndividualRound(teacher, s1);
+
+      const r1 = record(s1);
+      teacher.emit('element-start', stroke('tmain', 'main', 't1')); // s1 is not listening to main now
+      await delay(100);
+      assert.equal(r1.filter((e) => e.ev === 'element-start').length, 0);
+
+      const catchUp = waitForEvent<any>(s1, 'state-sync');
+      await emitAck(teacher, 'teacher:configure-breakout', { action: 'return-to-main' });
+      const sync = await catchUp;
+      assert.equal(sync.boardId, 'main');
+      assert.deepEqual(sync.elements.map((e: any) => e.id), ['tmain']);
+
+      const live = waitForEvent<any>(s1, 'element-start'); // and it hears main again
+      teacher.emit('element-start', stroke('tmain2', 'main', 't1'));
+      assert.equal((await live).id, 'tmain2');
+    });
+
+    it('gives a student who becomes teacher mid-breakout a full fresh copy', async () => {
+      const { teacher, s1, s2 } = await setupClass('chan-promote');
+      await startIndividualRound(teacher, s2);
+      s1.emit('element-start', stroke('s1ink', 'r1_ind_s1', 's1')); // s2 does not hear this
+      await delay(100);
+
+      const fresh = waitForEvent<any>(s2, 'breakout-sync');
+      await emitAck(s2, 'teacher:auth', { pin: '1234' });
+      const sync = await fresh;
+      assert.deepEqual(sync.subBoards['r1_ind_s1'].elements.map((e: any) => e.id), ['s1ink']);
+    });
+  });
+
+});

@@ -87,6 +87,40 @@ test.describe('teacher and students', () => {
     await student.context.close();
   });
 
+  test('batched ink arrives point-for-point: the teacher’s copy of a stroke matches the student’s', async ({ browser }) => {
+    const room = uniqueRoom('inkexact');
+    const teacher = await newUser(browser);
+    const student = await newUser(browser);
+    await joinRoom(teacher.page, room, 'Ms T', PIN);
+    await joinRoom(student.page, room, 'Alex');
+
+    // A long, slow stroke spans many 50 ms send batches.
+    await student.page.mouse.move(600, 350);
+    await student.page.mouse.down();
+    for (let i = 1; i <= 40; i++) {
+      await student.page.mouse.move(600 + i * 12, 350 + Math.round(Math.sin(i / 4) * 80));
+      await student.page.waitForTimeout(8);
+    }
+    await student.page.mouse.up();
+    await expect(await rosterRow(teacher.page, 'Alex')).toContainText('1 item');
+    await teacher.page.waitForTimeout(300); // last batch + one frame
+
+    const strokeOf = async (page: Page) => {
+      const download = page.waitForEvent('download');
+      await page.getByRole('button', { name: 'Save .JSON' }).click();
+      const file = await (await download).path();
+      const snapshot = JSON.parse((await import('node:fs')).readFileSync(file!, 'utf8'));
+      return snapshot.elements[0].points as number[];
+    };
+    const mine = await strokeOf(student.page);
+    const theirs = await strokeOf(teacher.page);
+    expect(mine.length).toBeGreaterThan(40);
+    expect(theirs).toEqual(mine);
+
+    await teacher.context.close();
+    await student.context.close();
+  });
+
   test('locking the board stops students drawing until it is unlocked', async ({ browser }) => {
     const room = uniqueRoom('lock');
     const teacher = await newUser(browser);

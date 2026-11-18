@@ -158,6 +158,7 @@ import {
   Keyboard,
 } from 'lucide-react';
 import { cn } from '../lib/utils';
+import { CURSOR_EMIT_MS } from '../lib/drawThrottle';
 
 type HistoryAction =
   | { kind: 'add'; items: CanvasElement[] }
@@ -984,6 +985,17 @@ export default function Canvas({
   const stageRef = useRef<any>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const lastCursorEmitRef = useRef<number>(0);
+  // Cursor is sent at most every CURSOR_EMIT_MS, plus one trailing send so peers see where the pointer stopped.
+  const pendingCursorRef = useRef<Parameters<typeof onCursorMove>[0] | null>(null);
+  const cursorTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const onCursorMoveRef = useRef(onCursorMove);
+  onCursorMoveRef.current = onCursorMove;
+  useEffect(
+    () => () => {
+      if (cursorTimerRef.current) clearTimeout(cursorTimerRef.current);
+    },
+    []
+  );
   const [dimensions, setDimensions] = useState({ width: 800, height: 600 });
 
   const canDraw = !isCanvasLocked || isTeacher;
@@ -2788,19 +2800,35 @@ export default function Canvas({
       }
     }
 
-    const now = Date.now();
-    if (now - lastCursorEmitRef.current > 50) {
-      lastCursorEmitRef.current = now;
-      onCursorMove({
-        userId,
-        userName,
-        color: userColor,
-        boardId: activeBoardId,
-        x: world.x,
-        y: world.y,
-        tool: effectiveTool,
-        isDrawing,
-      });
+    const cursor = {
+      userId,
+      userName,
+      color: userColor,
+      boardId: activeBoardId,
+      x: world.x,
+      y: world.y,
+      tool: effectiveTool,
+      isDrawing,
+    };
+    const wait = CURSOR_EMIT_MS - (Date.now() - lastCursorEmitRef.current);
+    if (wait <= 0) {
+      if (cursorTimerRef.current) clearTimeout(cursorTimerRef.current);
+      cursorTimerRef.current = null;
+      pendingCursorRef.current = null;
+      lastCursorEmitRef.current = Date.now();
+      onCursorMove(cursor);
+    } else {
+      pendingCursorRef.current = cursor;
+      if (!cursorTimerRef.current) {
+        cursorTimerRef.current = setTimeout(() => {
+          cursorTimerRef.current = null;
+          const latest = pendingCursorRef.current;
+          pendingCursorRef.current = null;
+          if (!latest) return;
+          lastCursorEmitRef.current = Date.now();
+          onCursorMoveRef.current(latest);
+        }, wait);
+      }
     }
 
     if (e.pointerId !== activePointerIdRef.current) return;
