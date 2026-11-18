@@ -28,7 +28,7 @@ Teachers are identified by a per-room **PIN**, not a login.
 | Client | React 19, TypeScript, Vite 6, Tailwind 4, **Konva / react-konva** (canvas), `pdfjs-dist` (PDF → images in the browser), `lucide-react`, `motion` |
 | Server | One Node process: Express + **Socket.IO 4** (`server.ts`). In dev it serves Vite as middleware; in prod it serves `dist/`. |
 | Storage | **SQLite via built-in `node:sqlite`** (`roomStore.ts`), plus a **write-behind backup to Cloud Storage** (`backupMirror.ts`) |
-| Hosting | Google **AI Studio → Cloud Run** (see DEPLOYMENT.md). Prod start is **`node server.ts`, with Node's type stripping, not tsx**. |
+| Hosting | **Cloud Run**, deployed by GitHub Actions (`.github/workflows/deploy.yml`, Buildpacks) on every push to `main` (see DEPLOYMENT.md). Prod start is **`node server.ts`, with Node's type stripping, not tsx**. |
 | Tests | `node:test` via `tsx` (`npm test`, ~99 tests), **Playwright** e2e (`npm run test:e2e`, ~20), `tsc --noEmit` (`npm run lint`). CI: `.github/workflows/ci.yml` (Node 22). |
 
 ## 3. Repo map
@@ -63,7 +63,7 @@ Teachers are identified by a per-room **PIN**, not a login.
 Browser (React + Konva)
   │  Socket.IO (real-time state)         HTTP GET /api/assets/<sha256> (worksheet images, immutable cache)
   ▼                                       ▼
-Cloud Run service "allaboard"  ── nginx-container :8080 (ingress) ──► app-container :3000 (node server.ts)
+Cloud Run service "allaboard"  ── one container :3000 (node server.ts, Buildpacks)
                                                                         │
                                        in-memory Map<roomId, RoomState>  (hot state, source of truth while running)
                                                                         │ dirty-room flush ≤ 2 s
@@ -198,17 +198,19 @@ Cloud Run service "allaboard"  ── nginx-container :8080 (ingress) ──► 
 ## 10. Working agreements for agents
 
 - **Read `DEPLOYMENT.md` before touching** server startup, storage, env vars, or anything Cloud Run.
-- **AI Studio rewrites Cloud Run config on publish.** Configuration that matters lives **in code**.
-- **AI Studio deploys probably read `.env.example`.** Its comments say AI Studio injects env vars, and the old
-  `DATA_DIR=/data` advice in it matched a zombie env var that kept reappearing. Don't put deployment advice there that
-  you don't want applied.
+- **Merging to `main` ships to production** (`deploy.yml`). Service settings live in that workflow; configuration that
+  matters lives **in code**, not in console edits.
+- **`.env.example` documents local-dev variables only.** Production config lives in `deploy.yml` and in code.
+- **No client-side secrets.** The AI Studio template's `vite.config.ts` `define` that baked `GEMINI_API_KEY` into the
+  public bundle has been removed. Never add a `define` (or a `VITE_*` variable) holding a key: anything in the client
+  bundle is public.
 - **Plans for other agents** (Codex/Terra/Antigravity) use the `PLANS_*.md` format: phases, exact code, a checkpoint per
   phase. **Pre-validate every checkpoint independently** on a scratch copy. Once code is fully written and tested, ship
   it and have the agent **review** rather than retype.
 - **Verify AI-assistant root-cause claims** (Gemini Cloud Assist, AI Studio) against logs and code. Their fixes were often
   fine, but their explanations were wrong several times.
 - **Frontend-only changes** (lobby, chat, canvas UI) can't affect persistence. Still do the 60-second log check after
-  publishing (DEPLOYMENT.md §5).
+  a deploy (DEPLOYMENT.md §5).
 
 ## 11. Glossary
 
