@@ -81,8 +81,10 @@ Cloud Run service "allaboard"  ── one container :3000 (node server.ts, Build
 
 ## 5. Identity, roles, trust
 
-- **User identity:** `usr_…` id generated in the browser and kept in `localStorage`, sent on `join-room` along with name and
-  colour. **There is no authentication.** Anyone can claim any `userId`.
+- **User identity:** `usr_…` id and a private random `userKey`, both generated in the browser and kept in `localStorage`,
+  sent on `join-room` along with name and colour. The first key used for an id in a room claims it; the server keeps only
+  its SHA-256 (`room.userKeyHashes`) and answers a wrong or missing key with `room-kicked { reason: 'identity' }`. There are
+  still no accounts: display names aren't unique, and an id nobody has claimed in that room can be claimed by anyone.
 - **Teacher:** per room, via `teacher:auth { pin }`. **The first PIN claims the room** (`mode: 'claimed'`), and later
   matching PINs verify. The PIN is stored **in plain text** in room state (and therefore in the SQLite row and bucket
   backup), and is cached in the teacher's `localStorage` per room. `isTeacher` lives on the server's per-user record, and

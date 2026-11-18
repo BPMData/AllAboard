@@ -4,6 +4,7 @@ import { Server } from 'socket.io';
 import { createServer as createViteServer } from 'vite';
 import path from 'path';
 import fs from 'fs';
+import { createHash, timingSafeEqual } from 'crypto';
 import { fileURLToPath } from 'url';
 import type { BreakoutRoundMeta, ConfigureBreakoutPayload, SubBoardKind } from './src/types.ts';
 import {
@@ -35,6 +36,25 @@ const __dirname = path.dirname(__filename);
 const ROOM_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 days inactivity cleanup
 const IDLE_UNLOAD_MS = 15 * 60 * 1000;
 const HOUSEKEEPING_INTERVAL_MS = 5 * 60 * 1000;
+const USER_KEY_PATTERN = /^[0-9a-f]{64}$/;
+
+type UserKeyCheck = 'matched' | 'claimed' | 'keyless' | 'rejected';
+
+/**
+ * Proves a join comes from the browser that first used this userId in this room. userIds are public (they're in the
+ * roster), so the private key is what stops someone taking over a classmate's or teacher's identity.
+ * 'keyless' covers tabs still running a pre-key bundle: allowed only while nobody has claimed the id.
+ */
+function checkUserKey(keyHashes: Map<string, string>, userId: string, rawKey: unknown): UserKeyCheck {
+  const stored = keyHashes.get(userId);
+  if (typeof rawKey !== 'string' || !USER_KEY_PATTERN.test(rawKey)) return stored ? 'rejected' : 'keyless';
+  const hash = createHash('sha256').update(rawKey).digest('hex');
+  if (!stored) {
+    keyHashes.set(userId, hash);
+    return 'claimed';
+  }
+  return timingSafeEqual(Buffer.from(stored, 'hex'), Buffer.from(hash, 'hex')) ? 'matched' : 'rejected';
+}
 
 export interface StartServerOptions {
   port?: number;
@@ -95,6 +115,8 @@ interface RoomState {
   roundTemplates: Record<string, any | null>;
   timer: TimerState;
   usersByUserId: Map<string, ServerUserRecord>;
+  /** userId → SHA-256 of that browser's private key. Server-only; never broadcast. */
+  userKeyHashes: Map<string, string>;
   lockedNames: Record<string, string>;
   bannedUsers: Record<string, BannedUserRecord>;
   isCanvasLocked: boolean;
@@ -111,6 +133,7 @@ interface SerializedRoom {
   breakoutConfig?: BreakoutConfigState;
   roundTemplates?: Record<string, any | null>;
   timer?: TimerState;
+  userKeyHashes?: Record<string, string>;
   lockedNames?: Record<string, string>;
   bannedUsers?: Record<string, BannedUserRecord>;
   isCanvasLocked: boolean;
@@ -280,6 +303,11 @@ export async function startServer(options: StartServerOptions = {}) {
         autoLockOnExpire: false,
       },
       usersByUserId: new Map(),
+      userKeyHashes: new Map(
+        Object.entries(item.userKeyHashes && typeof item.userKeyHashes === 'object' ? item.userKeyHashes : {}).filter(
+          ([, hash]) => typeof hash === 'string'
+        )
+      ),
       lockedNames: item.lockedNames && typeof item.lockedNames === 'object' ? item.lockedNames : {},
       bannedUsers: item.bannedUsers && typeof item.bannedUsers === 'object' ? item.bannedUsers : {},
       isCanvasLocked: Boolean(item.isCanvasLocked),
@@ -298,6 +326,7 @@ export async function startServer(options: StartServerOptions = {}) {
       breakoutConfig: room.breakoutConfig,
       roundTemplates: room.roundTemplates,
       timer: room.timer,
+      userKeyHashes: Object.fromEntries(room.userKeyHashes),
       lockedNames: room.lockedNames,
       bannedUsers: room.bannedUsers,
       isCanvasLocked: room.isCanvasLocked,
@@ -505,6 +534,7 @@ export async function startServer(options: StartServerOptions = {}) {
           autoLockOnExpire: false,
         },
         usersByUserId: new Map(),
+        userKeyHashes: new Map(),
         lockedNames: {},
         bannedUsers: {},
         isCanvasLocked: false,
@@ -864,8 +894,16 @@ export async function startServer(options: StartServerOptions = {}) {
       callback?.(getRoomAvailability(payload?.roomId));
     });
 
-    socket.on('join-room', ({ roomId: rawRoomId, userId, name, color, teacherPin }) => {
-      if (!userId) return;
+    socket.on('join-room', ({ roomId: rawRoomId, userId, userKey, name, color, teacherPin }) => {
+      if (!userId || typeof userId !== 'string') return;
+
+      const room = getOrCreateRoom(rawRoomId);
+      const keyCheck = checkUserKey(room.userKeyHashes, userId, userKey);
+      if (keyCheck === 'rejected') {
+        socket.emit('room-kicked', { reason: 'identity', roomId: room.id });
+        return;
+      }
+      if (keyCheck === 'claimed') scheduleSaveToDisk(room);
 
       const prevMeta = socketMeta.get(socket.id);
       if (prevMeta && prevMeta.roomId !== normalizeRoomId(rawRoomId)) {
@@ -885,14 +923,13 @@ export async function startServer(options: StartServerOptions = {}) {
         }
       }
 
-      const room = getOrCreateRoom(rawRoomId);
-
       // Block banned students from joining the room
       const existing = room.usersByUserId.get(userId);
       let isVerifiedTeacher = false;
       if (room.teacherPin && teacherPin && String(teacherPin).trim() === room.teacherPin) {
         isVerifiedTeacher = true;
-      } else if (existing?.isTeacher && room.teacherPin) {
+      } else if (existing?.isTeacher && room.teacherPin && keyCheck === 'matched') {
+        // Teacher status carries over only with proof this is the same browser; otherwise the PIN is required.
         isVerifiedTeacher = true;
       }
 
@@ -1398,11 +1435,12 @@ export async function startServer(options: StartServerOptions = {}) {
       }
     );
 
-    socket.on('update-profile', ({ userId, name, color }) => {
+    socket.on('update-profile', ({ name, color }) => {
       const meta = socketMeta.get(socket.id);
-      if (!meta || !userId) return;
+      if (!meta) return;
       const room = rooms.get(meta.roomId);
       if (!room) return;
+      const userId = meta.userId; // Only ever your own profile, whatever the payload says
       const existing = room.usersByUserId.get(userId);
       if (existing) {
         const isLockedByTeacher = Boolean(room.lockedNames[userId] || existing.isNameLocked);
@@ -1989,7 +2027,12 @@ export async function startServer(options: StartServerOptions = {}) {
       if (!meta) return;
       if (!cursorData || typeof cursorData !== 'object') return;
       const boardId = typeof cursorData.boardId === 'string' ? cursorData.boardId : 'main';
-      socket.to(boardAudience(meta.roomId, boardId)).emit('cursor-move', cursorData);
+      const sender = rooms.get(meta.roomId)?.usersByUserId.get(meta.userId);
+      socket.to(boardAudience(meta.roomId, boardId)).emit('cursor-move', {
+        ...cursorData,
+        userId: meta.userId,
+        userName: sender?.name || cursorData.userName,
+      });
     });
 
     socket.on('undo', (payload) => {
@@ -2003,6 +2046,7 @@ export async function startServer(options: StartServerOptions = {}) {
       if (!userId) return;
 
       const senderRecord = room.usersByUserId.get(meta.userId);
+      if (userId !== meta.userId && !senderRecord?.isTeacher) return;
       if (room.isCanvasLocked && !senderRecord?.isTeacher) return;
 
       const targetElements = getBoardElements(room, boardId);

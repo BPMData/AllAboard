@@ -42,6 +42,7 @@ import {
 
 const STORAGE_KEYS = {
   USER_ID: 'drawchat_user_id',
+  USER_KEY: 'drawchat_user_key',
   USER_NAME: 'drawchat_user_name',
   IS_JOINED: 'drawchat_is_joined',
   JOINED_ROOM_SESSION: 'drawchat_joined_room_session',
@@ -58,6 +59,20 @@ function getOrCreatePersistentUserId(): string {
   } catch {
     return 'usr_' + Math.random().toString(36).substring(2, 11);
   }
+}
+
+/** Private proof that this browser owns its userId. Unlike the userId, it is never shown to other users. */
+function getOrCreatePersistentUserKey(): string {
+  const bytes = crypto.getRandomValues(new Uint8Array(32));
+  const created = Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
+  try {
+    const existing = localStorage.getItem(STORAGE_KEYS.USER_KEY);
+    if (existing) return existing;
+    localStorage.setItem(STORAGE_KEYS.USER_KEY, created);
+  } catch {
+    // Storage blocked: the userId is per-page-load too, so a per-page-load key still matches it
+  }
+  return created;
 }
 
 function normalizeClientRoomId(raw?: string): string {
@@ -97,6 +112,7 @@ export default function App() {
   /** Our own streaming ink, sent every POINT_FLUSH_MS instead of on every pointer move. */
   const outgoingInkRef = useRef<PointQueue | null>(null);
   const [userId] = useState<string>(() => getOrCreatePersistentUserId());
+  const [userKey] = useState<string>(() => getOrCreatePersistentUserKey());
   const [userColor] = useState<string>(() => getUserColor(getOrCreatePersistentUserId()));
   const [roomId, setRoomId] = useState<string>(() => getInitialRoomId());
   const [hadInitialUrlRoom] = useState<boolean>(() => hasInitialUrlRoomParam());
@@ -358,6 +374,7 @@ export default function App() {
         newSocket.emit('join-room', {
           roomId: effectiveRoomId,
           userId,
+          userKey,
           name: savedName.trim(),
           color: userColor,
           teacherPin: cleanSavedPin,
@@ -576,19 +593,26 @@ export default function App() {
 
     newSocket.on(
       'room-kicked',
-      ({ reason, roomId: kickedRoom }: { reason: 'kicked' | 'banned'; roomId?: string }) => {
+      ({ reason, roomId: kickedRoom }: { reason: 'kicked' | 'banned' | 'identity'; roomId?: string }) => {
         setIsJoined(false);
         setIsTeacher(false);
         setPendingPurgePrompt(null);
         try {
           localStorage.removeItem(STORAGE_KEYS.IS_JOINED);
           sessionStorage.removeItem(STORAGE_KEYS.JOINED_ROOM_SESSION);
+          if (reason === 'identity') {
+            // This id belongs to another browser. Drop it so the next page load starts with a fresh identity.
+            localStorage.removeItem(STORAGE_KEYS.USER_ID);
+            localStorage.removeItem(STORAGE_KEYS.USER_KEY);
+          }
         } catch {
           // Ignore
         }
         const targetRoom = kickedRoom || roomId;
         setKickNotice(
-          reason === 'banned'
+          reason === 'identity'
+            ? `This browser couldn't be verified for room #${targetRoom}. Refresh the page to join again.`
+            : reason === 'banned'
             ? `You have been banned from room #${targetRoom} by the teacher.`
             : `You were removed from room #${targetRoom} by the teacher.`
         );
@@ -1088,6 +1112,7 @@ export default function App() {
         socket.emit('join-room', {
           roomId: targetRoomId,
           userId,
+          userKey,
           name: trimmedName,
           color: userColor,
           teacherPin: cleanPin.length >= 3 ? cleanPin : undefined,
@@ -1102,7 +1127,7 @@ export default function App() {
       setHasEditedLobbyRoom(false);
       setIsJoined(true);
     },
-    [roomId, effectiveRoomId, socket, userId, userColor]
+    [roomId, effectiveRoomId, socket, userId, userKey, userColor]
   );
 
   const handleSwitchRoom = useCallback(

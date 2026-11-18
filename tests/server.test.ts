@@ -553,6 +553,124 @@ describe('AllAboard server & Socket.IO integration tests', () => {
     assert.equal(rejoinInit.messages.length, 0);
   });
 
+  describe('identity keys', () => {
+    const KEY_A = 'a'.repeat(64);
+    const KEY_B = 'b'.repeat(64);
+
+    /** Connects and joins, resolving with whichever of `init` / `room-kicked` the server answers. */
+    async function attemptJoin(params: Record<string, unknown>, targetSrv: ServerHandle = srv) {
+      const socket = ioClient(`http://127.0.0.1:${targetSrv.port}`, {
+        transports: ['websocket'],
+        forceNew: true,
+        reconnection: false,
+      });
+      openSockets.push(socket);
+      await waitForEvent(socket, 'connect');
+      const outcome = new Promise<{ event: string; data: any }>((resolve) => {
+        socket.once('init', (data) => resolve({ event: 'init', data }));
+        socket.once('room-kicked', (data) => resolve({ event: 'room-kicked', data }));
+      });
+      socket.emit('join-room', { color: '#000', ...params });
+      return { socket, ...(await outcome) };
+    }
+
+    function ink(id: string) {
+      return { id, boardId: 'main', tool: 'solid', color: '#000', strokeWidth: 4, points: [0, 0, 5, 5] };
+    }
+
+    it('rejects a wrong or missing key for a claimed id, and accepts the right one', async () => {
+      const roomId = 'key-room';
+      const first = await attemptJoin({ roomId, userId: 'sam', userKey: KEY_A, name: 'Sam' });
+      assert.equal(first.event, 'init');
+
+      const wrongKey = await attemptJoin({ roomId, userId: 'sam', userKey: KEY_B, name: 'Sam' });
+      assert.equal(wrongKey.event, 'room-kicked');
+      assert.equal(wrongKey.data.reason, 'identity');
+
+      const noKey = await attemptJoin({ roomId, userId: 'sam', name: 'Sam' });
+      assert.equal(noKey.event, 'room-kicked');
+      assert.equal(noKey.data.reason, 'identity');
+
+      const secondTab = await attemptJoin({ roomId, userId: 'sam', userKey: KEY_A, name: 'Sam' });
+      assert.equal(secondTab.event, 'init');
+    });
+
+    it('a rejected join cannot draw as the id it tried to take', async () => {
+      const roomId = 'forge-room';
+      const teacher = await attemptJoin({ roomId, userId: 't', userKey: KEY_A, name: 'Teacher' });
+      await attemptJoin({ roomId, userId: 'sam', userKey: KEY_B, name: 'Sam' });
+
+      const forger = await attemptJoin({ roomId, userId: 'sam', userKey: 'c'.repeat(64), name: 'Sam' });
+      assert.equal(forger.event, 'room-kicked');
+      forger.socket.emit('element-start', ink('forged'));
+      await delay(100);
+
+      const check = await attemptJoin({ roomId, userId: 't', userKey: KEY_A, name: 'Teacher' });
+      assert.equal(check.data.elements.length, 0);
+      assert.equal(teacher.event, 'init');
+    });
+
+    it('cannot inherit teacher powers from a teacher id without key or PIN', async () => {
+      const roomId = 'teacher-key-room';
+      const teacher = await attemptJoin({ roomId, userId: 't', userKey: KEY_A, name: 'Teacher' });
+      assert.equal((await emitAck<any>(teacher.socket, 'teacher:auth', { pin: '1234' })).ok, true);
+
+      const noPin = await attemptJoin({ roomId, userId: 't', userKey: KEY_B, name: 'Student' });
+      assert.equal(noPin.event, 'room-kicked');
+
+      const sameBrowser = await attemptJoin({ roomId, userId: 't', userKey: KEY_A, name: 'Teacher' });
+      assert.equal(sameBrowser.data.isTeacher, true);
+    });
+
+    it('does not grant teacher status to whoever first claims a keyless teacher id', async () => {
+      const roomId = 'legacy-teacher-room';
+      const legacy = await attemptJoin({ roomId, userId: 't', name: 'Teacher' });
+      assert.equal((await emitAck<any>(legacy.socket, 'teacher:auth', { pin: '1234' })).ok, true);
+
+      const claimer = await attemptJoin({ roomId, userId: 't', userKey: KEY_B, name: 'Student' });
+      assert.equal(claimer.event, 'init');
+      assert.equal(claimer.data.isTeacher, false);
+    });
+
+    it('keeps claimed keys across a server restart and never sends them to clients', async () => {
+      const roomId = 'restart-key-room';
+      const first = await attemptJoin({ roomId, userId: 'sam', userKey: KEY_A, name: 'Sam' });
+      assert.equal(JSON.stringify(first.data).includes('userKeyHashes'), false);
+      first.socket.emit('element-start', ink('keep-room-alive'));
+      await delay(100);
+      first.socket.disconnect();
+      await srv.close();
+
+      srv = await startServer({ port: 0, host: '127.0.0.1', dataDir: tmpDir, skipVite: true, overviewSyncMs: 100 });
+      const forger = await attemptJoin({ roomId, userId: 'sam', userKey: KEY_B, name: 'Sam' });
+      assert.equal(forger.event, 'room-kicked');
+      const owner = await attemptJoin({ roomId, userId: 'sam', userKey: KEY_A, name: 'Sam' });
+      assert.equal(owner.event, 'init');
+    });
+
+    it("ignores another user's id in update-profile, undo and cursor-move", async () => {
+      const roomId = 'payload-id-room';
+      const sam = await attemptJoin({ roomId, userId: 'sam', userKey: KEY_A, name: 'Sam' });
+      const ada = await attemptJoin({ roomId, userId: 'ada', userKey: KEY_B, name: 'Ada' });
+      sam.socket.emit('element-start', ink('sams-stroke'));
+      await delay(100);
+
+      const cursor = waitForEvent<any>(sam.socket, 'cursor-move');
+      ada.socket.emit('cursor-move', { userId: 'sam', userName: 'Sam', boardId: 'main', x: 1, y: 1 });
+      const seen = await cursor;
+      assert.equal(seen.userId, 'ada');
+      assert.equal(seen.userName, 'Ada');
+
+      ada.socket.emit('update-profile', { userId: 'sam', name: 'Renamed' });
+      ada.socket.emit('undo', { userId: 'sam', boardId: 'main' });
+      await delay(100);
+
+      const check = await attemptJoin({ roomId, userId: 'sam', userKey: KEY_A, name: 'Sam' });
+      assert.deepEqual(check.data.elements.map((el: any) => el.id), ['sams-stroke']);
+      assert.equal(check.data.users.find((u: any) => u.userId === 'sam').name, 'Sam');
+    });
+  });
+
   describe('multi-round breakouts', () => {
     async function setupClass(roomId: string) {
       const { socket: teacher } = await joinTracked({ roomId, userId: 't1', name: 'Teacher' });

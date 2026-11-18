@@ -39,6 +39,31 @@ test.describe('lobby', () => {
     await expect(page.getByPlaceholder('Message the class...')).toBeVisible();
     await expect(page.getByText('Alex', { exact: true }).first()).toBeVisible();
   });
+
+  test('a browser reusing someone else’s user id is turned away, then joins as itself after a refresh', async ({ browser }) => {
+    const room = uniqueRoom('identity');
+    const owner = await newUser(browser);
+    await joinRoom(owner.page, room, 'Sam');
+    const ownerId = await owner.page.evaluate(() => localStorage.getItem('drawchat_user_id'));
+
+    const impostor = await newUser(browser);
+    await impostor.page.goto(`/?room=${room}`);
+    await impostor.page.evaluate((id) => localStorage.setItem('drawchat_user_id', id as string), ownerId);
+    await impostor.page.reload();
+    await impostor.page.getByLabel('Your Display Name').fill('Sam');
+    await impostor.page.getByRole('button', { name: 'Join Classroom' }).click();
+    await expect(impostor.page.getByText(/couldn't be verified/)).toBeVisible();
+
+    await impostor.page.reload();
+    await impostor.page.getByLabel('Your Display Name').fill('Ada');
+    await impostor.page.getByRole('button', { name: 'Join Classroom' }).click();
+    await expect(impostor.page.getByPlaceholder('Message the class...')).toBeVisible();
+    const newId = await impostor.page.evaluate(() => localStorage.getItem('drawchat_user_id'));
+    expect(newId).not.toBe(ownerId);
+
+    await owner.context.close();
+    await impostor.context.close();
+  });
 });
 
 test.describe('teacher and students', () => {
