@@ -75,6 +75,7 @@ describe('AllAboard server & Socket.IO integration tests', () => {
       host: '127.0.0.1',
       dataDir: tmpDir,
       skipVite: true,
+      overviewSyncMs: 100,
     });
   });
 
@@ -1548,7 +1549,7 @@ describe('AllAboard server & Socket.IO integration tests', () => {
       await delay(50);
     }
 
-    it('scopes ink and cursors to the board, while teachers hear every board', async () => {
+    it('scopes ink and cursors to the board; a teacher elsewhere gets it as a periodic digest', async () => {
       const { teacher, s1, s2 } = await setupClass('chan-scope');
       await startIndividualRound(teacher, s2);
 
@@ -1557,10 +1558,63 @@ describe('AllAboard server & Socket.IO integration tests', () => {
       s1.emit('element-start', stroke('ink1', 'r1_ind_s1', 's1'));
       s1.emit('element-append-points', { id: 'ink1', boardId: 'r1_ind_s1', newPoints: [20, 20] });
       s1.emit('cursor-move', { userId: 's1', boardId: 'r1_ind_s1', x: 1, y: 1 });
-      await delay(150);
+      await delay(300);
 
       assert.deepEqual(r2.map((e) => e.ev), [], 's2 is on another board and must hear nothing');
-      assert.deepEqual(t.map((e) => e.ev).sort(), ['cursor-move', 'element-append-points', 'element-start']);
+      // Teacher is viewing main: no live ink or cursors from r1_ind_s1, just digests with the whole stroke.
+      assert.ok(t.every((e) => e.ev === 'boards-digest'), t.map((e) => e.ev).join());
+      const upserts = t.flatMap((e) => e.data.boards).filter((d: any) => d.boardId === 'r1_ind_s1');
+      assert.ok(upserts.length >= 1 && upserts.length <= 2, 'coalesced, not one per message');
+      assert.deepEqual(upserts.at(-1).upserts[0].points, [0, 0, 20, 20]);
+    });
+
+    it('a teacher viewing a board gets it live (after a fresh copy) and no digest for it', async () => {
+      const { teacher, s1, s2 } = await setupClass('chan-view');
+      await startIndividualRound(teacher, s2);
+      s1.emit('element-start', stroke('before', 'r1_ind_s1', 's1'));
+      await delay(250); // let that go out as a digest first
+
+      const fresh = waitForEvent<any>(teacher, 'state-sync');
+      teacher.emit('teacher:view-board', { boardId: 'r1_ind_s1' });
+      const sync = await fresh;
+      assert.equal(sync.boardId, 'r1_ind_s1');
+      assert.deepEqual(sync.elements.map((e: any) => e.id), ['before']);
+
+      const t = record(teacher);
+      s1.emit('element-start', stroke('live', 'r1_ind_s1', 's1'));
+      s1.emit('cursor-move', { userId: 's1', boardId: 'r1_ind_s1', x: 1, y: 1 });
+      s2.emit('element-start', stroke('other', 'r1_ind_s2', 's2'));
+      await delay(300);
+      const evs = t.map((e) => e.ev);
+      assert.ok(evs.includes('element-start') && evs.includes('cursor-move'));
+      const digested = t.filter((e) => e.ev === 'boards-digest').flatMap((e) => e.data.boards.map((d: any) => d.boardId));
+      assert.ok(digested.includes('r1_ind_s2'));
+      assert.ok(!digested.includes('r1_ind_s1'), 'viewed board is live, never digested');
+
+      // Students on that board see the teacher's ink live too.
+      const seen = waitForEvent<any>(s1, 'element-start');
+      teacher.emit('element-start', stroke('fromT', 'r1_ind_s1', 't1'));
+      assert.equal((await seen).id, 'fromT');
+    });
+
+    it('digests carry removals, and a full board after a clear', async () => {
+      const { teacher, s1, s2 } = await setupClass('chan-digest');
+      await startIndividualRound(teacher, s2);
+      s1.emit('element-start', stroke('a', 'r1_ind_s1', 's1'));
+      s1.emit('element-start', stroke('b', 'r1_ind_s1', 's1'));
+      await delay(250);
+
+      const t = record(teacher);
+      s1.emit('element-remove', { id: 'a', boardId: 'r1_ind_s1' });
+      await delay(250);
+      const rm = t.flatMap((e) => e.data?.boards ?? []).find((d: any) => d.boardId === 'r1_ind_s1');
+      assert.deepEqual(rm.removed, ['a']);
+
+      t.length = 0;
+      teacher.emit('teacher:clear-all', { boardId: 'r1_ind_s1' });
+      await delay(250);
+      const full = t.flatMap((e) => e.data?.boards ?? []).find((d: any) => d.boardId === 'r1_ind_s1');
+      assert.deepEqual(full.elements, []);
     });
 
     it('delivers ink to students sharing a group board', async () => {

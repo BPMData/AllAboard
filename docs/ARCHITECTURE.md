@@ -47,7 +47,7 @@ Teachers are identified by a per-room **PIN**, not a login.
 | `src/lib/worksheetLoader.ts` | ~390 | PDF/image → `BackgroundPage[]` (browser-side render to JPEG data URLs). Built-in templates (`four-corners`, `frayer-model`, `checkin-columns`). `MAX_PDF_PAGES = 10`. |
 | `src/lib/batchPdfExport.ts` | ~590 | Export boards to PDF (renders background plus ink). |
 | `src/lib/inkCore.ts` | — | Ink smoothing, highlighter/cover, text-note logic (from OverBoard). |
-| `src/lib/pointBatcher.ts`, `src/lib/drawThrottle.ts` | — | Client-side coalescing of streaming ink (send every 50 ms, apply incoming once per frame) and the network pacing constants (ink 50 ms, cursor 100 ms). |
+| `src/lib/pointBatcher.ts`, `src/lib/drawThrottle.ts`, `src/lib/boardDigest.ts` | — | Client-side coalescing of streaming ink (send every 50 ms, apply incoming once per frame) and the network pacing constants (ink 50 ms, cursor 100 ms). Teacher overview digests (1.5 s). |
 | `scripts/loadtest.ts` | — | `npx tsx scripts/loadtest.ts --mode main\|individual --client legacy\|batched` — N fake drawing students, prints msg/s in and out and server CPU. |
 | `src/lib/roomCode.ts` | — | `normalizeRoomCode` (**must match** server `normalizeRoomId`), `sanitizeRoomCodeDraft`. |
 | `src/lib/chatSidebar.ts` | — | Chat sidebar sizing constants plus `localStorage` keys. |
@@ -139,17 +139,23 @@ Cloud Run service "allaboard"  ── nginx-container :8080 (ingress) ──► 
 **Patterns:**
 - The client applies changes **optimistically**. The server validates (lock, ownership, teacher) and rebroadcasts. Deltas
   go out with `socket.to(...)` (excludes the sender); authoritative updates with `io.to(...)`.
-- **Board channels.** Ink deltas, `state-sync` and `cursor-move` go to `boardAudience(roomId, boardId)`, i.e. the sockets
-  viewing that board **plus every teacher** (teachers hear all boards for the switcher and live grid), not the whole room.
-  Each socket sits in exactly one channel (`placeSocket`), which is re-checked whenever `broadcastRoster`,
-  `broadcastRoomSettings` or `broadcastBreakoutSync` runs. A socket that changes channel is sent what it missed
-  (`state-sync` for its new board; full `state-sync` + `breakout-sync` when it becomes a teacher). Consequence: a
-  student's copy of *other* boards is only as fresh as the last `breakout-sync`. Roster, settings, chat, backgrounds and
-  `breakout-sync` are still room-wide. **If you add a delta event, send it to `boardAudience`, not `room.id`.**
+- **Board channels.** Ink deltas, `state-sync` and `cursor-move` go to `boardAudience(roomId, boardId)`: only the sockets
+  **viewing** that board. Students view their assigned board (`findStudentBoardId`); a teacher views whatever board
+  they picked and the client tells the server with `teacher:view-board` (on every change and after each `init`).
+  Each socket sits in exactly one board channel (`placeSocket`), re-checked whenever `broadcastRoster`,
+  `broadcastRoomSettings` or `broadcastBreakoutSync` runs. A socket that changes board is sent a fresh `state-sync` of
+  it; one that becomes a teacher gets full `state-sync` + `breakout-sync`. Roster, settings, chat, backgrounds and
+  `breakout-sync` are still room-wide.
+- **Teacher overview digests.** Teachers don't get live traffic for boards they aren't viewing. Instead, every
+  `OVERVIEW_SYNC_MS` (1.5 s, `src/lib/boardDigest.ts`) each teacher gets one `boards-digest` with the **changed elements**
+  of every other board (`upserts`/`removed`, or the whole board after a clear or reorder). That's enough for the live
+  grid and moderation. **If you add a delta event, send it to `boardAudience` *and* call `noteChange`.**
+  Consequence: a student's copy of other boards is only as fresh as the last `breakout-sync`, and a teacher's is ≤ 1.5 s old.
 - **Ink pacing (client).** `element-append-points` is queued and sent every 50 ms; any other drawing emit goes through
   `emitDrawing`, which flushes the queue first so the server sees actions in order. Incoming points are applied once per
   animation frame; an `onAny` hook flushes them before any other event is handled. Cursors: at most 10/s plus a trailing send.
-  Measured (20 students, 40% pen-down): outbound 16.7k → 6.3k msg/s on the main board, → 0.3k msg/s in individual breakouts.
+  Measured (20 students, 40% pen-down): outbound 16.7k → 6.4k msg/s on the main board, → ~1 msg/s in individual
+  breakouts (the teacher gets ~1 digest/s instead of ~800 msgs/s).
 - Teacher actions use **ack callbacks** returning `{ ok, error? }`.
 - Every mutation sets `room.lastActiveAt` and calls `scheduleSaveToDisk(room[, immediate])`.
 

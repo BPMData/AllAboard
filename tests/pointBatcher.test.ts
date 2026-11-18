@@ -1,5 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { applyDigest, buildDigest, emptyChanges } from '../src/lib/boardDigest.ts';
 import { appendPointBatches, createPointQueue, type PointBatch } from '../src/lib/pointBatcher.ts';
 
 function manualScheduler() {
@@ -90,5 +91,35 @@ describe('appendPointBatches', () => {
     assert.deepEqual(next[0].points, [0, 0, 1, 1, 2, 2]);
     assert.equal(next[1], list[1]);
     assert.equal(appendPointBatches(list, [{ boardId: 'main', id: 'zzz', points: [1, 1] }]), list);
+  });
+});
+
+describe('board digests', () => {
+  it('round-trips upserts, removals and replacements while keeping order', () => {
+    const server = [
+      { id: 'a', v: 2 },
+      { id: 'c', v: 1 },
+    ];
+    const changes = emptyChanges();
+    changes.upserts.add('a');
+    changes.upserts.add('c');
+    changes.upserts.add('gone'); // touched then deleted: becomes a removal
+    changes.removed.add('b');
+    const digest = buildDigest('main', changes, server);
+    assert.deepEqual(digest.removed?.sort(), ['b', 'gone']);
+    const client = [
+      { id: 'a', v: 1 },
+      { id: 'b', v: 1 },
+      { id: 'gone', v: 1 },
+    ];
+    assert.deepEqual(applyDigest(client, digest), server);
+  });
+
+  it('full digests replace the board; empty ones keep identity', () => {
+    const changes = emptyChanges();
+    changes.full = true;
+    assert.deepEqual(applyDigest([{ id: 'x' }], buildDigest('b', changes, [])), []);
+    const list = [{ id: 'x' }];
+    assert.equal(applyDigest(list, { boardId: 'b' }), list);
   });
 });

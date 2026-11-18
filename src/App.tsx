@@ -30,6 +30,7 @@ import { normalizeRoomCode, sanitizeRoomCodeDraft } from './lib/roomCode';
 import { motion } from 'motion/react';
 import { LogIn, Users, KeyRound, PlusCircle, Shuffle } from 'lucide-react';
 import { POINT_FLUSH_MS } from './lib/drawThrottle';
+import { applyDigest, type BoardDigest } from './lib/boardDigest';
 import {
   appendPointBatches,
   createPointQueue,
@@ -779,6 +780,26 @@ export default function App() {
       }
     );
 
+    // Teachers: boards we aren't viewing arrive as periodic digests of changed elements (see boardDigest.ts).
+    newSocket.on('boards-digest', ({ boards }: { boards: BoardDigest<CanvasElement>[] }) => {
+      if (!Array.isArray(boards) || boards.length === 0) return;
+      const mainDigest = boards.find((d) => d.boardId === 'main');
+      if (mainDigest) setElements((prev) => applyDigest(prev, mainDigest));
+      const subDigests = boards.filter((d) => d.boardId !== 'main');
+      if (subDigests.length > 0) {
+        setSubBoards((prev) => {
+          let next = prev;
+          for (const d of subDigests) {
+            const sb = next[d.boardId];
+            if (!sb) continue;
+            const elementsNext = applyDigest(sb.elements, d);
+            if (elementsNext !== sb.elements) next = { ...next, [d.boardId]: { ...sb, elements: elementsNext } };
+          }
+          return next;
+        });
+      }
+    });
+
     newSocket.on('cursor-move', (cursor: Omit<RemoteCursor, 'updatedAt'>) => {
       setRemoteCursors((prev) => ({
         ...prev,
@@ -801,6 +822,18 @@ export default function App() {
       newSocket.close();
     };
   }, [userId, userColor, effectiveRoomId]);
+
+  // Teachers get live traffic only for the board they're looking at; tell the server whenever that changes
+  // (and after every reconnect, since the server forgets per-socket state).
+  useEffect(() => {
+    if (!socket || !isTeacher) return;
+    const announce = () => socket.emit('teacher:view-board', { boardId: activeBoardId });
+    announce();
+    socket.on('init', announce);
+    return () => {
+      socket.off('init', announce);
+    };
+  }, [socket, isTeacher, activeBoardId]);
 
   /** Emit a drawing event after any of our queued ink, so the server sees our actions in order. */
   const emitDrawing = useCallback((target: Socket, event: string, ...args: unknown[]) => {
