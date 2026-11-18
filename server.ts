@@ -4,9 +4,9 @@ import { Server } from 'socket.io';
 import { createServer as createViteServer } from 'vite';
 import path from 'path';
 import fs from 'fs';
-import { createHash, timingSafeEqual } from 'crypto';
+import { createHash, randomUUID, timingSafeEqual } from 'node:crypto';
 import { fileURLToPath } from 'url';
-import type { BreakoutRoundMeta, ConfigureBreakoutPayload, SubBoardKind } from './src/types.ts';
+import type { BreakoutRoundMeta, ConfigureBreakoutPayload, SubBoardKind, StudentStatus } from './src/types.ts';
 import {
   type BreakoutConfigLike,
   buildRoundTitle,
@@ -74,6 +74,8 @@ interface ServerUserRecord {
   color: string;
   isTeacher: boolean;
   isNameLocked?: boolean;
+  status?: StudentStatus;
+  statusUpdatedAt?: number;
   sockets: Set<string>;
 }
 
@@ -120,6 +122,7 @@ interface RoomState {
   lockedNames: Record<string, string>;
   bannedUsers: Record<string, BannedUserRecord>;
   isCanvasLocked: boolean;
+  hideStudentCursors: boolean;
   teacherPin: string | null;
   lastActiveAt: number;
 }
@@ -137,6 +140,7 @@ interface SerializedRoom {
   lockedNames?: Record<string, string>;
   bannedUsers?: Record<string, BannedUserRecord>;
   isCanvasLocked: boolean;
+  hideStudentCursors?: boolean;
   teacherPin: string | null;
   lastActiveAt: number;
 }
@@ -316,6 +320,7 @@ export async function startServer(options: StartServerOptions = {}) {
       lockedNames: item.lockedNames && typeof item.lockedNames === 'object' ? item.lockedNames : {},
       bannedUsers: item.bannedUsers && typeof item.bannedUsers === 'object' ? item.bannedUsers : {},
       isCanvasLocked: Boolean(item.isCanvasLocked),
+      hideStudentCursors: Boolean(item.hideStudentCursors),
       teacherPin: item.teacherPin || null,
       lastActiveAt: lastActive,
     };
@@ -335,6 +340,7 @@ export async function startServer(options: StartServerOptions = {}) {
       lockedNames: room.lockedNames,
       bannedUsers: room.bannedUsers,
       isCanvasLocked: room.isCanvasLocked,
+      hideStudentCursors: room.hideStudentCursors,
       teacherPin: room.teacherPin,
       lastActiveAt: room.lastActiveAt,
     };
@@ -543,6 +549,7 @@ export async function startServer(options: StartServerOptions = {}) {
         lockedNames: {},
         bannedUsers: {},
         isCanvasLocked: false,
+        hideStudentCursors: false,
         teacherPin: null,
         lastActiveAt: Date.now(),
       };
@@ -558,6 +565,8 @@ export async function startServer(options: StartServerOptions = {}) {
       color: string;
       isTeacher: boolean;
       isNameLocked?: boolean;
+      status: StudentStatus;
+      statusUpdatedAt?: number;
     }> = [];
     for (const record of room.usersByUserId.values()) {
       if (record.sockets.size > 0) {
@@ -567,6 +576,8 @@ export async function startServer(options: StartServerOptions = {}) {
           color: record.color,
           isTeacher: record.isTeacher,
           isNameLocked: Boolean(record.isNameLocked || room.lockedNames[record.userId]),
+          status: record.status || 'none',
+          statusUpdatedAt: record.statusUpdatedAt,
         });
       }
     }
@@ -577,6 +588,7 @@ export async function startServer(options: StartServerOptions = {}) {
     return {
       roomId: room.id,
       isCanvasLocked: room.isCanvasLocked,
+      hideStudentCursors: room.hideStudentCursors,
       hasTeacherPin: room.teacherPin !== null,
       lastSavedAt: room.lastActiveAt,
       breakoutConfig: room.breakoutConfig,
@@ -1053,6 +1065,31 @@ export async function startServer(options: StartServerOptions = {}) {
       }
     });
 
+    socket.on('user:set-status', (payload: { status?: unknown } | undefined) => {
+      const meta = socketMeta.get(socket.id);
+      const room = meta && rooms.get(meta.roomId);
+      const record = meta && room?.usersByUserId.get(meta.userId);
+      const status = payload?.status;
+      if (!room || !record || record.isTeacher || !['none', 'need-help', 'got-it', 'done'].includes(status as string)) return;
+      record.status = status as StudentStatus;
+      record.statusUpdatedAt = Date.now();
+      broadcastRoster(room);
+    });
+
+    socket.on('teacher:clear-status', (payload: { targetUserId?: unknown } | undefined) => {
+      const meta = socketMeta.get(socket.id);
+      const room = meta && rooms.get(meta.roomId);
+      if (!meta || !room?.usersByUserId.get(meta.userId)?.isTeacher) return;
+      if (payload?.targetUserId !== undefined && typeof payload.targetUserId !== 'string') return;
+      for (const record of room.usersByUserId.values()) {
+        if (!record.isTeacher && (payload?.targetUserId === undefined || record.userId === payload.targetUserId)) {
+          record.status = 'none';
+          record.statusUpdatedAt = Date.now();
+        }
+      }
+      broadcastRoster(room);
+    });
+
     socket.on('teacher:step-down', () => {
       const meta = socketMeta.get(socket.id);
       if (!meta) return;
@@ -1205,6 +1242,47 @@ export async function startServer(options: StartServerOptions = {}) {
         activeRoundId: room.breakoutConfig.activeRoundId,
         mode: room.breakoutConfig.mode,
       });
+    });
+
+    socket.on('teacher:spotlight-board', (payload, callback) => {
+      const meta = socketMeta.get(socket.id);
+      const room = meta && rooms.get(meta.roomId);
+      if (!meta || !room || !room.usersByUserId.get(meta.userId)?.isTeacher) {
+        callback?.({ ok: false, error: 'Only a verified Teacher can share a board.' });
+        return;
+      }
+      const source = typeof payload?.sourceBoardId === 'string' ? room.subBoards.get(payload.sourceBoardId) : undefined;
+      if (!source) {
+        callback?.({ ok: false, error: 'Board not found.' });
+        return;
+      }
+      const anonymize = payload.anonymize !== false;
+      room.elements = source.elements
+        .filter((element) => !anonymize || element.stamp !== 'username')
+        .map((element) => ({
+          ...structuredClone(element),
+          id: randomUUID(),
+          boardId: 'main',
+          ...(anonymize ? { userId: meta.userId, userName: 'Class Example' } : {}),
+        }));
+      if (payload.copyBackground === true) {
+        room.background = cloneBackground(source.background);
+        io.to(room.id).emit('background-sync', { boardId: 'main', background: room.background });
+      }
+      // Invalidate old Main undo histories before distributing the replacement.
+      io.to(room.id).emit('board-replaced', { boardId: 'main' });
+      noteChange(room, 'main', { full: true });
+      io.to(boardAudience(room.id, 'main')).emit('state-sync', { boardId: 'main', elements: room.elements });
+      if (payload.returnToMain === true) {
+        room.breakoutConfig.mode = 'main';
+        room.breakoutConfig.autoIndividual = false;
+        delete room.breakoutConfig.userBoardOverrides;
+        broadcastRoomSettings(room);
+        broadcastBreakoutSync(room);
+      }
+      room.lastActiveAt = Date.now();
+      scheduleSaveToDisk(room, true);
+      callback?.({ ok: true });
     });
 
     // Teacher picked a board to look at: give it live traffic for that board (others come as digests).
@@ -2027,6 +2105,21 @@ export async function startServer(options: StartServerOptions = {}) {
       }
     });
 
+    socket.on('laser-pulse', (payload: unknown) => {
+      const meta = socketMeta.get(socket.id);
+      if (!meta || !payload || typeof payload !== 'object') return;
+      const room = rooms.get(meta.roomId);
+      if (!room?.usersByUserId.get(meta.userId)?.isTeacher) return;
+      const pulse = payload as { boardId?: unknown; x?: unknown; y?: unknown; strokeId?: unknown };
+      if (typeof pulse.boardId !== 'string' || meta.channel !== boardChannel(room.id, pulse.boardId) ||
+          typeof pulse.x !== 'number' || !Number.isFinite(pulse.x) ||
+          typeof pulse.y !== 'number' || !Number.isFinite(pulse.y) ||
+          typeof pulse.strokeId !== 'string' || pulse.strokeId.length > 64) return;
+      socket.to(boardAudience(room.id, pulse.boardId)).emit('laser-pulse', {
+        boardId: pulse.boardId, x: pulse.x, y: pulse.y, strokeId: pulse.strokeId, userId: meta.userId,
+      });
+    });
+
     socket.on('cursor-move', (cursorData) => {
       const meta = socketMeta.get(socket.id);
       if (!meta) return;
@@ -2102,6 +2195,18 @@ export async function startServer(options: StartServerOptions = {}) {
 
       room.lastActiveAt = Date.now();
       scheduleSaveToDisk(room, true);
+    });
+
+    socket.on('teacher:set-hide-cursors', (hide: boolean) => {
+      const meta = socketMeta.get(socket.id);
+      if (!meta) return;
+      const room = rooms.get(meta.roomId);
+      if (!room || !room.usersByUserId.get(meta.userId)?.isTeacher) return;
+
+      room.hideStudentCursors = Boolean(hide);
+      room.lastActiveAt = Date.now();
+      scheduleSaveToDisk(room, true);
+      broadcastRoomSettings(room);
     });
 
     socket.on('teacher:set-lock', (isLocked: boolean) => {

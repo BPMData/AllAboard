@@ -111,6 +111,108 @@ test.describe('lobby', () => {
 });
 
 test.describe('teacher and students', () => {
+  test('teacher shares an anonymized breakout board to Main', async ({ browser }) => {
+    const room = uniqueRoom('share');
+    const teacher = await newUser(browser);
+    const student = await newUser(browser);
+    await joinRoom(teacher.page, room, 'Ms T', PIN);
+    await joinRoom(student.page, room, 'Alex');
+    await teacher.page.getByTitle('Assign individual student boards or breakout group rooms').click();
+    await teacher.page.getByRole('button', { name: 'Launch Round 1' }).click();
+    await expect(teacher.page.getByText(/Live Classroom Boards Overview/)).toBeVisible();
+    await student.page.getByRole('button', { name: 'Need Help', exact: true }).click();
+    await expect(teacher.page.getByRole('button', { name: "Clear Alex's status" })).toBeVisible();
+    await drawStroke(student.page);
+    await expect(student.page.getByText('1 drawn')).toBeVisible();
+    await student.page.getByTitle(/Quick Stamp Tool/).click();
+    await student.page.getByTitle('Stamp Your Username Badge').click();
+    await student.page.mouse.click(800, 500);
+    await expect(student.page.getByText('2 drawn')).toBeVisible();
+    await teacher.page.getByRole('button', { name: 'Share to Main', exact: true }).click();
+    const dialog = teacher.page.getByRole('dialog');
+    await expect(dialog.getByLabel('Anonymize authors and remove name stamps')).toBeChecked();
+    await expect(dialog.getByLabel('Bring class to Main')).toBeChecked();
+    await dialog.getByRole('button', { name: 'Share to Main' }).click();
+    await expect(dialog).toHaveCount(0);
+    await expect(student.page.getByText('0 drawn')).toBeVisible();
+    await expect(teacher.page.getByRole('button', { name: 'Bring All to Main' })).toHaveCount(0);
+    await teacher.context.close();
+    await student.context.close();
+  });
+
+  test('student status cycles and the teacher can clear it', async ({ browser }) => {
+    const room = uniqueRoom('status');
+    const teacher = await newUser(browser);
+    const student = await newUser(browser);
+    await joinRoom(teacher.page, room, 'Ms T', PIN);
+    await joinRoom(student.page, room, 'Alex');
+    await teacher.page.getByRole('button', { name: /^Class/ }).click();
+    for (const label of ['Need Help', 'Got It', 'Done']) {
+      await student.page.getByRole('button', { name: label, exact: true }).click();
+      await expect(student.page.getByRole('button', { name: label, exact: true })).toHaveAttribute('aria-pressed', 'true');
+      await expect(teacher.page.getByRole('button', { name: "Clear Alex's status" }).locator('..')).toContainText(label);
+    }
+    await teacher.page.getByRole('button', { name: "Clear Alex's status" }).click();
+    await expect(student.page.getByRole('button', { name: 'Done', exact: true })).toHaveAttribute('aria-pressed', 'false');
+    await student.page.getByRole('button', { name: 'Need Help', exact: true }).click();
+    await teacher.page.getByRole('button', { name: 'Clear all statuses' }).click();
+    await expect(student.page.getByRole('button', { name: 'Need Help', exact: true })).toHaveAttribute('aria-pressed', 'false');
+    await teacher.context.close();
+    await student.context.close();
+  });
+
+  test('teacher laser gestures do not create ink', async ({ browser }) => {
+    const room = uniqueRoom('laser');
+    const teacher = await newUser(browser);
+    const student = await newUser(browser);
+    await joinRoom(teacher.page, room, 'Ms T', PIN);
+    await joinRoom(student.page, room, 'Alex');
+    await expect(student.page.getByRole('button', { name: 'Laser pointer' })).toHaveCount(0);
+    await teacher.page.getByRole('button', { name: 'Laser pointer' }).click();
+    await drawStroke(teacher.page);
+    // Canvas positions differ when the teacher toolbar wraps, so compare world-relative coordinates.
+    const teacherCanvas = await teacher.page.locator('.konvajs-content canvas').first().boundingBox();
+    if (!teacherCanvas) throw new Error('Teacher canvas is missing');
+    await teacher.page.mouse.move(450, 250);
+    const hasLaser = () => student.page.evaluate(({ offsetX, offsetY }) => Array.from(document.querySelectorAll('.konvajs-content canvas')).some((canvas) => {
+      const el = canvas as HTMLCanvasElement;
+      const ctx = el.getContext('2d');
+      const bounds = el.getBoundingClientRect();
+      if (!ctx || !el.width || !el.height) return false;
+      const x = Math.round(offsetX * el.width / bounds.width);
+      const y = Math.round(offsetY * el.height / bounds.height);
+      if (x < 4 || y < 4 || x + 4 >= el.width || y + 4 >= el.height) return false;
+      const pixels = ctx.getImageData(x - 4, y - 4, 8, 8).data;
+      for (let i = 0; i < pixels.length; i += 4) {
+        if (pixels[i] > 200 && pixels[i + 1] < 100 && pixels[i + 2] < 100 && pixels[i + 3] > 30) return true;
+      }
+      return false;
+    }), { offsetX: 1000 - teacherCanvas.x, offsetY: 600 - teacherCanvas.y });
+    await expect.poll(hasLaser, { timeout: 1000 }).toBe(true);
+    await expect.poll(hasLaser, { timeout: 3000 }).toBe(false);
+    await expect(teacher.page.getByText('0 drawn')).toBeVisible();
+    await expect(student.page.getByText('0 drawn')).toBeVisible();
+    await teacher.context.close();
+    await student.context.close();
+  });
+
+  test('the teacher can hide and restore student cursors', async ({ browser }) => {
+    const room = uniqueRoom('cursors');
+    const teacher = await newUser(browser);
+    const student = await newUser(browser);
+    await joinRoom(teacher.page, room, 'Ms T', PIN);
+    await joinRoom(student.page, room, 'Alex');
+    await expect(student.page.getByRole('button', { name: 'Hide Student Cursors' })).toHaveCount(0);
+    await teacher.page.getByRole('button', { name: 'Hide Student Cursors' }).click();
+    await expect(teacher.page.getByRole('button', { name: 'Show Student Cursors' })).toHaveAttribute('aria-pressed', 'true');
+    await teacher.page.reload();
+    await expect(teacher.page.getByRole('button', { name: 'Show Student Cursors' })).toBeVisible();
+    await teacher.page.getByRole('button', { name: 'Show Student Cursors' }).click();
+    await expect(teacher.page.getByRole('button', { name: 'Hide Student Cursors' })).toBeVisible();
+    await teacher.context.close();
+    await student.context.close();
+  });
+
   test('chat messages reach the class and the teacher can delete them', async ({ browser }) => {
     const room = uniqueRoom('chat');
     const teacher = await newUser(browser);

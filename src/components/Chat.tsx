@@ -31,6 +31,7 @@ import {
 } from '../lib/chatSidebar';
 import { normalizeRoomCode, sanitizeRoomCodeDraft } from '../lib/roomCode';
 import RoomHistoryDropdown from './RoomHistoryDropdown';
+import { StudentStatusBadge } from './StudentStatusBadge';
 
 interface ChatProps {
   roomId: string;
@@ -57,6 +58,7 @@ interface ChatProps {
   onTeacherDeleteMessage?: (messageId: string) => void;
   onTeacherKickUser?: (targetUserId: string, mode: 'kick' | 'ban', targetName?: string) => void;
   onTeacherUnbanUser?: (targetUserId: string) => void;
+  onTeacherClearStatus: (targetUserId?: string) => void;
   width: number;
   onWidthChange: (nextWidth: number) => void;
   onResetWidth: () => void;
@@ -101,6 +103,7 @@ export default function Chat({
   onTeacherDeleteMessage,
   onTeacherKickUser,
   onTeacherUnbanUser,
+  onTeacherClearStatus,
   width,
   onWidthChange,
   onResetWidth,
@@ -227,6 +230,7 @@ export default function Chat({
         color: string;
         isTeacher: boolean;
         isNameLocked?: boolean;
+        status?: User['status'];
         isOnline: boolean;
       }
     >();
@@ -741,6 +745,13 @@ export default function Chat({
             <span>Actions / Items</span>
           </div>
 
+          {isTeacher && (
+            <div className="flex flex-wrap items-center justify-between gap-1 text-xs text-slate-600" aria-label="Status summary">
+              <span>{users.filter((u) => !u.isTeacher && u.status === 'need-help').length} need help · {users.filter((u) => !u.isTeacher && u.status === 'got-it').length} got it · {users.filter((u) => !u.isTeacher && u.status === 'done').length} done</span>
+              <button type="button" onClick={() => onTeacherClearStatus()} className="text-brand-600 hover:underline cursor-pointer">Clear all statuses</button>
+            </div>
+          )}
+
           {fullParticipantList.map((participant) => {
             const count = strokeCountsByUser[participant.userId] || 0;
             const isMe = participant.userId === userId;
@@ -807,6 +818,7 @@ export default function Chat({
                         )}
                       </div>
                     )}
+                    <StudentStatusBadge status={participant.status} name={participant.name} onClear={isTeacher && !participant.isTeacher ? () => onTeacherClearStatus(participant.userId) : undefined} />
                     <div className="flex items-center gap-1.5 text-[11px] text-slate-500 mt-0.5">
                       <span>{participant.isOnline ? 'Online' : 'Offline'}</span>
                       {participant.isTeacher && (

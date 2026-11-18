@@ -104,6 +104,61 @@ describe('AllAboard server & Socket.IO integration tests', () => {
     assert.equal(init.users[0].name, 'Alice');
   });
 
+  it('syncs valid student statuses and permits only teachers to clear one or all', async () => {
+    const teacher = (await joinTracked({ roomId: 'statuses', userId: 't', name: 'Teacher' })).socket;
+    await emitAck(teacher, 'teacher:auth', { pin: '1234' });
+    const s1 = (await joinTracked({ roomId: 'statuses', userId: 's1', name: 'Sam' })).socket;
+    const s2 = (await joinTracked({ roomId: 'statuses', userId: 's2', name: 'Ada' })).socket;
+    await delay(50); // Drain the join roster broadcast before observing status updates.
+    for (const status of ['need-help', 'got-it', 'done', 'none']) {
+      const sync = waitForEvent<any[]>(teacher, 'roster-sync');
+      s1.emit('user:set-status', { status });
+      const user = (await sync).find((u) => u.userId === 's1');
+      assert.equal(user.status, status);
+      assert.equal(typeof user.statusUpdatedAt, 'number');
+    }
+    const first = waitForEvent<any[]>(teacher, 'roster-sync');
+    s1.emit('user:set-status', { status: 'need-help' });
+    await first;
+    const second = waitForEvent<any[]>(teacher, 'roster-sync');
+    s2.emit('user:set-status', { status: 'done' });
+    await second;
+    s1.emit('user:set-status', { status: 'invalid' });
+    s1.emit('teacher:clear-status', {});
+    await delay(50);
+    const cleared = waitForEvent<any[]>(teacher, 'roster-sync');
+    teacher.emit('teacher:clear-status', { targetUserId: 's2' });
+    const single = await cleared;
+    assert.equal(single.find((u) => u.userId === 's1').status, 'need-help');
+    assert.equal(single.find((u) => u.userId === 's2').status, 'none');
+    const all = waitForEvent<any[]>(teacher, 'roster-sync');
+    teacher.emit('teacher:clear-status', {});
+    assert.equal((await all).find((u) => u.userId === 's1').status, 'none');
+  });
+
+  it('restricts the student cursor setting to teachers and persists it', async () => {
+    const { socket: teacher } = await joinTracked({ roomId: 'cursor-room', userId: 't1', name: 'Teacher' });
+    await emitAck(teacher, 'teacher:auth', { pin: '1234' });
+    const { socket: student, init } = await joinTracked({ roomId: 'cursor-room', userId: 's1', name: 'Student' });
+    assert.equal(init.roomSettings.hideStudentCursors, false);
+
+    const cursor = waitForEvent<any>(teacher, 'cursor-move');
+    student.emit('cursor-move', { userId: 't1', boardId: 'main', x: 1, y: 2 });
+    assert.equal((await cursor).userId, 's1');
+
+    const settings = waitForEvent<any>(student, 'room-settings');
+    teacher.emit('teacher:set-hide-cursors', true);
+    assert.equal((await settings).hideStudentCursors, true);
+    student.emit('teacher:set-hide-cursors', false);
+    await delay(100);
+    await srv.flushRoomsToDiskAsync();
+    for (const s of openSockets.splice(0, openSockets.length)) s.disconnect();
+    await srv.close();
+    srv = await startServer({ port: 0, host: '127.0.0.1', dataDir: tmpDir, skipVite: true });
+    const rejoined = await joinTracked({ roomId: 'cursor-room', userId: 's1', name: 'Student' });
+    assert.equal(rejoined.init.roomSettings.hideStudentCursors, true);
+  });
+
   it('claims, verifies, rejects invalid Teacher PINs, and supports step-down', async () => {
     const { socket: teacher } = await joinTracked({
       roomId: 'pin-room',
@@ -620,6 +675,25 @@ describe('AllAboard server & Socket.IO integration tests', () => {
 
       const sameBrowser = await attemptJoin({ roomId, userId: 't', userKey: KEY_A, name: 'Teacher' });
       assert.equal(sameBrowser.data.isTeacher, true);
+    });
+
+    it('rejects a forged teacher identity for the new classroom controls', async () => {
+      const roomId = 'new-controls-key-room';
+      const teacher = await attemptJoin({ roomId, userId: 't', userKey: KEY_A, name: 'Teacher' });
+      assert.equal((await emitAck<any>(teacher.socket, 'teacher:auth', { pin: '1234' })).ok, true);
+      const student = await attemptJoin({ roomId, userId: 's', userKey: KEY_B, name: 'Student' });
+      await delay(50);
+      const forger = await attemptJoin({ roomId, userId: 't', userKey: KEY_B, name: 'Teacher' });
+      assert.equal(forger.event, 'room-kicked');
+      let pulses = 0;
+      student.socket.on('laser-pulse', () => pulses++);
+      forger.socket.emit('laser-pulse', { boardId: 'main', x: 1, y: 2, strokeId: 'fake' });
+      forger.socket.emit('teacher:set-hide-cursors', true);
+      assert.equal((await emitAck<any>(forger.socket, 'teacher:spotlight-board', { sourceBoardId: 'missing' })).ok, false);
+      await delay(100);
+      assert.equal(pulses, 0);
+      const check = await attemptJoin({ roomId, userId: 's', userKey: KEY_B, name: 'Student' });
+      assert.equal(check.data.roomSettings.hideStudentCursors, false);
     });
 
     it('does not grant teacher status to whoever first claims a keyless teacher id', async () => {
@@ -1709,6 +1783,75 @@ describe('AllAboard server & Socket.IO integration tests', () => {
       await synced;
       await delay(50);
     }
+
+    it('shares an anonymized board to main without modifying the source and returns students', async () => {
+      const { teacher, s1, s2 } = await setupClass('spotlight');
+      await startIndividualRound(teacher, s2);
+      const source = 'r1_ind_s1';
+      const fresh = waitForEvent(teacher, 'state-sync');
+      teacher.emit('teacher:view-board', { boardId: source });
+      await fresh;
+      const drawn = waitForEvent(teacher, 'element-start');
+      s1.emit('element-start', stroke('original', source, 's1'));
+      await drawn;
+      const stamped = waitForEvent(teacher, 'element-start');
+      s1.emit('element-start', { ...stroke('name-stamp', source, 's1'), tool: 'stamp', stamp: 'username', text: 'Sam' });
+      await stamped;
+      const background = { id: 'bg', fileName: 'worksheet.png', pages: [{ dataUrl: 'data:image/png;base64,aGVsbG8=', width: 10, height: 10 }], x: 0, y: 0, scale: 1, layout: 'row', opacity: 1 };
+      assert.equal((await emitAck<any>(teacher, 'teacher:set-background', { boardId: source, background })).ok, true);
+      assert.equal((await emitAck<any>(s1, 'teacher:spotlight-board', { sourceBoardId: source })).ok, false);
+      assert.equal((await emitAck<any>(teacher, 'teacher:spotlight-board', { sourceBoardId: 'missing' })).ok, false);
+      const mainSync = waitForEvent<any>(s1, 'state-sync');
+      const backgroundSync = waitForEvent<any>(s1, 'background-sync');
+      const breakout = waitForEvent<any>(teacher, 'breakout-sync');
+      const result = await emitAck<any>(teacher, 'teacher:spotlight-board', { sourceBoardId: source, copyBackground: true, returnToMain: true });
+      assert.equal(result.ok, true);
+      const main = await mainSync;
+      assert.equal(main.boardId, 'main');
+      assert.equal(main.elements.length, 1);
+      assert.notEqual(main.elements[0].id, 'original');
+      assert.equal(main.elements[0].boardId, 'main');
+      assert.equal(main.elements[0].userId, 't1');
+      assert.equal(main.elements[0].userName, 'Class Example');
+      const bg = await backgroundSync;
+      assert.equal(bg.boardId, 'main');
+      assert.match(bg.background.pages[0].dataUrl, /^\/api\/assets\//);
+      const state = await breakout;
+      assert.equal(state.breakoutConfig.mode, 'main');
+      assert.deepEqual(state.subBoards[source].elements.map((element: any) => element.id), ['original', 'name-stamp']);
+      const late = await joinTracked({ roomId: 'spotlight', userId: 'late', name: 'Late' });
+      assert.equal(late.init.elements[0].id, main.elements[0].id);
+      const namedSync = waitForEvent<any>(late.socket, 'state-sync');
+      const named = await emitAck<any>(teacher, 'teacher:spotlight-board', { sourceBoardId: source, anonymize: false, copyBackground: false, returnToMain: false });
+      assert.equal(named.ok, true);
+      const namedElements = (await namedSync).elements;
+      assert.equal(namedElements.length, 2);
+      assert.equal(namedElements[0].userId, 's1');
+      assert.equal(namedElements[1].stamp, 'username');
+      assert.equal(namedElements[1].userName, 'Sam');
+    });
+
+    it('scopes ephemeral laser pulses to the teacher’s board and rejects invalid senders and payloads', async () => {
+      const { teacher, s1, s2 } = await setupClass('laser-scope');
+      await startIndividualRound(teacher, s2);
+      const fresh = waitForEvent(teacher, 'state-sync');
+      teacher.emit('teacher:view-board', { boardId: 'r1_ind_s1' });
+      await fresh;
+      const otherEvents = record(s2);
+      const studentEvents = record(s1);
+      s1.emit('laser-pulse', { boardId: 'r1_ind_s1', x: 1, y: 2, strokeId: 'fake' });
+      teacher.emit('laser-pulse', { boardId: 'r1_ind_s2', x: 1, y: 2, strokeId: 'wrong-board' });
+      teacher.emit('laser-pulse', { boardId: 'r1_ind_s1', x: Infinity, y: 2, strokeId: 'invalid' });
+      const seen = waitForEvent<any>(s1, 'laser-pulse');
+      teacher.emit('laser-pulse', { boardId: 'r1_ind_s1', x: 3, y: 4, strokeId: 'valid', userId: 'spoof' });
+      assert.deepEqual(await seen, { boardId: 'r1_ind_s1', x: 3, y: 4, strokeId: 'valid', userId: 't1' });
+      await delay(150);
+      assert.equal(otherEvents.filter((event) => event.ev === 'laser-pulse').length, 0);
+      assert.equal(studentEvents.filter((event) => event.ev === 'laser-pulse').length, 1);
+      const late = await joinTracked({ roomId: 'laser-scope', userId: 'late', name: 'Late' });
+      assert.deepEqual(late.init.elements, []);
+      assert.ok(Object.values(late.init.subBoards as Record<string, any>).every((board: any) => board.elements.length === 0));
+    });
 
     it('scopes ink and cursors to the board; a teacher elsewhere gets it as a periodic digest', async () => {
       const { teacher, s1, s2 } = await setupClass('chan-scope');
