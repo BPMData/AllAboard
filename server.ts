@@ -18,6 +18,7 @@ import {
   makeIndividualBoardId,
   makeRoundId,
   migrateLegacyBreakout,
+  findStudentBoardId,
   normalizeBreakoutConfig,
   resolveBreakoutAction,
   uniqueStrings,
@@ -212,7 +213,8 @@ export async function startServer(options: StartServerOptions = {}) {
   });
 
   const rooms: Map<string, RoomState> = new Map();
-  const socketMeta: Map<string, { roomId: string; userId: string }> = new Map();
+  /** `channel` = the Socket.IO room this socket gets drawing traffic from (see placeSocket). */
+  const socketMeta: Map<string, { roomId: string; userId: string; channel?: string }> = new Map();
 
   function serializeSubBoards(subBoards: Map<string, SubBoardState>): Record<string, SubBoardState> {
     const obj: Record<string, SubBoardState> = {};
@@ -538,11 +540,76 @@ export async function startServer(options: StartServerOptions = {}) {
     };
   }
 
+  // ---------- Board channels ----------
+  // High-volume traffic (ink deltas, cursors) goes only to the sockets viewing that board, plus every teacher
+  // (teachers get everything: board switcher, live grid). Room-wide events (roster, settings, chat, backgrounds,
+  // breakout-sync) still go to room.id. Because students stop hearing other boards, a socket that changes
+  // board is sent a fresh copy of it (placeSocket) — otherwise its copy would be stale.
+
+  function boardChannel(roomId: string, boardId: string): string {
+    return `${roomId}\u0000board:${boardId}`;
+  }
+
+  function teacherChannel(roomId: string): string {
+    return `${roomId}\u0000teachers`;
+  }
+
+  /** Who should hear a delta on `boardId`. */
+  function boardAudience(roomId: string, boardId: string | undefined): string[] {
+    return [boardChannel(roomId, boardId || 'main'), teacherChannel(roomId)];
+  }
+
+  function boardElementsOf(room: RoomState, boardId: string): any[] | null {
+    if (boardId === 'main') return room.elements;
+    return room.subBoards.get(boardId)?.elements ?? null;
+  }
+
+  /**
+   * Puts the socket in the right channel for its user (teacher, or the student's current board).
+   * With `catchUp`, a socket that moved is sent the state it missed while it wasn't listening.
+   */
+  function placeSocket(socketId: string, room: RoomState, catchUp: boolean) {
+    const meta = socketMeta.get(socketId);
+    const socket = io.sockets.sockets.get(socketId);
+    if (!meta || !socket || meta.roomId !== room.id) return;
+    const isTeacher = Boolean(room.usersByUserId.get(meta.userId)?.isTeacher);
+    const boardId = isTeacher ? null : findStudentBoardId(room.subBoards, room.breakoutConfig, meta.userId);
+    const next = boardId === null ? teacherChannel(room.id) : boardChannel(room.id, boardId);
+    if (meta.channel === next) return;
+    const prev = meta.channel;
+    if (prev) {
+      socket.leave(prev);
+      socket.to(prev).emit('cursor-leave', { userId: meta.userId });
+    }
+    socket.join(next);
+    meta.channel = next;
+    if (!catchUp || !prev) return;
+    if (boardId === null) {
+      socket.emit('state-sync', { boardId: 'main', elements: room.elements });
+      socket.emit('breakout-sync', {
+        breakoutConfig: room.breakoutConfig,
+        subBoards: serializeSubBoards(room.subBoards),
+      });
+    } else {
+      const elements = boardElementsOf(room, boardId);
+      if (elements) socket.emit('state-sync', { boardId, elements });
+    }
+  }
+
+  /** Re-places every socket in the room. Call whenever roles, breakout mode or board assignments may have changed. */
+  function syncBoardChannels(room: RoomState, catchUp = true) {
+    const ids = io.sockets.adapter.rooms.get(room.id);
+    if (!ids) return;
+    for (const id of Array.from(ids)) placeSocket(id, room, catchUp);
+  }
+
   function broadcastRoster(room: RoomState) {
+    syncBoardChannels(room);
     io.to(room.id).emit('roster-sync', getRosterPayload(room));
   }
 
   function broadcastRoomSettings(room: RoomState) {
+    syncBoardChannels(room);
     io.to(room.id).emit('room-settings', getRoomSettingsPayload(room));
   }
 
@@ -566,6 +633,7 @@ export async function startServer(options: StartServerOptions = {}) {
   timerTickInterval.unref();
 
   function broadcastBreakoutSync(room: RoomState) {
+    syncBoardChannels(room);
     io.to(room.id).emit('breakout-sync', {
       breakoutConfig: room.breakoutConfig,
       subBoards: serializeSubBoards(room.subBoards),
@@ -711,6 +779,7 @@ export async function startServer(options: StartServerOptions = {}) {
       if (prevMeta && prevMeta.roomId !== normalizeRoomId(rawRoomId)) {
         const prevRoom = rooms.get(prevMeta.roomId);
         socket.leave(prevMeta.roomId);
+        if (prevMeta.channel) socket.leave(prevMeta.channel);
         if (prevRoom) {
           const prevUser = prevRoom.usersByUserId.get(prevMeta.userId);
           if (prevUser) {
@@ -741,7 +810,9 @@ export async function startServer(options: StartServerOptions = {}) {
 
       room.lastActiveAt = Date.now();
       socket.join(room.id);
-      socketMeta.set(socket.id, { roomId: room.id, userId });
+      // Same room again: keep the channel so placeSocket can move it if needed. New room: left above.
+      const keptChannel = prevMeta && prevMeta.roomId === room.id ? prevMeta.channel : undefined;
+      socketMeta.set(socket.id, { roomId: room.id, userId, channel: keptChannel });
 
       const lockedName = room.lockedNames[userId];
       const isNameLocked = Boolean(lockedName);
@@ -775,6 +846,7 @@ export async function startServer(options: StartServerOptions = {}) {
         }
       }
 
+      placeSocket(socket.id, room, false); // `init` below is the full, fresh state
       socket.emit('init', {
         messages: room.messages,
         elements: room.elements,
@@ -1208,6 +1280,7 @@ export async function startServer(options: StartServerOptions = {}) {
           subBoards: serializeSubBoards(room.subBoards),
           roomSettings: getRoomSettingsPayload(room),
         });
+        syncBoardChannels(room, false); // room-restored carried everything
 
         callback?.({
           ok: true,
@@ -1560,7 +1633,7 @@ export async function startServer(options: StartServerOptions = {}) {
       }
       room.lastActiveAt = Date.now();
       scheduleSaveToDisk(room);
-      socket.to(room.id).emit('element-start', authoredElement);
+      socket.to(boardAudience(room.id, boardId)).emit('element-start', authoredElement);
     });
 
     socket.on('element-append-points', ({ id, boardId = 'main', newPoints }) => {
@@ -1580,7 +1653,7 @@ export async function startServer(options: StartServerOptions = {}) {
         el.points.push(...newPoints);
         room.lastActiveAt = Date.now();
         scheduleSaveToDisk(room);
-        socket.to(room.id).emit('element-append-points', { id, boardId, newPoints });
+        socket.to(boardAudience(room.id, boardId)).emit('element-append-points', { id, boardId, newPoints });
       }
     });
 
@@ -1614,7 +1687,7 @@ export async function startServer(options: StartServerOptions = {}) {
         }
         room.lastActiveAt = Date.now();
         scheduleSaveToDisk(room);
-        socket.to(room.id).emit('element-update', {
+        socket.to(boardAudience(room.id, boardId)).emit('element-update', {
           ...cleanPatch,
           boardId,
           bringToFront: Boolean(bringToFront),
@@ -1672,7 +1745,7 @@ export async function startServer(options: StartServerOptions = {}) {
       if (appliedUpdates.length > 0) {
         room.lastActiveAt = Date.now();
         scheduleSaveToDisk(room);
-        socket.to(room.id).emit('elements-batch-updated', {
+        socket.to(boardAudience(room.id, boardId)).emit('elements-batch-updated', {
           boardId,
           updates: appliedUpdates,
           bringToFront: Boolean(bringToFront),
@@ -1739,7 +1812,7 @@ export async function startServer(options: StartServerOptions = {}) {
       if (added.length > 0) {
         room.lastActiveAt = Date.now();
         scheduleSaveToDisk(room);
-        socket.to(room.id).emit('elements-batch-added', { boardId, elements: added });
+        socket.to(boardAudience(room.id, boardId)).emit('elements-batch-added', { boardId, elements: added });
       }
     });
 
@@ -1768,7 +1841,7 @@ export async function startServer(options: StartServerOptions = {}) {
       if (removedIds.length > 0) {
         room.lastActiveAt = Date.now();
         scheduleSaveToDisk(room);
-        socket.to(room.id).emit('elements-batch-removed', { boardId, ids: removedIds });
+        socket.to(boardAudience(room.id, boardId)).emit('elements-batch-removed', { boardId, ids: removedIds });
       }
     });
 
@@ -1791,7 +1864,7 @@ export async function startServer(options: StartServerOptions = {}) {
           targetElements.splice(idx, 1);
           room.lastActiveAt = Date.now();
           scheduleSaveToDisk(room);
-          socket.to(room.id).emit('element-removed', { id, boardId });
+          socket.to(boardAudience(room.id, boardId)).emit('element-removed', { id, boardId });
         }
       }
     });
@@ -1799,7 +1872,9 @@ export async function startServer(options: StartServerOptions = {}) {
     socket.on('cursor-move', (cursorData) => {
       const meta = socketMeta.get(socket.id);
       if (!meta) return;
-      socket.to(meta.roomId).emit('cursor-move', cursorData);
+      if (!cursorData || typeof cursorData !== 'object') return;
+      const boardId = typeof cursorData.boardId === 'string' ? cursorData.boardId : 'main';
+      socket.to(boardAudience(meta.roomId, boardId)).emit('cursor-move', cursorData);
     });
 
     socket.on('undo', (payload) => {
@@ -1823,7 +1898,7 @@ export async function startServer(options: StartServerOptions = {}) {
           const removed = targetElements.splice(i, 1)[0];
           room.lastActiveAt = Date.now();
           scheduleSaveToDisk(room);
-          io.to(room.id).emit('element-removed', { id: removed.id, boardId });
+          io.to(boardAudience(room.id, boardId)).emit('element-removed', { id: removed.id, boardId });
           break;
         }
       }
@@ -1849,12 +1924,12 @@ export async function startServer(options: StartServerOptions = {}) {
 
       if (boardId === 'main') {
         room.elements = room.elements.filter((el) => el.userId !== targetUserId);
-        io.to(room.id).emit('state-sync', { boardId: 'main', elements: room.elements });
+        io.to(boardAudience(room.id, 'main')).emit('state-sync', { boardId: 'main', elements: room.elements });
       } else {
         const sb = room.subBoards.get(boardId);
         if (sb) {
           sb.elements = sb.elements.filter((el) => el.userId !== targetUserId);
-          io.to(room.id).emit('state-sync', { boardId, elements: sb.elements });
+          io.to(boardAudience(room.id, boardId)).emit('state-sync', { boardId, elements: sb.elements });
         }
       }
 
@@ -1968,12 +2043,12 @@ export async function startServer(options: StartServerOptions = {}) {
       const boardId = payload?.boardId || 'main';
       if (boardId === 'main') {
         room.elements = [];
-        io.to(room.id).emit('state-sync', { boardId: 'main', elements: room.elements });
+        io.to(boardAudience(room.id, 'main')).emit('state-sync', { boardId: 'main', elements: room.elements });
       } else {
         const sb = room.subBoards.get(boardId);
         if (sb) {
           sb.elements = [];
-          io.to(room.id).emit('state-sync', { boardId, elements: sb.elements });
+          io.to(boardAudience(room.id, boardId)).emit('state-sync', { boardId, elements: sb.elements });
         }
       }
 

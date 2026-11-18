@@ -47,6 +47,8 @@ Teachers are identified by a per-room **PIN**, not a login.
 | `src/lib/worksheetLoader.ts` | ~390 | PDF/image → `BackgroundPage[]` (browser-side render to JPEG data URLs). Built-in templates (`four-corners`, `frayer-model`, `checkin-columns`). `MAX_PDF_PAGES = 10`. |
 | `src/lib/batchPdfExport.ts` | ~590 | Export boards to PDF (renders background plus ink). |
 | `src/lib/inkCore.ts` | — | Ink smoothing, highlighter/cover, text-note logic (from OverBoard). |
+| `src/lib/pointBatcher.ts`, `src/lib/drawThrottle.ts` | — | Client-side coalescing of streaming ink (send every 50 ms, apply incoming once per frame) and the network pacing constants (ink 50 ms, cursor 100 ms). |
+| `scripts/loadtest.ts` | — | `npx tsx scripts/loadtest.ts --mode main\|individual --client legacy\|batched` — N fake drawing students, prints msg/s in and out and server CPU. |
 | `src/lib/roomCode.ts` | — | `normalizeRoomCode` (**must match** server `normalizeRoomId`), `sanitizeRoomCodeDraft`. |
 | `src/lib/chatSidebar.ts` | — | Chat sidebar sizing constants plus `localStorage` keys. |
 | `src/types.ts` | — | Shared types (`CanvasElement`, `RoomBackground`, `BreakoutConfig`, `RoomSnapshot`, …). |
@@ -136,7 +138,18 @@ Cloud Run service "allaboard"  ── nginx-container :8080 (ingress) ──► 
 
 **Patterns:**
 - The client applies changes **optimistically**. The server validates (lock, ownership, teacher) and rebroadcasts. Deltas
-  go out with `socket.to(room)` (excludes the sender); authoritative updates with `io.to(room)`.
+  go out with `socket.to(...)` (excludes the sender); authoritative updates with `io.to(...)`.
+- **Board channels.** Ink deltas, `state-sync` and `cursor-move` go to `boardAudience(roomId, boardId)`, i.e. the sockets
+  viewing that board **plus every teacher** (teachers hear all boards for the switcher and live grid), not the whole room.
+  Each socket sits in exactly one channel (`placeSocket`), which is re-checked whenever `broadcastRoster`,
+  `broadcastRoomSettings` or `broadcastBreakoutSync` runs. A socket that changes channel is sent what it missed
+  (`state-sync` for its new board; full `state-sync` + `breakout-sync` when it becomes a teacher). Consequence: a
+  student's copy of *other* boards is only as fresh as the last `breakout-sync`. Roster, settings, chat, backgrounds and
+  `breakout-sync` are still room-wide. **If you add a delta event, send it to `boardAudience`, not `room.id`.**
+- **Ink pacing (client).** `element-append-points` is queued and sent every 50 ms; any other drawing emit goes through
+  `emitDrawing`, which flushes the queue first so the server sees actions in order. Incoming points are applied once per
+  animation frame; an `onAny` hook flushes them before any other event is handled. Cursors: at most 10/s plus a trailing send.
+  Measured (20 students, 40% pen-down): outbound 16.7k → 6.3k msg/s on the main board, → 0.3k msg/s in individual breakouts.
 - Teacher actions use **ack callbacks** returning `{ ok, error? }`.
 - Every mutation sets `room.lastActiveAt` and calls `scheduleSaveToDisk(room[, immediate])`.
 
