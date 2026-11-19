@@ -136,6 +136,124 @@ test.describe('teacher and students', () => {
     await expect(dialog).toHaveCount(0);
     await expect(student.page.getByText('0 drawn')).toBeVisible();
     await expect(teacher.page.getByRole('button', { name: 'Bring All to Main' })).toHaveCount(0);
+    await teacher.page.getByRole('button', { name: /^Class/ }).click();
+    await expect(teacher.page.getByText('Alex', { exact: true }).first()).toBeVisible();
+    // Listed in the "Ink by" picker, but not as a person in the Class list
+    await expect(teacher.page.getByLabel('Focus ink by student').locator('option', { hasText: 'Class Example' })).toHaveCount(1);
+    await expect(teacher.page.locator(':not(option):text-is("Class Example")')).toHaveCount(0);
+    await teacher.context.close();
+    await student.context.close();
+  });
+
+  test('selecting ink shows teachers who made it, and never shows students', async ({ browser }) => {
+    const room = uniqueRoom('authors');
+    const teacher = await newUser(browser);
+    const student = await newUser(browser);
+    await joinRoom(teacher.page, room, 'Ms T', PIN);
+    await joinRoom(student.page, room, 'Alex');
+
+    const lassoBoard = async (page: Page) => {
+      const corners = [[1300, 230], [1300, 840], [600, 840], [600, 230]];
+      await page.keyboard.press('v');
+      await page.mouse.move(600, 230);
+      await page.mouse.down();
+      for (const [x, y] of corners) await page.mouse.move(x, y, { steps: 8 });
+      await page.mouse.up();
+    };
+
+    // A drawing, a highlight and a text note from the same student
+    await drawStroke(student.page, { x: 720, y: 340 }, { x: 980, y: 360 });
+    await student.page.keyboard.press('m');
+    await drawStroke(student.page, { x: 720, y: 470 }, { x: 980, y: 490 });
+    await student.page.keyboard.press('t');
+    await student.page.mouse.click(760, 600);
+    const note = student.page.getByLabel('Editable text note');
+    await note.fill('Hello');
+    await note.press('Escape');
+    await expect(student.page.getByText('3 drawn')).toBeVisible();
+
+    await lassoBoard(student.page);
+    await expect(student.page.getByText('3 selected')).toBeVisible();
+    await expect(student.page.getByTestId('selection-authors')).toHaveCount(0);
+
+    await expect.poll(async () => {
+      await lassoBoard(teacher.page);
+      return teacher.page.getByText('3 selected').count();
+    }).toBe(1);
+    const authors = teacher.page.getByTestId('selection-authors');
+    await expect(authors).toHaveText('By Alex');
+    await expect(authors).toHaveAttribute('title', 'Alex (3 items)');
+
+    // A single click on one stroke works too
+    await teacher.page.mouse.click(1250, 260);
+    await expect(authors).toHaveCount(0);
+    await teacher.page.keyboard.press('p');
+    await drawStroke(teacher.page, { x: 720, y: 780 }, { x: 980, y: 780 });
+    await teacher.page.keyboard.press('v');
+    await teacher.page.mouse.click(850, 780);
+    await expect(authors).toHaveText('By You');
+
+    await teacher.context.close();
+    await student.context.close();
+  });
+
+  test('a teacher can focus on one student’s ink without changing the board', async ({ browser }) => {
+    const room = uniqueRoom('inkfocus');
+    const teacher = await newUser(browser);
+    const alex = await newUser(browser);
+    const priya = await newUser(browser);
+    await joinRoom(teacher.page, room, 'Ms T', PIN);
+    await joinRoom(alex.page, room, 'Alex');
+    await joinRoom(priya.page, room, 'Priya');
+    await drawStroke(alex.page, { x: 720, y: 400 }, { x: 980, y: 420 });
+    await drawStroke(priya.page, { x: 720, y: 560 }, { x: 980, y: 580 });
+
+    const fadedLayers = (page: Page) =>
+      page.evaluate(() =>
+        Array.from(document.querySelectorAll('.konvajs-content canvas')).filter((c) => getComputedStyle(c).opacity === '0.12').length
+      );
+    const focus = teacher.page.getByLabel('Focus ink by student');
+    await expect(focus.locator('option')).toHaveText(['Everyone', 'Alex (1)', 'Priya (1)']);
+
+    await focus.selectOption({ label: 'Alex (1)' });
+    await expect.poll(() => fadedLayers(teacher.page)).toBe(1);
+    expect(await fadedLayers(alex.page)).toBe(0);
+    await expect(alex.page.getByLabel('Focus ink by student')).toHaveCount(0);
+
+    await focus.selectOption({ label: 'Everyone' });
+    await expect.poll(() => fadedLayers(teacher.page)).toBe(0);
+
+    await teacher.context.close();
+    await alex.context.close();
+    await priya.context.close();
+  });
+
+  test('one name stamp rule: the option returns when the student removes their stamp', async ({ browser }) => {
+    const room = uniqueRoom('onestamp');
+    const teacher = await newUser(browser);
+    const student = await newUser(browser);
+    await joinRoom(teacher.page, room, 'Ms T', PIN);
+    await joinRoom(student.page, room, 'Alex');
+    await teacher.page.getByRole('button', { name: 'One Name Stamp: Off' }).click();
+    await expect(teacher.page.getByRole('button', { name: 'One Name Stamp: On' })).toBeVisible();
+
+    await student.page.getByTitle(/Quick Stamp Tool/).click();
+    await student.page.getByTitle('Stamp Your Username Badge').click();
+    await student.page.mouse.click(800, 500);
+    await expect(student.page.getByText('1 drawn')).toBeVisible();
+    const taken = student.page.getByTitle(/already placed your name stamp/);
+    await expect(taken).toBeDisabled();
+
+    // Clicking the board again does not add a second stamp
+    await student.page.mouse.click(950, 650);
+    await student.page.waitForTimeout(200);
+    await expect(student.page.getByText('1 drawn')).toBeVisible();
+
+    await student.page.getByRole('button', { name: 'Undo' }).click();
+    await expect(student.page.getByText('0 drawn')).toBeVisible();
+    await student.page.getByTitle(/Quick Stamp Tool/).click();
+    await expect(student.page.getByTitle('Stamp Your Username Badge')).toBeEnabled();
+
     await teacher.context.close();
     await student.context.close();
   });

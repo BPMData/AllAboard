@@ -30,6 +30,7 @@ import {
   getMaxChatWidth,
 } from '../lib/chatSidebar';
 import { normalizeRoomCode, sanitizeRoomCodeDraft } from '../lib/roomCode';
+import { isAnonymousAuthorId } from '../lib/anonymousInk';
 import RoomHistoryDropdown from './RoomHistoryDropdown';
 import { StudentStatusBadge } from './StudentStatusBadge';
 
@@ -238,7 +239,7 @@ export default function Chat({
       map.set(u.userId, { ...u, isOnline: true });
     }
     for (const el of elements) {
-      if (!map.has(el.userId)) {
+      if (!map.has(el.userId) && !isAnonymousAuthorId(el.userId)) {
         map.set(el.userId, {
           userId: el.userId,
           name: el.userName || 'Student',

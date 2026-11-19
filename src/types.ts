@@ -201,6 +201,7 @@ export interface RoomSettings {
   roomId: string;
   isCanvasLocked: boolean;
   hideStudentCursors?: boolean;
+  oneNameStamp?: boolean;
   hasTeacherPin: boolean;
   lastSavedAt?: number;
   breakoutConfig?: BreakoutConfig;

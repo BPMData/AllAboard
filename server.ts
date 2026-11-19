@@ -27,7 +27,8 @@ import {
 import { distRouter } from './staticAssets.ts';
 import { RoomStore, internBackground, isValidAssetHash } from './roomStore.ts';
 import { BackupMirror, DirBackend, GcsBackend, sniffMime, type BackupBackend } from './backupMirror.ts';
-import { isTeacherStampKind } from './src/lib/stamps.ts';
+import { hasNameStamp, isTeacherStampKind } from './src/lib/stamps.ts';
+import { isAnonymousAuthorId, makeAnonymousAuthorId } from './src/lib/anonymousInk.ts';
 import { OVERVIEW_SYNC_MS, buildDigest, emptyChanges, type BoardChanges, type BoardDigest } from './src/lib/boardDigest.ts';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -123,6 +124,7 @@ interface RoomState {
   bannedUsers: Record<string, BannedUserRecord>;
   isCanvasLocked: boolean;
   hideStudentCursors: boolean;
+  oneNameStamp: boolean;
   teacherPin: string | null;
   lastActiveAt: number;
 }
@@ -141,6 +143,7 @@ interface SerializedRoom {
   bannedUsers?: Record<string, BannedUserRecord>;
   isCanvasLocked: boolean;
   hideStudentCursors?: boolean;
+  oneNameStamp?: boolean;
   teacherPin: string | null;
   lastActiveAt: number;
 }
@@ -321,6 +324,7 @@ export async function startServer(options: StartServerOptions = {}) {
       bannedUsers: item.bannedUsers && typeof item.bannedUsers === 'object' ? item.bannedUsers : {},
       isCanvasLocked: Boolean(item.isCanvasLocked),
       hideStudentCursors: Boolean(item.hideStudentCursors),
+      oneNameStamp: Boolean(item.oneNameStamp),
       teacherPin: item.teacherPin || null,
       lastActiveAt: lastActive,
     };
@@ -341,6 +345,7 @@ export async function startServer(options: StartServerOptions = {}) {
       bannedUsers: room.bannedUsers,
       isCanvasLocked: room.isCanvasLocked,
       hideStudentCursors: room.hideStudentCursors,
+      oneNameStamp: room.oneNameStamp,
       teacherPin: room.teacherPin,
       lastActiveAt: room.lastActiveAt,
     };
@@ -550,6 +555,7 @@ export async function startServer(options: StartServerOptions = {}) {
         bannedUsers: {},
         isCanvasLocked: false,
         hideStudentCursors: false,
+        oneNameStamp: false,
         teacherPin: null,
         lastActiveAt: Date.now(),
       };
@@ -589,6 +595,7 @@ export async function startServer(options: StartServerOptions = {}) {
       roomId: room.id,
       isCanvasLocked: room.isCanvasLocked,
       hideStudentCursors: room.hideStudentCursors,
+      oneNameStamp: room.oneNameStamp,
       hasTeacherPin: room.teacherPin !== null,
       lastSavedAt: room.lastActiveAt,
       breakoutConfig: room.breakoutConfig,
@@ -912,7 +919,7 @@ export async function startServer(options: StartServerOptions = {}) {
     });
 
     socket.on('join-room', ({ roomId: rawRoomId, userId, userKey, name, color, teacherPin }) => {
-      if (!userId || typeof userId !== 'string') return;
+      if (!userId || typeof userId !== 'string' || isAnonymousAuthorId(userId)) return;
 
       const room = getOrCreateRoom(rawRoomId);
       const keyCheck = checkUserKey(room.userKeyHashes, userId, userKey);
@@ -1257,13 +1264,22 @@ export async function startServer(options: StartServerOptions = {}) {
         return;
       }
       const anonymize = payload.anonymize !== false;
+      const anonymousAuthorIds = new Map<string, string>();
+      const anonymousAuthorFor = (authorId: string) => {
+        let anonymousId = anonymousAuthorIds.get(authorId);
+        if (!anonymousId) {
+          anonymousId = makeAnonymousAuthorId(randomUUID());
+          anonymousAuthorIds.set(authorId, anonymousId);
+        }
+        return anonymousId;
+      };
       room.elements = source.elements
         .filter((element) => !anonymize || element.stamp !== 'username')
         .map((element) => ({
           ...structuredClone(element),
           id: randomUUID(),
           boardId: 'main',
-          ...(anonymize ? { userId: meta.userId, userName: 'Class Example' } : {}),
+          ...(anonymize ? { userId: anonymousAuthorFor(element.userId), userName: 'Class Example' } : {}),
         }));
       if (payload.copyBackground === true) {
         room.background = cloneBackground(source.background);
@@ -1849,6 +1865,17 @@ export async function startServer(options: StartServerOptions = {}) {
       const targetElements = getBoardElements(room, boardId);
       if (!targetElements) return;
 
+      if (
+        room.oneNameStamp &&
+        !senderRecord?.isTeacher &&
+        element.tool === 'stamp' &&
+        element.stamp === 'username' &&
+        hasNameStamp(targetElements, meta.userId)
+      ) {
+        socket.emit('state-sync', { boardId, elements: targetElements }); // Drops the sender's optimistic copy
+        return;
+      }
+
       const authoredElement = {
         ...element,
         boardId,
@@ -1909,6 +1936,9 @@ export async function startServer(options: StartServerOptions = {}) {
         if (!senderRecord?.isTeacher && cleanPatch.stamp !== undefined && isTeacherStampKind(cleanPatch.stamp)) {
           delete cleanPatch.stamp;
         }
+        if (!senderRecord?.isTeacher && room.oneNameStamp && cleanPatch.stamp === 'username') {
+          delete cleanPatch.stamp;
+        }
         const updated = { ...existing, ...cleanPatch };
         if (bringToFront) {
           targetElements.splice(idx, 1);
@@ -1955,6 +1985,9 @@ export async function startServer(options: StartServerOptions = {}) {
         if (patch && (el.userId === meta.userId || senderRecord?.isTeacher)) {
           const { bringToFront: _ignored, userId: _ignoreUserId, userName: _ignoreUserName, ...cleanPatch } = patch;
           if (!senderRecord?.isTeacher && cleanPatch.stamp !== undefined && isTeacherStampKind(cleanPatch.stamp)) {
+            delete cleanPatch.stamp;
+          }
+          if (!senderRecord?.isTeacher && room.oneNameStamp && cleanPatch.stamp === 'username') {
             delete cleanPatch.stamp;
           }
           const merged = { ...el, ...cleanPatch };
@@ -2026,9 +2059,20 @@ export async function startServer(options: StartServerOptions = {}) {
 
       const existingIds = new Set(targetElements.map((e) => e.id));
       const added: any[] = [];
+      let rejectedNameStamp = false;
       for (const el of newElements) {
         if (!el || !el.id || existingIds.has(el.id)) continue;
         if (el.tool === 'stamp' && isTeacherStampKind(el.stamp) && !senderRecord?.isTeacher) {
+          continue;
+        }
+        if (
+          room.oneNameStamp &&
+          !senderRecord?.isTeacher &&
+          el.tool === 'stamp' &&
+          el.stamp === 'username' &&
+          hasNameStamp(targetElements, meta.userId)
+        ) {
+          rejectedNameStamp = true;
           continue;
         }
         const normalized = {
@@ -2047,6 +2091,9 @@ export async function startServer(options: StartServerOptions = {}) {
         scheduleSaveToDisk(room);
         noteChange(room, boardId, { upsert: added.map((e) => e.id) });
         socket.to(boardAudience(room.id, boardId)).emit('elements-batch-added', { boardId, elements: added });
+      }
+      if (rejectedNameStamp) {
+        socket.emit('state-sync', { boardId, elements: targetElements }); // Drops the sender's optimistic copies
       }
     });
 
@@ -2204,6 +2251,18 @@ export async function startServer(options: StartServerOptions = {}) {
       if (!room || !room.usersByUserId.get(meta.userId)?.isTeacher) return;
 
       room.hideStudentCursors = Boolean(hide);
+      room.lastActiveAt = Date.now();
+      scheduleSaveToDisk(room, true);
+      broadcastRoomSettings(room);
+    });
+
+    socket.on('teacher:set-one-name-stamp', (enabled: boolean) => {
+      const meta = socketMeta.get(socket.id);
+      if (!meta) return;
+      const room = rooms.get(meta.roomId);
+      if (!room || !room.usersByUserId.get(meta.userId)?.isTeacher) return;
+
+      room.oneNameStamp = Boolean(enabled);
       room.lastActiveAt = Date.now();
       scheduleSaveToDisk(room, true);
       broadcastRoomSettings(room);

@@ -1658,6 +1658,10 @@ export default function App() {
     socket?.emit('teacher:set-hide-cursors', hide);
   }, [socket]);
 
+  const handleTeacherToggleOneNameStamp = useCallback((enabled: boolean) => {
+    socket?.emit('teacher:set-one-name-stamp', enabled);
+  }, [socket]);
+
   const handleSetStatus = useCallback((status: StudentStatus) => {
     socket?.emit('user:set-status', { status });
   }, [socket]);
@@ -1957,6 +1961,7 @@ export default function App() {
           onTeacherClearStatus={handleClearStatus}
           isCanvasLocked={roomSettings.isCanvasLocked}
           hideStudentCursors={Boolean(roomSettings.hideStudentCursors)}
+          oneNameStamp={Boolean(roomSettings.oneNameStamp)}
           hasTeacherPin={roomSettings.hasTeacherPin}
           isTeacher={isTeacher}
           userId={userId}
@@ -1978,6 +1983,7 @@ export default function App() {
           onClearMine={handleClearMine}
           onTeacherToggleLock={handleTeacherToggleLock}
           onTeacherToggleHideCursors={handleTeacherToggleHideCursors}
+          onTeacherToggleOneNameStamp={handleTeacherToggleOneNameStamp}
           onTeacherClearAll={handleTeacherClearAll}
           onTeacherSetBackground={handleTeacherSetBackground}
           onTeacherUpdateBackground={handleTeacherUpdateBackground}

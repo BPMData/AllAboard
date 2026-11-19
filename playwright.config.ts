@@ -5,7 +5,7 @@ const PORT = Number(process.env.E2E_PORT || 3100);
 export default defineConfig({
   testDir: './e2e',
   fullyParallel: false,
-  workers: 1,
+  workers: 3,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 1 : 0,
   reporter: process.env.CI ? [['list'], ['html', { open: 'never' }]] : 'list',

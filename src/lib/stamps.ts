@@ -9,6 +9,14 @@ export const STAMP_OPTIONS: Array<{ kind: StudentStampKind; symbol: string; labe
   { kind: 'username', symbol: 'ID', label: 'Stamp Your Username Badge' },
 ];
 
+/** True if this user already has a name stamp among these elements (one board's worth). */
+export function hasNameStamp(
+  elements: ReadonlyArray<{ tool?: string; stamp?: string; userId?: string }>,
+  userId: string
+): boolean {
+  return elements.some((el) => el.tool === 'stamp' && el.stamp === 'username' && el.userId === userId);
+}
+
 export const STUDENT_STAMP_SYMBOLS: Record<string, string> = {
   check: '✓',
   question: '?',

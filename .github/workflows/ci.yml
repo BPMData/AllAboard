@@ -48,7 +48,12 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      # The runner's default EC2 mirror can slow to a crawl, turning a 30-second install into 10 minutes.
+      - name: Use the main Ubuntu package server
+        run: echo "http://archive.ubuntu.com/ubuntu/" | sudo tee /etc/apt/apt-mirrors.txt
+
       - name: Install Chromium for Playwright
+        timeout-minutes: 5
         run: npx playwright install --with-deps chromium
 
       - name: Run Playwright tests

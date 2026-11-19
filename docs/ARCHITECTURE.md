@@ -127,7 +127,7 @@ Cloud Run service "allaboard"  ── one container :3000 (node server.ts, Build
 - Room and identity: `check-room` (ack, no side effects), `join-room`, `update-profile`, `user:set-status`, `cursor-move`, `disconnect`
 - Teacher actions: `teacher:auth`, `teacher:step-down`, `teacher:configure-breakout`, `teacher:set-background`,
   `teacher:update-background`, `teacher:rename-user`, `teacher:delete-message`, `teacher:unban-user`,
-  `teacher:purge-user-contributions`, `teacher:set-lock`, `teacher:set-hide-cursors`, `teacher:clear-status`, `teacher:spotlight-board`, `laser-pulse`, `teacher:clear-all`, `teacher:import-room`
+  `teacher:purge-user-contributions`, `teacher:set-lock`, `teacher:set-hide-cursors`, `teacher:set-one-name-stamp`, `teacher:clear-status`, `teacher:spotlight-board`, `laser-pulse`, `teacher:clear-all`, `teacher:import-room`
 - Breakouts: `breakout:join-board`
 - Chat: `chat-message`
 - Drawing: `element-start`, `element-append-points` (streaming ink), `element-update`, `elements-batch-update`,
