@@ -146,6 +146,8 @@ test.describe('teacher and students', () => {
   });
 
   test('selecting ink shows teachers who made it, and never shows students', async ({ browser }) => {
+    // Two-browser test with slow lasso drags; the default 30s is too tight on CI runners.
+    test.setTimeout(60_000);
     const room = uniqueRoom('authors');
     const teacher = await newUser(browser);
     const student = await newUser(browser);
@@ -179,7 +181,9 @@ test.describe('teacher and students', () => {
     await expect.poll(async () => {
       await lassoBoard(teacher.page);
       return teacher.page.getByText('3 selected').count();
-    }).toBe(1);
+      // One lasso drag alone takes ~5s on GitHub's runners, so the default 5s poll timed out
+      // before it ever checked. Leave room for a few tries.
+    }, { timeout: 20_000 }).toBe(1);
     const authors = teacher.page.getByTestId('selection-authors');
     await expect(authors).toHaveText('By Alex');
     await expect(authors).toHaveAttribute('title', 'Alex (3 items)');
