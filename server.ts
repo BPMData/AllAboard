@@ -455,9 +455,15 @@ export async function startServer(options: StartServerOptions = {}) {
           backup.deleteRoom(roomId); // expired
           continue;
         }
+        // A plain-text PIN in the bucket copy: rewrite it there too (hydrateRoom already hashed it).
+        const legacyPin = typeof state?.teacherPin === 'string' && Boolean(state.teacherPin) && !isHashedPin(state.teacherPin);
         const local = store.loadRoom<SerializedRoom>(roomId);
-        if (local && local.lastActiveAt >= room.lastActiveAt) continue;
+        if (local && local.lastActiveAt >= room.lastActiveAt) {
+          if (legacyPin) backupRoom(roomId);
+          continue;
+        }
         store.saveRoom(roomId, serializeRoom(room), room.lastActiveAt);
+        if (legacyPin) backupRoom(roomId);
         restored++;
       }
       console.log(`Restored ${restored} room(s) from backup.`);
