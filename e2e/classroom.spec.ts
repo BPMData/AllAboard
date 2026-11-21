@@ -291,10 +291,11 @@ test.describe('teacher and students', () => {
     await joinRoom(student.page, room, 'Alex');
     await expect(student.page.getByRole('button', { name: 'Laser pointer' })).toHaveCount(0);
     await teacher.page.getByRole('button', { name: 'Laser pointer' }).click();
-    await drawStroke(teacher.page);
-    // Canvas positions differ when the teacher toolbar wraps, so compare world-relative coordinates.
+    // Canvas positions differ when the teacher toolbar wraps, so compare world-relative coordinates. Measured before
+    // drawing: the trail fades ~1.2 s after the stroke, so nothing slow may sit between the stroke and the check.
     const teacherCanvas = await teacher.page.locator('.konvajs-content canvas').first().boundingBox();
     if (!teacherCanvas) throw new Error('Teacher canvas is missing');
+    await drawStroke(teacher.page);
     await teacher.page.mouse.move(450, 250);
     const hasLaser = () => student.page.evaluate(({ offsetX, offsetY }) => Array.from(document.querySelectorAll('.konvajs-content canvas')).some((canvas) => {
       const el = canvas as HTMLCanvasElement;

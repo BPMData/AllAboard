@@ -66,7 +66,9 @@ let proxyAgent: unknown;
 async function loadProxyAgent() {
   if (!TARGET_URL || !process.env.HTTPS_PROXY) return;
   try {
-    const mod: any = await import('https-proxy-agent');
+    // Optional and not a dependency: a variable specifier keeps tsc (and CI) from requiring it.
+    const optionalModule = 'https-proxy-agent';
+    const mod: any = await import(optionalModule);
     proxyAgent = new mod.HttpsProxyAgent(process.env.HTTPS_PROXY);
   } catch {
     throw new Error('HTTPS_PROXY is set: run `npm install --no-save https-proxy-agent` first.');
