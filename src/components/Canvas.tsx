@@ -811,6 +811,9 @@ export default function Canvas({
   // Pointer position in screen and world coordinates
   const [screenPos, setScreenPos] = useState({ x: -100, y: -100 });
   const [worldPos, setWorldPos] = useState({ x: 0, y: 0 });
+  // The brush/stamp preview follows worldPos, which starts at world (0,0). Only draw it once a pointer
+  // is actually over the canvas, or it leaves a stray mark at the top-left corner of every board.
+  const [pointerOverCanvas, setPointerOverCanvas] = useState(false);
   const [hoveredNoteId, setHoveredNoteId] = useState<string | null>(null);
 
   // OverBoard v45 Editable Multiline Text Note State (`makeTyping`)
@@ -2935,6 +2938,7 @@ export default function Canvas({
     setScreenPos(pos);
     const world = screenToWorld(pos.x, pos.y);
     setWorldPos(world);
+    if (!pointerOverCanvas) setPointerOverCanvas(true);
 
     // Highlight hover state when over an editable text note in Type mode or selectable item in Select mode
     if (!isDrawing && !isPanning && !draggingNoteRef.current && !selectGestureRef.current && canDraw) {
@@ -5513,6 +5517,7 @@ export default function Canvas({
         onPointerMove={handleViewportPointerMove}
         onPointerUp={handleViewportPointerUp}
         onPointerCancel={handleViewportPointerUp}
+        onPointerLeave={() => setPointerOverCanvas(false)}
         onDoubleClick={handleViewportDoubleClick}
         onContextMenu={(e) => e.preventDefault()}
         className={cn(
@@ -5648,7 +5653,8 @@ export default function Canvas({
               );
             })}
 
-            {effectiveTool !== 'laser' &&
+            {pointerOverCanvas &&
+              effectiveTool !== 'laser' &&
               effectiveTool !== 'pan' &&
               effectiveTool !== 'move-bg' &&
               effectiveTool !== 'select' &&
