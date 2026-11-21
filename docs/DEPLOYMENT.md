@@ -26,6 +26,7 @@ Because `allaboard` was migrated off **AI Studio** (whose Publish button rewrote
 | Deployed by | `.github/workflows/deploy.yml` on push to `main` (migrated off AI Studio's two-container nginx + app-container template). |
 | Container | **One** Buildpacks Node 22 container running `npm start` (`node server.ts`) on port **3000** (`--port 3000`). |
 | Scaling | **max instances = 1** (required), min instances = 0, session affinity on (`--session-affinity`) |
+| Connections | `--concurrency 1000` (every open tab is one WebSocket = one in-flight request; the default 80 capped the whole service at ~80 tabs) and `--timeout 3600` (the default 300 s cut every socket every 5 min, forcing a full re-join). Watch the `[load]` log line (once a minute: sockets, peak, busiest room, event-loop lag, RSS) for headroom. |
 | Runtime | Node 22 (`engines.node: "22.x"`). Buildpacks runs `gcp-build` (`npm run build` → `dist/`) and starts `node server.ts` using **Node's built-in TypeScript type stripping, not tsx**. |
 | Service account | `606573080592-compute@developer.gserviceaccount.com` (runtime SA), `github-deployer@loyal-rookery-403218.iam.gserviceaccount.com` (CI/CD deployer via `GCP_SA_KEY`). |
 | Backup bucket | `gs://allaboard-data` (us-east1). The runtime SA has **`roles/storage.objectUser`** on it. |
@@ -38,7 +39,7 @@ Because `allaboard` was migrated off **AI Studio** (whose Publish button rewrote
 ### R1. Every merge to `main` deploys. Config lives in `deploy.yml` or in code, never only in the console.
 `.github/workflows/deploy.yml` runs on every push to `main`: typecheck, unit tests, build, a plain-node boot check,
 then `gcloud run deploy --source .` (Buildpacks). The service settings that matter (`--port 3000`, `--max-instances 1`,
-`--session-affinity`, `--allow-unauthenticated`) are flags in that file. Change them **there**, in a PR.
+`--concurrency 1000`, `--timeout 3600`, `--session-affinity`, `--allow-unauthenticated`) are flags in that file. Change them **there**, in a PR.
 
 **History, and why code must tolerate stale env vars:** before the migration, AI Studio's Publish button
 **replaced** the revision template each time. Console-added volume mounts vanished (the `/backup` mount),

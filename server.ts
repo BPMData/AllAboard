@@ -30,6 +30,8 @@ import { BackupMirror, DirBackend, GcsBackend, sniffMime, type BackupBackend } f
 import { hasNameStamp, isTeacherStampKind } from './src/lib/stamps.ts';
 import { isAnonymousAuthorId, makeAnonymousAuthorId } from './src/lib/anonymousInk.ts';
 import { OVERVIEW_SYNC_MS, buildDigest, emptyChanges, type BoardChanges, type BoardDigest } from './src/lib/boardDigest.ts';
+import { CURSOR_EMIT_MS } from './src/lib/drawThrottle.ts';
+import { monitorEventLoopDelay } from 'node:perf_hooks';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -675,6 +677,59 @@ export async function startServer(options: StartServerOptions = {}) {
 
   const digestInterval = setInterval(flushDigests, options.overviewSyncMs ?? OVERVIEW_SYNC_MS);
   digestInterval.unref();
+
+  // ---------- Cursor batching ----------
+  // Relaying every cursor-move to every viewer costs N senders x N viewers messages, which was most of a busy
+  // board's traffic. Instead keep each user's latest position per board channel and send each channel one
+  // `cursors-batch` every CURSOR_EMIT_MS. A batch with several movers includes the sender (clients skip their own userId); a lone mover's isn't echoed back.
+  /** board channel → userId → latest cursor (and the socket that sent it). */
+  const pendingCursors = new Map<string, Map<string, { socketId: string; cursor: Record<string, unknown> }>>();
+
+  function flushCursors() {
+    for (const [channel, byUser] of pendingCursors) {
+      pendingCursors.delete(channel);
+      // Drop positions from sockets that left the board (or disconnected) since they moved: cursor-leave already went out.
+      const moved = Array.from(byUser.values()).filter((p) => socketMeta.get(p.socketId)?.channel === channel);
+      if (moved.length === 0) continue;
+      const batch = { cursors: moved.map((p) => p.cursor) };
+      // One mover (e.g. a student alone on an individual board): don't echo it back to that socket.
+      if (moved.length === 1) io.to(channel).except(moved[0].socketId).emit('cursors-batch', batch);
+      else io.to(channel).emit('cursors-batch', batch);
+    }
+  }
+
+  const cursorInterval = setInterval(flushCursors, CURSOR_EMIT_MS);
+  cursorInterval.unref();
+
+  // ---------- Load log ----------
+  // One line a minute while anyone is connected, so Cloud Run logs show headroom: sockets are in-flight requests
+  // against --concurrency, and event-loop lag is what students feel as ink delay.
+  const loopDelay = monitorEventLoopDelay({ resolution: 20 });
+  loopDelay.enable();
+  let peakSockets = 0;
+  function logLoad() {
+    const sockets = io.of('/').sockets.size;
+    peakSockets = Math.max(peakSockets, sockets);
+    if (peakSockets > 0) {
+      let busiestRoom = 0;
+      for (const room of rooms.values()) busiestRoom = Math.max(busiestRoom, io.sockets.adapter.rooms.get(room.id)?.size ?? 0);
+      console.log('[load]', JSON.stringify({
+        rooms: rooms.size,
+        sockets,
+        peakSockets,
+        busiestRoom,
+        lagP99Ms: Math.round(loopDelay.percentile(99) / 1e6),
+        lagMaxMs: Math.round(loopDelay.max / 1e6),
+        rssMb: Math.round(process.memoryUsage().rss / 1048576),
+      }));
+    }
+    peakSockets = sockets;
+    loopDelay.reset();
+  }
+  const peakTracker = setInterval(() => { peakSockets = Math.max(peakSockets, io.of('/').sockets.size); }, 5_000);
+  peakTracker.unref();
+  const loadLogInterval = setInterval(logLoad, 60_000);
+  loadLogInterval.unref();
 
   /**
    * Puts the socket in the right board channel (students: their assigned board; teachers: the board they view) and,
@@ -2172,11 +2227,14 @@ export async function startServer(options: StartServerOptions = {}) {
       if (!meta) return;
       if (!cursorData || typeof cursorData !== 'object') return;
       const boardId = typeof cursorData.boardId === 'string' ? cursorData.boardId : 'main';
+      const channel = boardAudience(meta.roomId, boardId);
+      if (meta.channel !== channel) return; // only the board this socket is actually on
       const sender = rooms.get(meta.roomId)?.usersByUserId.get(meta.userId);
-      socket.to(boardAudience(meta.roomId, boardId)).emit('cursor-move', {
-        ...cursorData,
-        userId: meta.userId,
-        userName: sender?.name || cursorData.userName,
+      let byUser = pendingCursors.get(channel);
+      if (!byUser) pendingCursors.set(channel, (byUser = new Map()));
+      byUser.set(meta.userId, {
+        socketId: socket.id,
+        cursor: { ...cursorData, boardId, userId: meta.userId, userName: sender?.name || cursorData.userName },
       });
     });
 
@@ -2464,6 +2522,10 @@ export async function startServer(options: StartServerOptions = {}) {
     clearInterval(housekeepingInterval);
     clearInterval(timerTickInterval);
     clearInterval(digestInterval);
+    clearInterval(cursorInterval);
+    clearInterval(loadLogInterval);
+    clearInterval(peakTracker);
+    loopDelay.disable();
     if (saveTimeout) {
       clearTimeout(saveTimeout);
       saveTimeout = null;

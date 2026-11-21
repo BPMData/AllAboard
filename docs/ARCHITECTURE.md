@@ -161,6 +161,10 @@ Cloud Run service "allaboard"  ── one container :3000 (node server.ts, Build
 - **Ink pacing (client).** `element-append-points` is queued and sent every 50 ms; any other drawing emit goes through
   `emitDrawing`, which flushes the queue first so the server sees actions in order. Incoming points are applied once per
   animation frame; an `onAny` hook flushes them before any other event is handled. Cursors: at most 10/s plus a trailing send.
+- **Cursor batching (server).** `cursor-move` is not relayed. The server keeps each user's latest position per board
+  channel (only the channel the socket is actually on) and sends each board one `cursors-batch { cursors }` every
+  `CURSOR_EMIT_MS`. The batch includes the receiver's own cursor; the client skips its own `userId`. This turns
+  N senders × N viewers messages into one per viewer per tick.
   Measured (20 students, 40% pen-down): outbound 16.7k → 6.4k msg/s on the main board, → ~1 msg/s in individual
   breakouts (the teacher gets ~1 digest/s instead of ~800 msgs/s).
 - Teacher actions use **ack callbacks** returning `{ ok, error? }`.

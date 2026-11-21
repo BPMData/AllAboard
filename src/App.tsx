@@ -363,7 +363,7 @@ export default function App() {
     // Any other event may touch the same elements (update, remove, state-sync, breakout-sync…), so apply queued
     // ink first to keep arrival order. onAny listeners run before the event's own handler.
     newSocket.onAny((event: string) => {
-      if (event !== 'element-append-points' && event !== 'cursor-move') incomingInk.flush();
+      if (event !== 'element-append-points' && event !== 'cursors-batch') incomingInk.flush();
     });
 
     newSocket.on('connect', () => {
@@ -835,11 +835,16 @@ export default function App() {
       }
     });
 
-    newSocket.on('cursor-move', (cursor: Omit<RemoteCursor, 'updatedAt'>) => {
-      setRemoteCursors((prev) => ({
-        ...prev,
-        [cursor.userId]: { ...cursor, updatedAt: Date.now() },
-      }));
+    // The server sends each board's cursors as one batch every CURSOR_EMIT_MS, including our own (skipped here).
+    newSocket.on('cursors-batch', ({ cursors }: { cursors: Omit<RemoteCursor, 'updatedAt'>[] }) => {
+      const others = (cursors || []).filter((c) => c && c.userId && c.userId !== userId);
+      if (others.length === 0) return;
+      const now = Date.now();
+      setRemoteCursors((prev) => {
+        const next = { ...prev };
+        for (const c of others) next[c.userId] = { ...c, updatedAt: now };
+        return next;
+      });
     });
 
     newSocket.on('cursor-leave', ({ userId: leftUserId }: { userId: string }) => {

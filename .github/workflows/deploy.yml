@@ -69,6 +69,8 @@ jobs:
             --allow-unauthenticated \
             --port 3000 \
             --max-instances 1 \
+            --concurrency 1000 \
+            --timeout 3600 \
             --session-affinity \
             --command "" \
             --args "" \

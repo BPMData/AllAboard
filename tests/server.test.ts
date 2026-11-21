@@ -143,9 +143,9 @@ describe('AllAboard server & Socket.IO integration tests', () => {
     const { socket: student, init } = await joinTracked({ roomId: 'cursor-room', userId: 's1', name: 'Student' });
     assert.equal(init.roomSettings.hideStudentCursors, false);
 
-    const cursor = waitForEvent<any>(teacher, 'cursor-move');
+    const cursor = waitForEvent<any>(teacher, 'cursors-batch');
     student.emit('cursor-move', { userId: 't1', boardId: 'main', x: 1, y: 2 });
-    assert.equal((await cursor).userId, 's1');
+    assert.deepEqual((await cursor).cursors.map((c: any) => c.userId), ['s1']);
 
     const settings = waitForEvent<any>(student, 'room-settings');
     teacher.emit('teacher:set-hide-cursors', true);
@@ -158,6 +158,34 @@ describe('AllAboard server & Socket.IO integration tests', () => {
     srv = await startServer({ port: 0, host: '127.0.0.1', dataDir: tmpDir, skipVite: true });
     const rejoined = await joinTracked({ roomId: 'cursor-room', userId: 's1', name: 'Student' });
     assert.equal(rejoined.init.roomSettings.hideStudentCursors, true);
+  });
+
+  it('batches cursors: one message per board per tick, latest position per user, none for other boards', async () => {
+    const { socket: a } = await joinTracked({ roomId: 'cursor-batch', userId: 'a', name: 'A' });
+    const { socket: b } = await joinTracked({ roomId: 'cursor-batch', userId: 'b', name: 'B' });
+    await delay(150); // let any join-time batch go out
+    const got: any[] = [];
+    b.on('cursors-batch', (msg: any) => got.push(msg));
+    for (let i = 0; i < 5; i++) a.emit('cursor-move', { boardId: 'main', x: i, y: i });
+    b.emit('cursor-move', { boardId: 'main', x: 9, y: 9 });
+    a.emit('cursor-move', { boardId: 'some-other-board', x: 50, y: 50 }); // not the board A is on: dropped
+    await delay(250);
+    // The moves can straddle one tick boundary, so allow two batches, never one message per move.
+    assert.ok(got.length >= 1 && got.length <= 2, `got ${got.length} batches`);
+    const all = got.flatMap((m) => m.cursors);
+    assert.ok(all.length <= 4, 'at most one entry per user per batch');
+    assert.equal(all.filter((c: any) => c.userId === 'a').at(-1).x, 4, 'latest position wins');
+    assert.equal(all.find((c: any) => c.userId === 'b').x, 9, 'the batch includes the receiver; the client skips its own');
+    assert.ok(all.every((c: any) => c.boardId === 'main'), 'moves claiming another board are dropped');
+
+    // A lone mover isn't echoed back to itself (a student alone on an individual board hears nothing).
+    const toA: any[] = [];
+    a.on('cursors-batch', (msg: any) => toA.push(msg));
+    got.length = 0;
+    a.emit('cursor-move', { boardId: 'main', x: 7, y: 7 });
+    await delay(250);
+    assert.equal(toA.length, 0);
+    assert.equal(got.length, 1);
   });
 
   it('claims, verifies, rejects invalid Teacher PINs, and supports step-down', async () => {
@@ -730,9 +758,9 @@ describe('AllAboard server & Socket.IO integration tests', () => {
       sam.socket.emit('element-start', ink('sams-stroke'));
       await delay(100);
 
-      const cursor = waitForEvent<any>(sam.socket, 'cursor-move');
+      const cursor = waitForEvent<any>(sam.socket, 'cursors-batch');
       ada.socket.emit('cursor-move', { userId: 'sam', userName: 'Sam', boardId: 'main', x: 1, y: 1 });
-      const seen = await cursor;
+      const [seen] = (await cursor).cursors;
       assert.equal(seen.userId, 'ada');
       assert.equal(seen.userName, 'Ada');
 
@@ -1983,7 +2011,7 @@ describe('AllAboard server & Socket.IO integration tests', () => {
       s2.emit('element-start', stroke('other', 'r1_ind_s2', 's2'));
       await delay(300);
       const evs = t.map((e) => e.ev);
-      assert.ok(evs.includes('element-start') && evs.includes('cursor-move'));
+      assert.ok(evs.includes('element-start') && evs.includes('cursors-batch'));
       const digested = t.filter((e) => e.ev === 'boards-digest').flatMap((e) => e.data.boards.map((d: any) => d.boardId));
       assert.ok(digested.includes('r1_ind_s2'));
       assert.ok(!digested.includes('r1_ind_s1'), 'viewed board is live, never digested');
