@@ -79,6 +79,30 @@ itself. Memory and network bandwidth aren't the limit on either machine.
   caps (200 per room, 100 rooms) probably bind first.
 - Check against reality with the `[load]` log line: a steady `lagP99Ms` over ~50 ms during class means it's close.
 
+### 3.1a Production stress test (21 Nov 2026, Cloud Run, after #48 and after #50)
+
+Run with `scripts/loadtest.ts --url https://allaboard-606573080592.us-east1.run.app` at 10:30 pm on a Friday (no
+classes), 40–60 s per step, pen down 15% unless noted. Fake students all ran in one cloud container (not on school
+Wi-Fi), so absolute delays are better than a classroom's; the before/after comparison is what matters. "Probe" is a
+separate socket outside the rooms asking a trivial question twice a second: when it slows down, the server is busy.
+No step had a failed or dropped connection.
+
+| Step | Before #50 (ink 20/s, cursors 10/s): new stroke delay typical / slowest 5% / worst; probe slowest 5% | After #50 (ink 2/s, cursors 4/s) |
+|---|---|---|
+| 1 class of 30 | 39 / 71 / 91 ms; probe fine | 40 / 62 / 77 ms; probe 41 ms |
+| 1 board with 60 | 84–92 / 830–930 / 2,860 ms; probe 0.8–1.6 s (**overloaded**) | 41 / 138 / 174 ms; probe 42 ms |
+| 2 classes at once | 40 / 65–122 / 219 ms; rare 0.3 s probe blips | 39 / 55–59 / 88 ms; probe 43 ms |
+| 3 classes at once | 45–59 / 285–477 / 1,341 ms; probe ~0.5 s (**straining**) | 39 / 63–84 / 110 ms; probe ≤ 48 ms |
+| 5 classes at once | not run | 40 / 63–76 / 106 ms; probe ≤ 50 ms |
+| 5 classes, pen down 40% | not run | 40 / 64–81 / 262 ms; probe ≤ 57 ms |
+| 10 classes (300 students) | not run | 39–43 / 58–115 / 204 ms; probe ≤ 65 ms |
+| 15 classes (450 students) | not run | 41–56 / 67–136 / 209 ms; probe 79–251 ms (first strain) |
+| 20 classes (600 students) | not run | 42–101 / 70–288 / 698 ms; probe 135–234 ms (clear strain, still usable) |
+
+Takeaway: on today's Cloud Run (1 instance), the comfortable limit went from **~2 classes to ~10–15 classes at once**.
+Strain starts around 15 and is clear by 20, which is far beyond one teacher or a department. The §3.1 estimates were
+too conservative after #50, and too optimistic before it.
+
 ### 3.2 If more is ever needed (not planned)
 
 - Cheap knobs are mostly used up: ink is at 2/s and cursors at 4/s. Going lower saves little (see the sweep above).
@@ -263,4 +287,5 @@ Not relevant while in the US. Notes for later, unverified:
 ## 9. Decision log
 
 - **21 Nov 2026:** options discussed, VM sketched, prices looked up. **No decision.** Production unchanged.
-- **21 Nov 2026 (later):** ink send rate cut from 20/s to 2/s (PR #48), capacity estimates added (§3.1). Still **no hosting decision.**
+- **21 Nov 2026 (later):** ink send rate cut from 20/s to 2/s and cursors to 4/s (PR #50), capacity estimates added (§3.1). Still **no hosting decision.**
+- **21 Nov 2026 (night):** production stress test before/after #50 (§3.1a): Cloud Run now handles ~10–15 classes at once. Still **no hosting decision**, but the pressure to move is much lower.
