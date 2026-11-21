@@ -35,22 +35,59 @@ once-a-minute `[load]` log line (sockets, peak, busiest room, event-loop lag, RS
 
 ## 3. Measured load (scripts/loadtest.ts, after #48)
 
-Measured in a 4-core dev container, not on Cloud Run. Treat CPU as relative.
+Measured in a 4-core dev container, not on Cloud Run or a VM. Treat CPU as relative. "Ink 50 ms" is how #48 first
+shipped; "ink 500 ms" is the current setting (`POINT_FLUSH_MS`: other people's strokes arrive twice a second, your own
+always draws instantly).
 
-| Scenario | Server CPU (one core) | Server outbound |
-|---|---|---|
-| 30 students, one main board, pen down 15% | ~8% | ~1.3 MB/s (~10 Mbps) |
-| 30 students, one main board, pen down 40% | ~10% | ~1.6 MB/s |
-| 90 students, one main board, pen down 40% | ~37–41% | ~14 MB/s (~110 Mbps) |
-| 200 students, individual breakouts | ~15% | ~0.4 MB/s |
+| Scenario | CPU, ink 50 ms | CPU, ink 500 ms | Msgs to each student/s (50 → 500 ms) | Server outbound |
+|---|---|---|---|---|
+| 30 students, one main board, pen down 15% | ~8–10% | ~5% | 84 → 24 | ~1.2 MB/s (~10 Mbps) |
+| 30 students, one main board, pen down 40% | ~10% | ~7% | 196 → 41 | ~1.3 MB/s |
+| 90 students, one main board, pen down 40% | ~37–45% | ~15% | 615 → 108 | ~12 MB/s (~100 Mbps) |
+| 200 students, individual breakouts | ~15% | ~15% | ~0 | ~0.4 MB/s |
+
+Flush-rate sweep (90 students, pen down 40%): 50 ms → 45% CPU, 333 ms → 18%, 500 ms → 15%, 1000 ms → 14%. Past 500 ms
+the remaining cost is cursors and the per-stroke `element-start`. Cursors were then cut from 10/s to 4/s
+(`CURSOR_EMIT_MS` 250 ms): 30 students pen 15% → ~3% CPU, 18 msgs/s per student; 90 students pen 40% → ~12%, 101/s.
+The capacity table below wasn't raised for this; treat it as conservative.
 
 Takeaways:
 - **Each app is one Node process, so it uses at most one core**, whatever the machine has. AllAboard can't be spread
-  across cores or instances because its room state is in memory. More cores only help to run several apps side by side.
-- **Bandwidth, not CPU, is what costs money and what rules out home hosting.** A busy 45-minute class on one shared
-  board is roughly 1.3 MB/s × 2,700 s ≈ 3.5 GB out. OverHeard is far lighter.
-- Capacity estimate: roughly 8–10 simultaneous 30-student classes drawing on main boards per core, or several hundred
-  students in breakouts.
+  across cores or instances because its room state is in memory. More cores only help to run several apps side by
+  side, unless rooms are split across processes (§3.2).
+- **Bandwidth is roughly the same at any ink rate** (same strokes, fewer, bigger messages). It's what costs money and
+  what rules out home hosting. A busy 45-minute class on one shared board is roughly 1.2 MB/s × 2,700 s ≈ 3.3 GB out.
+  OverHeard is far lighter.
+
+### 3.1 Rough capacity before it starts to stutter (estimates, ±2×)
+
+Assumptions: a Google E2 vCPU is about half as fast as the test container's cores, so measured CPU is doubled. "Starts
+to feel bad" ≈ 60% of a core, when event-loop lag climbs (ink trailing behind, jumpy cursors, slow joins). `e2-medium`
+sustains about one core in total, shared with OverHeard and the OS. `e2-standard-2` lets AllAboard have a full core to
+itself. Memory and network bandwidth aren't the limit on either machine.
+
+| Usage (classes of 30), ink 500 ms | `e2-medium` (shared with OverHeard) | `e2-standard-2` |
+|---|---|---|
+| Everyone drawing on their class's main board | ~4–5 classes | ~5–6 classes |
+| Typical mix (main board + breakouts) | ~6 classes | ~8 classes |
+| All in individual or group breakouts | ~300 students | ~400 students |
+| One giant shared board (single room) | ~100+ students | ~120+ students |
+
+- On a giant shared board, **students' Chromebooks are the more likely limit** (each one draws everyone's ink). At
+  500 ms they get ~108 messages/s at 90 students instead of ~615.
+- OverHeard (not load-tested): streams text and translates via outside services. Expect hundreds of listeners; its own
+  caps (200 per room, 100 rooms) probably bind first.
+- Check against reality with the `[load]` log line: a steady `lagP99Ms` over ~50 ms during class means it's close.
+
+### 3.2 If more is ever needed (not planned)
+
+- Cheap knobs are mostly used up: ink is at 2/s and cursors at 4/s. Going lower saves little (see the sweep above).
+- **Split rooms across processes:** rooms never interact, so one AllAboard process per core, with the proxy routing
+  each room code to the same process, scales with cores (`e2-standard-2` ≈ 2×, `e2-standard-4` ≈ 4×) without a shared
+  database. Needs the room code in the connection URL and one SQLite file per process.
+- From-scratch alternatives discussed: `uWebSockets.js` + binary point encoding instead of Socket.IO + JSON; a hosted
+  room-per-object platform (Cloudflare Durable Objects / PartyKit); CRDTs (Yjs), rejected because teacher authority
+  (locks, ownership) needs a server that understands what it relays.
 
 ## 4. Options considered
 
@@ -226,3 +263,4 @@ Not relevant while in the US. Notes for later, unverified:
 ## 9. Decision log
 
 - **21 Nov 2026:** options discussed, VM sketched, prices looked up. **No decision.** Production unchanged.
+- **21 Nov 2026 (later):** ink send rate cut from 20/s to 2/s (PR #48), capacity estimates added (§3.1). Still **no hosting decision.**

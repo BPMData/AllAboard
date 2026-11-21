@@ -49,7 +49,7 @@ Teachers are identified by a per-room **PIN**, not a login.
 | `src/lib/inkCore.ts` | — | Ink smoothing, highlighter/cover, text-note logic (from OverBoard). |
 | `socketGuards.ts` | — | Per-socket rate limits, element size caps, Teacher PIN hashing (scrypt). See §5. |
 | `staticAssets.ts` | — | Production `dist/` serving: hashed `/assets` cached 1 year (`immutable`) and gzipped once in memory; `index.html` `no-cache`. |
-| `src/lib/pointBatcher.ts`, `src/lib/drawThrottle.ts`, `src/lib/boardDigest.ts` | — | Client-side coalescing of streaming ink (send every 50 ms, apply incoming once per frame) and the network pacing constants (ink 50 ms, cursor 100 ms). Teacher overview digests (1.5 s). |
+| `src/lib/pointBatcher.ts`, `src/lib/drawThrottle.ts`, `src/lib/boardDigest.ts` | — | Client-side coalescing of streaming ink (send every 50 ms, apply incoming once per frame) and the network pacing constants (ink 500 ms, cursor 250 ms). Teacher overview digests (1.5 s). |
 | `scripts/loadtest.ts` | — | `npx tsx scripts/loadtest.ts --mode main\|individual --client legacy\|batched` — N fake drawing students, prints msg/s in and out and server CPU. |
 | `src/lib/roomCode.ts` | — | `normalizeRoomCode` (**must match** server `normalizeRoomId`), `sanitizeRoomCodeDraft`. |
 | `src/lib/chatSidebar.ts` | — | Chat sidebar sizing constants plus `localStorage` keys. |
@@ -172,9 +172,9 @@ Cloud Run service "allaboard"  ── one container :3000 (node server.ts, Build
   their own board (`placeSocket` sends the real contents when they move). So a student's Save .JSON contains only their
   own board's ink, and a teacher's copy of boards they aren't viewing is ≤ 1.5 s old. (`room-restored` after an import
   is still full, room-wide.)
-- **Ink pacing (client).** `element-append-points` is queued and sent every 50 ms; any other drawing emit goes through
+- **Ink pacing (client).** `element-append-points` is queued and sent every 500 ms (`POINT_FLUSH_MS`); any other drawing emit goes through
   `emitDrawing`, which flushes the queue first so the server sees actions in order. Incoming points are applied once per
-  animation frame; an `onAny` hook flushes them before any other event is handled. Cursors: at most 10/s plus a trailing send.
+  animation frame; an `onAny` hook flushes them before any other event is handled. Cursors: at most 4/s plus a trailing send.
 - **Cursor batching (server).** `cursor-move` is not relayed. The server keeps each user's latest position per board
   channel (only the channel the socket is actually on) and sends each board one `cursors-batch { cursors }` every
   `CURSOR_EMIT_MS`. The batch includes the receiver's own cursor; the client skips its own `userId`. This turns

@@ -7,6 +7,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { gzipSync, gunzipSync } from 'node:zlib';
 import { io as ioClient, Socket } from 'socket.io-client';
 import { startServer } from '../server';
 import {
@@ -185,6 +186,28 @@ describe('server guards (integration)', () => {
       const raw = JSON.stringify(srv.store.loadRoom('legacy'));
       assert.ok(!raw.includes('"777"'), 'plain text rewritten');
       assert.ok(raw.includes('scrypt:'));
+    });
+
+    it('rewrites a legacy plain-text PIN in the backup bucket at boot, not just in SQLite', async () => {
+      const backupDir = fs.mkdtempSync(path.join(os.tmpdir(), 'allaboard-guards-backup-'));
+      fs.mkdirSync(path.join(backupDir, 'rooms'), { recursive: true });
+      const legacy = { id: 'old-room', elements: [], messages: [], background: null, isCanvasLocked: false, teacherPin: '777', lastActiveAt: Date.now() };
+      fs.writeFileSync(path.join(backupDir, 'rooms', 'old-room.json.gz'), gzipSync(JSON.stringify(legacy)));
+      const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'allaboard-guards-data-'));
+      const booted = await startServer({ port: 0, host: '127.0.0.1', dataDir, skipVite: true, backupDir });
+      try {
+        await booted.backup!.flushNow();
+        const raw = gunzipSync(fs.readFileSync(path.join(backupDir, 'rooms', 'old-room.json.gz'))).toString();
+        assert.ok(!raw.includes('"777"'), 'plain text gone from the bucket copy');
+        assert.ok(raw.includes('scrypt:'));
+        const { socket: t } = await join('old-room', 't1', {}, booted.port);
+        assert.equal((await emitAck<any>(t, 'teacher:auth', { pin: '777' })).mode, 'verified');
+      } finally {
+        for (const s of sockets.splice(0)) if (s.connected) s.disconnect();
+        await booted.close();
+        fs.rmSync(backupDir, { recursive: true, force: true });
+        fs.rmSync(dataDir, { recursive: true, force: true });
+      }
     });
 
     it('blocks guessing after 10 wrong PINs per room, across sockets', async () => {
