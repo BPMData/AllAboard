@@ -124,6 +124,8 @@ import {
   Redo2,
   MousePointer2,
   PenLine,
+  SlidersHorizontal,
+  ChevronUp,
   SprayCan,
   Circle as CircleIcon,
   Highlighter,
@@ -170,6 +172,7 @@ import {
 } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { CURSOR_EMIT_MS } from '../lib/drawThrottle';
+import { isPhoneViewport } from '../lib/compactLayout';
 import { STATUS_OPTIONS } from './StudentStatusBadge';
 
 type HistoryAction =
@@ -724,6 +727,19 @@ export default function Canvas({
       : tool === 'hollow'
       ? hollowWidth
       : penWidth;
+
+  // Phones: the full toolbar would cover most of the board, so it folds behind a "Tools" button (closed by default).
+  // Tablets, Chromebooks and laptops always show it.
+  const [isPhone, setIsPhone] = useState(() =>
+    typeof window !== 'undefined' ? isPhoneViewport(window.innerWidth, window.innerHeight) : false
+  );
+  const [phoneToolsOpen, setPhoneToolsOpen] = useState(false);
+  useEffect(() => {
+    const update = () => setIsPhone(isPhoneViewport(window.innerWidth, window.innerHeight));
+    window.addEventListener('resize', update);
+    return () => window.removeEventListener('resize', update);
+  }, []);
+  const toolbarCollapsed = isPhone && !phoneToolsOpen;
 
   // Infinite Canvas Viewport Transform
   const [stageScale, setStageScale] = useState(1);
@@ -3711,6 +3727,56 @@ export default function Canvas({
           </div>
         )}
 
+        {/* Phone-only: Tools toggle (showing the current ink) and Undo, which is the one action worth keeping one tap away. */}
+        {isPhone && (
+          <div className="flex items-center gap-1.5" data-testid="phone-toolbar">
+            <button
+              type="button"
+              onClick={() => setPhoneToolsOpen((open) => !open)}
+              aria-expanded={phoneToolsOpen}
+              aria-label={phoneToolsOpen ? 'Hide tools' : 'Show tools'}
+              className={cn(
+                'flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold border transition-colors cursor-pointer',
+                phoneToolsOpen
+                  ? 'bg-slate-100 text-slate-700 border-slate-200/80'
+                  : 'bg-brand-600 text-white border-brand-700 shadow-xs'
+              )}
+            >
+              {phoneToolsOpen ? <ChevronUp size={15} /> : <SlidersHorizontal size={15} />}
+              <span>{phoneToolsOpen ? 'Done' : 'Tools'}</span>
+              {!phoneToolsOpen && (
+                <span
+                  aria-hidden="true"
+                  className="rounded-full ring-2 ring-white"
+                  style={{
+                    width: Math.max(6, Math.min(14, Math.round(strokeWidth * 0.3))),
+                    height: Math.max(6, Math.min(14, Math.round(strokeWidth * 0.3))),
+                    backgroundColor: tool === 'eraser' ? '#fff' : color,
+                  }}
+                />
+              )}
+            </button>
+            {toolbarCollapsed && (
+              <button
+                type="button"
+                disabled={!canDraw}
+                onClick={() => {
+                  if (editingNote) commitEditingNote();
+                  performUndo();
+                }}
+                className="flex items-center gap-1 px-2 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-100 rounded-lg transition-colors whitespace-nowrap cursor-pointer disabled:opacity-40"
+                aria-label="Undo"
+              >
+                <Undo2 size={15} />
+                <span>Undo</span>
+              </button>
+            )}
+          </div>
+        )}
+
+        {/* Everything below folds away on phones until "Tools" is tapped. `contents` keeps the wrapping layout as is. */}
+        <div className={toolbarCollapsed ? 'hidden' : 'contents'}>
+
         {/* Navigation & Brush Tools (wraps on narrow screens instead of cutting tools off) */}
         <div className="flex flex-wrap items-center gap-0.5 bg-slate-100 p-1 rounded-lg border border-slate-200/80">
           <button
@@ -4541,11 +4607,12 @@ export default function Canvas({
             <span>Export PNG</span>
           </button>
         </div>
+        </div>
       </div>
 
       {/* Teacher Classroom Moderation, Breakout Switchboard & Worksheet Deck OR Student Sub-Board Bar */}
       {isTeacher ? (
-        <div className="px-4 py-2 bg-amber-50/90 border-b border-amber-200/80 flex flex-wrap items-center justify-between gap-3 z-10">
+        <div className={cn('px-4 py-2 bg-amber-50/90 border-b border-amber-200/80 flex flex-wrap items-center justify-between gap-3 z-10', toolbarCollapsed && 'hidden')}>
           <div className="flex flex-wrap items-center gap-2 text-xs text-amber-900">
             <span className="font-display font-semibold">Teacher</span>
 

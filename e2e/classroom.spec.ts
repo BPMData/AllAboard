@@ -572,6 +572,7 @@ test.describe('chat sidebar', () => {
       await page.getByText('Instructor? Set or enter a room Teacher PIN').click();
       await page.locator('#teacher-pin-input').fill(PIN);
       await page.getByRole('button', { name: 'Join Classroom' }).click();
+      if (w < 640) await page.getByRole('button', { name: 'Show tools' }).click(); // phones start folded
       await expect(page.getByRole('button', { name: 'Clear Ink' })).toBeVisible();
       const cutOff = await page.evaluate(() =>
         Array.from(document.querySelectorAll('button'))
@@ -585,6 +586,40 @@ test.describe('chat sidebar', () => {
       expect(cutOff, `${w}x${h}`).toEqual([]);
       await context.close();
     }
+  });
+
+  test('on a phone the toolbar folds behind Tools; tablets always show it', async ({ browser }) => {
+    const phone = await browser.newContext({ viewport: { width: 390, height: 844 } });
+    const page = await phone.newPage();
+    await page.goto(`/?room=${uniqueRoom('phonetools')}`);
+    await page.getByLabel('Your Display Name').fill('Ms T');
+    await page.getByText('Instructor? Set or enter a room Teacher PIN').click();
+    await page.locator('#teacher-pin-input').fill(PIN);
+    await page.getByRole('button', { name: 'Join Classroom' }).click();
+
+    const canvas = page.locator('.konvajs-content').first();
+    await expect(page.getByRole('button', { name: 'Show tools' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Undo' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Clear Ink' })).toBeHidden();
+    await expect(page.locator('#brush-size-slider')).toBeHidden();
+    const foldedHeight = (await canvas.boundingBox())!.height;
+
+    await page.getByRole('button', { name: 'Show tools' }).click();
+    await expect(page.locator('#brush-size-slider')).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Clear Ink' })).toBeVisible();
+    await page.getByRole('button', { name: 'Hide tools' }).click();
+    await expect(page.locator('#brush-size-slider')).toBeHidden();
+    await expect.poll(async () => Math.round((await canvas.boundingBox())!.height)).toBe(Math.round(foldedHeight));
+    await phone.close();
+
+    const tablet = await browser.newContext({ viewport: { width: 820, height: 1180 } });
+    const tabletPage = await tablet.newPage();
+    await tabletPage.goto(`/?room=${uniqueRoom('tablettools')}`);
+    await tabletPage.getByLabel('Your Display Name').fill('Alex');
+    await tabletPage.getByRole('button', { name: 'Join Classroom' }).click();
+    await expect(tabletPage.locator('#brush-size-slider')).toBeVisible();
+    await expect(tabletPage.getByRole('button', { name: 'Show tools' })).toHaveCount(0);
+    await tablet.close();
   });
 
   test('starts hidden on a phone; opening it is remembered across a reload', async ({ browser }) => {
