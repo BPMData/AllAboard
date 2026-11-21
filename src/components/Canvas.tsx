@@ -4248,15 +4248,13 @@ export default function Canvas({
           </div>
         </div>
 
-        <div className="h-5 w-px bg-slate-200" />
-
         {/* Ink size: named for the tool it sizes, boxed like the Text group, with a live dot in the ink color so it
             can't be mistaken for the text-size control next to it. */}
         <div
-          className="flex items-center gap-1.5 px-2 py-0.5 rounded-lg border bg-slate-100 border-slate-200/80"
+          className="flex items-center gap-1 px-1.5 py-0.5 rounded-lg border bg-brand-600 border-brand-700 text-white shadow-xs"
           title="How thick your ink is (separate from text size)"
         >
-          <label htmlFor="brush-size-slider" className="text-[11px] font-semibold text-slate-600 whitespace-nowrap">
+          <label htmlFor="brush-size-slider" className="text-[11px] font-semibold text-white whitespace-nowrap">
             {tool === 'eraser'
               ? 'Eraser size:'
               : tool === 'highlighter'
@@ -4269,7 +4267,8 @@ export default function Canvas({
           </label>
           <span className="flex items-center justify-center w-6 h-6 shrink-0" aria-hidden="true" data-testid="ink-size-preview">
             <span
-              className={cn('rounded-full', tool === 'eraser' && 'border border-slate-400 bg-white')}
+              // White ring keeps the dot visible on the green box whatever the ink color (green ink included).
+              className={cn('rounded-full ring-2 ring-white', tool === 'eraser' && 'bg-white ring-white/60')}
               style={{
                 // Scaled so the slider's whole range fits; small sizes stay visible.
                 width: Math.max(3, Math.min(24, Math.round(strokeWidth * (tool === 'eraser' ? 0.06 : 0.48)))),
@@ -4294,9 +4293,9 @@ export default function Canvas({
             }
             value={strokeWidth}
             onChange={(e) => handleSelectStrokeWidth(parseInt(e.target.value, 10))}
-            className="w-24 h-1.5 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-brand-600"
+            className="w-24 h-1.5 bg-brand-300 rounded-lg appearance-none cursor-pointer accent-white"
           />
-          <span className="text-xs font-mono tabular-nums text-slate-600 w-8">
+          <span className="text-xs font-mono tabular-nums text-white w-7 text-right">
             {strokeWidth}
           </span>
         </div>
@@ -4325,6 +4324,10 @@ export default function Canvas({
             </span>
           </div>
         )}
+
+        {/* Line break: text size, smoothing and finger mode always start a new row, so the ink-size control above
+            (on the row with the colors) never sits next to "Text size" and gets mistaken for it. */}
+        <div className="basis-full h-0" aria-hidden="true" />
 
         {/* Dedicated Independent Text Size Controls */}
         <div
