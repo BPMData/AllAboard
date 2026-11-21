@@ -12,8 +12,10 @@ export async function joinRoom(page: Page, room: string, name: string, pin?: str
     await page.locator('#teacher-pin-input').fill(pin);
   }
   await page.getByRole('button', { name: 'Join Classroom' }).click();
-  await expect(page.getByPlaceholder('Message the class...')).toBeVisible();
-  if (pin) await expect(page.getByText('Teacher Active')).toBeVisible();
+  // Wait for the board, not the chat box: on narrow screens the chat sidebar starts hidden.
+  await expect(page.locator('.konvajs-content').first()).toBeVisible();
+  // Teacher rows exist only for a verified teacher (on phones they're in the DOM but folded behind "Tools").
+  if (pin) await expect(page.locator('button', { hasText: 'Clear Ink' })).toHaveCount(1);
 }
 
 /** Open a page in its own browser context (separate localStorage = separate user). */
