@@ -47,6 +47,7 @@ Teachers are identified by a per-room **PIN**, not a login.
 | `src/lib/worksheetLoader.ts` | ~390 | PDF/image → `BackgroundPage[]` (browser-side render to JPEG data URLs). Built-in templates (`four-corners`, `frayer-model`, `checkin-columns`). `MAX_PDF_PAGES = 10`. |
 | `src/lib/batchPdfExport.ts` | ~590 | Export boards to PDF (renders background plus ink). |
 | `src/lib/inkCore.ts` | — | Ink smoothing, highlighter/cover, text-note logic (from OverBoard). |
+| `socketGuards.ts` | — | Per-socket rate limits, element size caps, Teacher PIN hashing (scrypt). See §5. |
 | `staticAssets.ts` | — | Production `dist/` serving: hashed `/assets` cached 1 year (`immutable`) and gzipped once in memory; `index.html` `no-cache`. |
 | `src/lib/pointBatcher.ts`, `src/lib/drawThrottle.ts`, `src/lib/boardDigest.ts` | — | Client-side coalescing of streaming ink (send every 50 ms, apply incoming once per frame) and the network pacing constants (ink 50 ms, cursor 100 ms). Teacher overview digests (1.5 s). |
 | `scripts/loadtest.ts` | — | `npx tsx scripts/loadtest.ts --mode main\|individual --client legacy\|batched` — N fake drawing students, prints msg/s in and out and server CPU. |
@@ -85,15 +86,28 @@ Cloud Run service "allaboard"  ── one container :3000 (node server.ts, Build
   sent on `join-room` along with name and colour. The first key used for an id in a room claims it; the server keeps only
   its SHA-256 (`room.userKeyHashes`) and answers a wrong or missing key with `room-kicked { reason: 'identity' }`. There are
   still no accounts: display names aren't unique, and an id nobody has claimed in that room can be claimed by anyone.
-- **Teacher:** per room, via `teacher:auth { pin }`. **The first PIN claims the room** (`mode: 'claimed'`), and later
-  matching PINs verify. The PIN is stored **in plain text** in room state (and therefore in the SQLite row and bucket
-  backup), and is cached in the teacher's `localStorage` per room. `isTeacher` lives on the server's per-user record, and
-  every teacher-only handler checks it.
+- **Teacher:** per room, via `teacher:auth { pin }` (or `teacherPin` on `join-room`). **The first PIN claims the room**
+  (`mode: 'claimed'`, at least `MIN_TEACHER_PIN_LENGTH` = 4 characters), and later matching PINs verify. The server
+  stores only `teacherPinHash` (`scrypt:<salt>:<hash>`, random salt per room, `socketGuards.ts`). A legacy plain-text
+  `teacherPin` (some rooms have 3 characters; they still verify) is hashed when its room loads and the row is rewritten
+  at once. **10 wrong PINs per room per 5 minutes**, from any sockets, blocks PIN checks for that room; a teacher
+  whose browser key already matches doesn't need the PIN. The PIN is cached in the teacher's `localStorage` per room.
+  `isTeacher` lives on the server's per-user record, and every teacher-only handler checks it.
+- **Guards against a misbehaving client** (`socketGuards.ts`, wired in at the top of `io.on('connection')`):
+  - Each socket's handlers run **one at a time, in arrival order**, even async ones, and a thrown error is logged, never
+    left uncaught. (One instance: an uncaught throw takes every room down. `push(...hugeArray)` used to do exactly that.)
+  - **Per-socket rate limits** by event class (`RATE_LIMITS`: draw 60/s, cursor/laser 50/s, chat 1/s, other 20/s, each
+    with a burst). Over the limit the packet is dropped (acks get `{ ok: false }`), never the connection. Drops are
+    counted in the `[load]` log line and the first per socket is logged as `[ratelimit]`.
+  - **Size caps:** points must be finite numbers (≤ 4,000 per append, ≤ 50,000 per stroke), text ≤ 20,000 chars, other
+    fields small, ≤ 2,000 elements per batch, **≤ 10,000 elements per board** (the sender gets `state-sync` +
+    `board-full`), chat ≤ 2,000 chars.
+  - **Board chat** (`chatScope: 'board'`) goes only to that board's channel and teachers; students may post only to
+    main or their own board, and get other boards' chat stripped (like their ink) until they move there.
 - **Moderation state per room:** `lockedNames`, `bannedUsers`, `isCanvasLocked`.
 - **⚠️ Known trust gaps (see TODO):**
-  - `element-start` / `elements-batch-add` store the element **exactly as the client sent it**, including `userId`. A
-    student can author elements as someone else, and can put arbitrary fields (e.g. `stamp`) on them. The ownership checks on
-    update and remove are only as good as this. **Fix this before adding any "teacher-only" element type.**
+  - Elements are stored **as the client sent them**, apart from `userId`/`userName` (set by the server), teacher-only
+    stamps (refused for students) and the size caps above. **Check any new "teacher-only" element field server-side.**
   - `data:` URLs are only converted to assets for **backgrounds**. Elements carrying images would bloat state.
   - Socket.IO `cors: { origin: '*' }` and `maxHttpBufferSize: 30 MB` (needed because uploads travel as base64 over the socket).
 

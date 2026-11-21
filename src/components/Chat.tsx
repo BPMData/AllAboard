@@ -33,6 +33,7 @@ import { normalizeRoomCode, sanitizeRoomCodeDraft } from '../lib/roomCode';
 import { isAnonymousAuthorId } from '../lib/anonymousInk';
 import RoomHistoryDropdown from './RoomHistoryDropdown';
 import { StudentStatusBadge } from './StudentStatusBadge';
+import { MIN_TEACHER_PIN_LENGTH } from '../lib/teacherPin';
 
 interface ChatProps {
   roomId: string;
@@ -569,7 +570,7 @@ export default function Chat({
               </div>
               <button
                 type="submit"
-                disabled={pinInput.trim().length < 3 || isSubmittingPin}
+                disabled={pinInput.trim().length < (hasTeacherPin ? 3 : MIN_TEACHER_PIN_LENGTH) || isSubmittingPin}
                 className="px-3 py-1.5 bg-brand-600 hover:bg-brand-500 disabled:bg-slate-800 disabled:text-slate-600 text-xs font-semibold rounded transition-colors whitespace-nowrap cursor-pointer"
               >
                 {hasTeacherPin ? 'Unlock' : 'Set PIN'}

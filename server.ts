@@ -32,11 +32,32 @@ import { isAnonymousAuthorId, makeAnonymousAuthorId } from './src/lib/anonymousI
 import { OVERVIEW_SYNC_MS, buildDigest, emptyChanges, type BoardChanges, type BoardDigest } from './src/lib/boardDigest.ts';
 import { CURSOR_EMIT_MS } from './src/lib/drawThrottle.ts';
 import { monitorEventLoopDelay } from 'node:perf_hooks';
+import {
+  MAX_APPEND_NUMBERS,
+  MAX_BATCH_ELEMENTS,
+  MAX_BOARD_ELEMENTS,
+  MAX_PIN_LENGTH,
+  MAX_STROKE_NUMBERS,
+  MIN_PIN_LENGTH,
+  appendAll,
+  createFailureLimiter,
+  createSocketLimiter,
+  elementFieldsOk,
+  hashPin,
+  hashPinSync,
+  isHashedPin,
+  isPointArray,
+  verifyPin,
+} from './socketGuards.ts';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const ROOM_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 days inactivity cleanup
+/** Wrong Teacher PINs allowed per room per window, from all sockets together (a 4-digit PIN then takes days). */
+const PIN_FAILURES_PER_WINDOW = 10;
+const MAX_CHAT_CHARS = 2_000;
+const PIN_FAILURE_WINDOW_MS = 5 * 60 * 1000;
 const IDLE_UNLOAD_MS = 15 * 60 * 1000;
 const HOUSEKEEPING_INTERVAL_MS = 5 * 60 * 1000;
 const USER_KEY_PATTERN = /^[0-9a-f]{64}$/;
@@ -127,7 +148,8 @@ interface RoomState {
   isCanvasLocked: boolean;
   hideStudentCursors: boolean;
   oneNameStamp: boolean;
-  teacherPin: string | null;
+  /** `scrypt:<salt>:<hash>` (socketGuards.ts), never the PIN itself. */
+  teacherPinHash: string | null;
   lastActiveAt: number;
 }
 
@@ -146,7 +168,9 @@ interface SerializedRoom {
   isCanvasLocked: boolean;
   hideStudentCursors?: boolean;
   oneNameStamp?: boolean;
-  teacherPin: string | null;
+  teacherPinHash?: string | null;
+  /** Legacy: plain-text PIN from before hashing. Read on load and hashed; never written. */
+  teacherPin?: string | null;
   lastActiveAt: number;
 }
 
@@ -292,6 +316,15 @@ export async function startServer(options: StartServerOptions = {}) {
     return map;
   }
 
+  /** The room's PIN hash. A legacy plain-text PIN is hashed here, once, when its room loads. */
+  function storedPinHash(item: SerializedRoom): string | null {
+    if (typeof item.teacherPinHash === 'string' && isHashedPin(item.teacherPinHash)) return item.teacherPinHash;
+    if (typeof item.teacherPin === 'string' && item.teacherPin) {
+      return isHashedPin(item.teacherPin) ? item.teacherPin : hashPinSync(item.teacherPin.trim());
+    }
+    return null;
+  }
+
   /** SerializedRoom → in-memory RoomState. Returns null if missing/expired. */
   function hydrateRoom(item: SerializedRoom, now = Date.now()): RoomState | null {
     if (!item || !item.id) return null;
@@ -327,7 +360,7 @@ export async function startServer(options: StartServerOptions = {}) {
       isCanvasLocked: Boolean(item.isCanvasLocked),
       hideStudentCursors: Boolean(item.hideStudentCursors),
       oneNameStamp: Boolean(item.oneNameStamp),
-      teacherPin: item.teacherPin || null,
+      teacherPinHash: storedPinHash(item),
       lastActiveAt: lastActive,
     };
   }
@@ -348,7 +381,7 @@ export async function startServer(options: StartServerOptions = {}) {
       isCanvasLocked: room.isCanvasLocked,
       hideStudentCursors: room.hideStudentCursors,
       oneNameStamp: room.oneNameStamp,
-      teacherPin: room.teacherPin,
+      teacherPinHash: room.teacherPinHash,
       lastActiveAt: room.lastActiveAt,
     };
   }
@@ -359,7 +392,7 @@ export async function startServer(options: StartServerOptions = {}) {
       room.messages.length === 0 &&
       room.background === null &&
       room.subBoards.size === 0 &&
-      room.teacherPin === null &&
+      room.teacherPinHash === null &&
       Object.keys(room.lockedNames).length === 0 &&
       Object.keys(room.bannedUsers).length === 0
     );
@@ -529,6 +562,7 @@ export async function startServer(options: StartServerOptions = {}) {
       return null;
     }
     rooms.set(roomId, restored);
+    if (stored.state.teacherPin && restored.teacherPinHash) scheduleSaveToDisk(restored, true); // rewrite without plain text
     return restored;
   }
 
@@ -558,7 +592,7 @@ export async function startServer(options: StartServerOptions = {}) {
         isCanvasLocked: false,
         hideStudentCursors: false,
         oneNameStamp: false,
-        teacherPin: null,
+        teacherPinHash: null,
         lastActiveAt: Date.now(),
       };
       rooms.set(roomId, room);
@@ -598,7 +632,7 @@ export async function startServer(options: StartServerOptions = {}) {
       isCanvasLocked: room.isCanvasLocked,
       hideStudentCursors: room.hideStudentCursors,
       oneNameStamp: room.oneNameStamp,
-      hasTeacherPin: room.teacherPin !== null,
+      hasTeacherPin: room.teacherPinHash !== null,
       lastSavedAt: room.lastActiveAt,
       breakoutConfig: room.breakoutConfig,
       timer: room.timer,
@@ -720,10 +754,13 @@ export async function startServer(options: StartServerOptions = {}) {
         busiestRoom,
         lagP99Ms: Math.round(loopDelay.percentile(99) / 1e6),
         lagMaxMs: Math.round(loopDelay.max / 1e6),
+        rateLimited: rateLimitedEvents,
         rssMb: Math.round(process.memoryUsage().rss / 1048576),
       }));
     }
     peakSockets = sockets;
+    rateLimitedEvents = 0;
+    pinFailures.prune();
     loopDelay.reset();
   }
   const peakTracker = setInterval(() => { peakSockets = Math.max(peakSockets, io.of('/').sockets.size); }, 5_000);
@@ -775,7 +812,9 @@ export async function startServer(options: StartServerOptions = {}) {
       });
     } else if (prev !== next) {
       const elements = boardElementsOf(room, boardId);
-      if (elements) socket.emit('state-sync', { boardId, elements });
+      // A sub-board's chat came stripped like its ink (subBoardsFor), so it rides along.
+      const messages = boardId === 'main' ? undefined : room.subBoards.get(boardId)?.messages;
+      if (elements) socket.emit('state-sync', messages ? { boardId, elements, messages } : { boardId, elements });
     }
   }
 
@@ -816,8 +855,8 @@ export async function startServer(options: StartServerOptions = {}) {
   timerTickInterval.unref();
 
   /**
-   * Sub-boards as one user should receive them. Teachers get everything. Students get every board's metadata,
-   * background and chat but only their *own* board's ink, since they never see the rest (and placeSocket sends a
+   * Sub-boards as one user should receive them. Teachers get everything. Students get every board's metadata and
+   * background but only their *own* board's ink and chat, since they never see the rest (and placeSocket sends a
    * fresh copy when they move). In a 20-board breakout this makes each student's copy ~20x smaller.
    */
   function subBoardsFor(room: RoomState, userId: string): Record<string, SubBoardState> {
@@ -825,7 +864,7 @@ export async function startServer(options: StartServerOptions = {}) {
     if (room.usersByUserId.get(userId)?.isTeacher) return all;
     const mine = findStudentBoardId(room.subBoards, room.breakoutConfig, userId);
     const out: Record<string, SubBoardState> = {};
-    for (const [id, sb] of Object.entries(all)) out[id] = id === mine ? sb : { ...sb, elements: [] };
+    for (const [id, sb] of Object.entries(all)) out[id] = id === mine ? sb : { ...sb, elements: [], messages: [] };
     return out;
   }
 
@@ -958,7 +997,7 @@ export async function startServer(options: StartServerOptions = {}) {
       room.messages.length > 0 ||
       room.background !== null ||
       room.subBoards.size > 0;
-    const hasTeacherPin = room.teacherPin !== null;
+    const hasTeacherPin = room.teacherPinHash !== null;
     return {
       roomId: normalizedId,
       exists: activeUserCount > 0 || hasContent || hasTeacherPin,
@@ -968,15 +1007,64 @@ export async function startServer(options: StartServerOptions = {}) {
     };
   }
 
+  /** Wrong Teacher PINs per room (across all sockets: a school shares one IP, and sockets are free to open). */
+  const pinFailures = createFailureLimiter(PIN_FAILURES_PER_WINDOW, PIN_FAILURE_WINDOW_MS);
+  const PIN_BLOCKED_ERROR = 'Too many wrong Teacher PINs for this room. Wait a few minutes and try again.';
+  let rateLimitedEvents = 0;
+
   io.on('connection', (socket) => {
+    // Every handler for this socket runs in arrival order, one at a time, even when one awaits (PIN hashing).
+    // Errors are logged, never thrown: with one instance, an uncaught throw takes every room down.
+    let queue: Promise<unknown> = Promise.resolve();
+    const rawOn = socket.on.bind(socket) as (event: string, handler: (...args: any[]) => unknown) => unknown;
+    (socket as any).on = (event: string, handler: (...args: any[]) => unknown) =>
+      rawOn(event, (...args: any[]) => {
+        queue = queue
+          .then(() => handler(...args))
+          .catch((err) => console.error(`[socket] ${event} handler failed:`, err));
+      });
+
+    // Per-socket allowances (socketGuards.ts). Over the limit, the event is dropped, not the connection.
+    const limiter = createSocketLimiter();
+    let warnedRateLimit = false;
+    socket.use((packet, next) => {
+      const event = String(packet[0]);
+      if (limiter.allow(event)) return next();
+      rateLimitedEvents++;
+      const ack = packet[packet.length - 1];
+      if (typeof ack === 'function') ack({ ok: false, error: 'Too many requests. Slow down and try again.' });
+      if (!warnedRateLimit) {
+        warnedRateLimit = true;
+        const meta = socketMeta.get(socket.id);
+        console.warn('[ratelimit]', JSON.stringify({ event, roomId: meta?.roomId, userId: meta?.userId }));
+      }
+    });
+    /** A PIN this socket already proved, so the reconnect pair (join-room + teacher:auth) hashes once, not twice. */
+    let provenPin: string | null = null;
+    /** Board at MAX_BOARD_ELEMENTS: resync the sender (drops its optimistic copy) and say why, once per board. */
+    const warnedFullBoards = new Set<string>();
+    function boardFull(boardId: string, elements: any[]) {
+      socket.emit('state-sync', { boardId, elements });
+      if (warnedFullBoards.has(boardId)) return;
+      warnedFullBoards.add(boardId);
+      socket.emit('board-full', { boardId, max: MAX_BOARD_ELEMENTS });
+    }
+
     socket.on('check-room', (payload: { roomId?: string } | undefined, callback) => {
       callback?.(getRoomAvailability(payload?.roomId));
     });
 
-    socket.on('join-room', ({ roomId: rawRoomId, userId, userKey, name, color, teacherPin }) => {
+    socket.on('join-room', async ({ roomId: rawRoomId, userId, userKey, name, color, teacherPin }) => {
       if (!userId || typeof userId !== 'string' || isAnonymousAuthorId(userId)) return;
 
       const room = getOrCreateRoom(rawRoomId);
+      const offeredPin = typeof teacherPin === 'string' ? teacherPin.trim().slice(0, MAX_PIN_LENGTH) : '';
+      let pinMatches = false;
+      if (offeredPin && room.teacherPinHash && !pinFailures.isBlocked(room.id)) {
+        pinMatches = await verifyPin(offeredPin, room.teacherPinHash);
+        if (pinMatches) provenPin = `${room.id}\u0000${offeredPin}`;
+        else pinFailures.fail(room.id);
+      }
       const keyCheck = checkUserKey(room.userKeyHashes, userId, userKey);
       if (keyCheck === 'rejected') {
         socket.emit('room-kicked', { reason: 'identity', roomId: room.id });
@@ -1005,9 +1093,9 @@ export async function startServer(options: StartServerOptions = {}) {
       // Block banned students from joining the room
       const existing = room.usersByUserId.get(userId);
       let isVerifiedTeacher = false;
-      if (room.teacherPin && teacherPin && String(teacherPin).trim() === room.teacherPin) {
+      if (pinMatches) {
         isVerifiedTeacher = true;
-      } else if (existing?.isTeacher && room.teacherPin && keyCheck === 'matched') {
+      } else if (existing?.isTeacher && room.teacherPinHash && keyCheck === 'matched') {
         // Teacher status carries over only with proof this is the same browser; otherwise the PIN is required.
         isVerifiedTeacher = true;
       }
@@ -1083,7 +1171,7 @@ export async function startServer(options: StartServerOptions = {}) {
       }
     });
 
-    socket.on('teacher:auth', ({ pin }, callback) => {
+    socket.on('teacher:auth', async ({ pin }, callback) => {
       const meta = socketMeta.get(socket.id);
       if (!meta) {
         callback?.({ ok: false, error: 'Join the room first.' });
@@ -1096,8 +1184,8 @@ export async function startServer(options: StartServerOptions = {}) {
       }
 
       const cleanPin = String(pin || '').trim();
-      if (cleanPin.length < 3) {
-        callback?.({ ok: false, error: 'PIN must be at least 3 characters.' });
+      if (!cleanPin || cleanPin.length > MAX_PIN_LENGTH) {
+        callback?.({ ok: false, error: `PIN must be ${MIN_PIN_LENGTH} to ${MAX_PIN_LENGTH} characters.` });
         return;
       }
 
@@ -1107,24 +1195,46 @@ export async function startServer(options: StartServerOptions = {}) {
         return;
       }
 
-      if (room.teacherPin === null) {
-        room.teacherPin = cleanPin;
+      if (room.teacherPinHash === null) {
+        // Only new PINs need the minimum length; rooms claimed earlier with 3 characters still verify below.
+        if (cleanPin.length < MIN_PIN_LENGTH) {
+          callback?.({ ok: false, error: `PIN must be at least ${MIN_PIN_LENGTH} characters.` });
+          return;
+        }
+        const hash = await hashPin(cleanPin);
+        if (room.teacherPinHash !== null) {
+          callback?.({ ok: false, error: 'Someone just set a Teacher PIN for this room. Enter that PIN instead.' });
+          return;
+        }
+        room.teacherPinHash = hash;
+        provenPin = `${room.id}\u0000${cleanPin}`;
         room.lastActiveAt = Date.now();
         userRecord.isTeacher = true;
         scheduleSaveToDisk(room, true);
         broadcastRoomSettings(room);
         broadcastRoster(room);
         callback?.({ ok: true, mode: 'claimed', pin: cleanPin });
-      } else if (room.teacherPin === cleanPin) {
-        userRecord.isTeacher = true;
-        broadcastRoster(room);
-        callback?.({ ok: true, mode: 'verified', pin: cleanPin });
-      } else {
-        callback?.({
-          ok: false,
-          error: 'Incorrect Teacher PIN for this room. Need a fresh board? Click "New Room" to create a new room where you can set the PIN first.',
-        });
+        return;
       }
+
+      if (provenPin !== `${room.id}\u0000${cleanPin}`) {
+        if (pinFailures.isBlocked(room.id)) {
+          callback?.({ ok: false, error: PIN_BLOCKED_ERROR });
+          return;
+        }
+        if (!(await verifyPin(cleanPin, room.teacherPinHash))) {
+          pinFailures.fail(room.id);
+          callback?.({
+            ok: false,
+            error: 'Incorrect Teacher PIN for this room. Need a fresh board? Click "New Room" to create a new room where you can set the PIN first.',
+          });
+          return;
+        }
+        provenPin = `${room.id}\u0000${cleanPin}`;
+      }
+      userRecord.isTeacher = true;
+      broadcastRoster(room);
+      callback?.({ ok: true, mode: 'verified', pin: cleanPin });
     });
 
     socket.on('user:set-status', (payload: { status?: unknown } | undefined) => {
@@ -1187,7 +1297,7 @@ export async function startServer(options: StartServerOptions = {}) {
       const action = resolveBreakoutAction(safePayload, cfg);
 
       if (action === 'set-auto-individual') {
-        if (room.teacherPin === null) {
+        if (room.teacherPinHash === null) {
           callback?.({
             ok: false,
             error: 'Set a Room Teacher PIN before enabling automatic student boards.',
@@ -1867,7 +1977,10 @@ export async function startServer(options: StartServerOptions = {}) {
       if (!room) return;
 
       const senderRecord = room.usersByUserId.get(meta.userId);
-      const boardId = msg.boardId || 'main';
+      const boardId = typeof msg.boardId === 'string' && msg.boardId ? msg.boardId : 'main';
+      const boardScoped = room.breakoutConfig.chatScope === 'board' && boardId !== 'main';
+      // Students post only to the main chat or the board they're on; teachers to any board.
+      if (boardScoped && !senderRecord?.isTeacher && meta.channel !== boardChannel(room.id, boardId)) return;
       const message = {
         id: Math.random().toString(36).substring(2, 11),
         boardId,
@@ -1875,11 +1988,11 @@ export async function startServer(options: StartServerOptions = {}) {
         userName: senderRecord?.name || msg.userName || 'Student',
         userColor: senderRecord?.color || msg.userColor,
         isTeacher: Boolean(senderRecord?.isTeacher),
-        text: String(msg.text).trim(),
+        text: String(msg.text).trim().slice(0, MAX_CHAT_CHARS),
         timestamp: Date.now(),
       };
 
-      if (room.breakoutConfig.chatScope === 'board' && boardId !== 'main') {
+      if (boardScoped) {
         const sb = room.subBoards.get(boardId);
         if (sb) {
           sb.messages.push(message);
@@ -1892,7 +2005,9 @@ export async function startServer(options: StartServerOptions = {}) {
 
       room.lastActiveAt = Date.now();
       scheduleSaveToDisk(room);
-      io.to(room.id).emit('chat-message', message);
+      // Board chat goes only to that board and to teachers; everything else is room-wide.
+      if (boardScoped) io.to([boardChannel(room.id, boardId), teacherChannel(room.id)]).emit('chat-message', message);
+      else io.to(room.id).emit('chat-message', message);
     });
 
     // Helper to get elements array for either 'main' or a subBoard
@@ -1904,7 +2019,7 @@ export async function startServer(options: StartServerOptions = {}) {
 
     socket.on('element-start', (element) => {
       const meta = socketMeta.get(socket.id);
-      if (!meta || !element || !element.id) return;
+      if (!meta || !element || !element.id || !elementFieldsOk(element)) return;
       const room = rooms.get(meta.roomId);
       if (!room) return;
 
@@ -1940,6 +2055,7 @@ export async function startServer(options: StartServerOptions = {}) {
 
       const exists = targetElements.some((el) => el.id === authoredElement.id);
       if (!exists) {
+        if (targetElements.length >= MAX_BOARD_ELEMENTS) return boardFull(boardId, targetElements);
         targetElements.push(authoredElement);
       }
       room.lastActiveAt = Date.now();
@@ -1950,7 +2066,7 @@ export async function startServer(options: StartServerOptions = {}) {
 
     socket.on('element-append-points', ({ id, boardId = 'main', newPoints }) => {
       const meta = socketMeta.get(socket.id);
-      if (!meta || !id || !Array.isArray(newPoints)) return;
+      if (!meta || !id || !isPointArray(newPoints, MAX_APPEND_NUMBERS)) return;
       const room = rooms.get(meta.roomId);
       if (!room) return;
 
@@ -1962,7 +2078,8 @@ export async function startServer(options: StartServerOptions = {}) {
 
       const el = targetElements.find((item) => item.id === id);
       if (el && (el.userId === meta.userId || senderRecord?.isTeacher) && Array.isArray(el.points)) {
-        el.points.push(...newPoints);
+        if (el.points.length + newPoints.length > MAX_STROKE_NUMBERS) return; // stroke is long enough; drop the rest
+        appendAll(el.points, newPoints);
         room.lastActiveAt = Date.now();
         scheduleSaveToDisk(room);
         noteChange(room, boardId, { upsert: [id] });
@@ -1972,7 +2089,7 @@ export async function startServer(options: StartServerOptions = {}) {
 
     socket.on('element-update', (patch) => {
       const meta = socketMeta.get(socket.id);
-      if (!meta || !patch || !patch.id) return;
+      if (!meta || !patch || !patch.id || !elementFieldsOk(patch)) return;
       const room = rooms.get(meta.roomId);
       if (!room) return;
 
@@ -2014,7 +2131,7 @@ export async function startServer(options: StartServerOptions = {}) {
 
     socket.on('elements-batch-update', ({ boardId = 'main', updates, bringToFront = false }) => {
       const meta = socketMeta.get(socket.id);
-      if (!meta || !Array.isArray(updates) || updates.length === 0) return;
+      if (!meta || !Array.isArray(updates) || updates.length === 0 || updates.length > MAX_BATCH_ELEMENTS) return;
       const room = rooms.get(meta.roomId);
       if (!room) return;
 
@@ -2026,7 +2143,7 @@ export async function startServer(options: StartServerOptions = {}) {
 
       const updateMap = new Map<string, any>();
       for (const u of updates) {
-        if (u && typeof u.id === 'string') {
+        if (u && typeof u.id === 'string' && elementFieldsOk(u)) {
           updateMap.set(u.id, u);
         }
       }
@@ -2077,6 +2194,7 @@ export async function startServer(options: StartServerOptions = {}) {
     socket.on('elements-batch-add', ({ boardId = 'main', elements: newElements }) => {
       const meta = socketMeta.get(socket.id);
       if (!meta || !Array.isArray(newElements) || newElements.length === 0) return;
+      if (newElements.length > MAX_BATCH_ELEMENTS || !newElements.every((el) => elementFieldsOk(el))) return;
       const room = rooms.get(meta.roomId);
       if (!room) return;
 
@@ -2089,6 +2207,7 @@ export async function startServer(options: StartServerOptions = {}) {
         for (const sb of getBoardsInRound(room.subBoards, room.breakoutConfig.activeRoundId)) {
           for (const el of newElements) {
             if (!el || typeof el.tool !== 'string') continue;
+            if (sb.elements.length >= MAX_BOARD_ELEMENTS) break;
             const cloned = {
               ...el,
               id: Math.random().toString(36).substring(2, 11) + '_' + Math.random().toString(36).substring(2, 5),
@@ -2115,8 +2234,13 @@ export async function startServer(options: StartServerOptions = {}) {
       const existingIds = new Set(targetElements.map((e) => e.id));
       const added: any[] = [];
       let rejectedNameStamp = false;
+      let rejectedFull = false;
       for (const el of newElements) {
         if (!el || !el.id || existingIds.has(el.id)) continue;
+        if (targetElements.length >= MAX_BOARD_ELEMENTS) {
+          rejectedFull = true;
+          break;
+        }
         if (el.tool === 'stamp' && isTeacherStampKind(el.stamp) && !senderRecord?.isTeacher) {
           continue;
         }
@@ -2147,7 +2271,9 @@ export async function startServer(options: StartServerOptions = {}) {
         noteChange(room, boardId, { upsert: added.map((e) => e.id) });
         socket.to(boardAudience(room.id, boardId)).emit('elements-batch-added', { boardId, elements: added });
       }
-      if (rejectedNameStamp) {
+      if (rejectedFull) {
+        boardFull(boardId, targetElements);
+      } else if (rejectedNameStamp) {
         socket.emit('state-sync', { boardId, elements: targetElements }); // Drops the sender's optimistic copies
       }
     });

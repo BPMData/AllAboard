@@ -34,6 +34,7 @@ import { recordRoomHistory } from './lib/roomHistory';
 import { motion } from 'motion/react';
 import { LogIn, Users, KeyRound, PlusCircle, Shuffle, Eye, EyeOff } from 'lucide-react';
 import { POINT_FLUSH_MS } from './lib/drawThrottle';
+import { MIN_TEACHER_PIN_LENGTH } from './lib/teacherPin';
 import { applyDigest, type BoardDigest } from './lib/boardDigest';
 import {
   appendPointBatches,
@@ -798,22 +799,35 @@ export default function App() {
 
     newSocket.on(
       'state-sync',
-      ({ boardId = 'main', elements: syncedElements }: { boardId?: string; elements: CanvasElement[] }) => {
+      ({
+        boardId = 'main',
+        elements: syncedElements,
+        messages: syncedMessages,
+      }: { boardId?: string; elements: CanvasElement[]; messages?: ChatMessage[] }) => {
         if (!Array.isArray(syncedElements)) return;
         if (boardId === 'main') {
           setElements(syncedElements);
         } else {
+          // Students only get a board's chat when they arrive on it (the server strips other boards' chat).
           setSubBoards((prev) => {
             const sb = prev[boardId];
             if (!sb) return prev;
             return {
               ...prev,
-              [boardId]: { ...sb, elements: syncedElements },
+              [boardId]: {
+                ...sb,
+                elements: syncedElements,
+                ...(Array.isArray(syncedMessages) ? { messages: syncedMessages } : {}),
+              },
             };
           });
         }
       }
     );
+
+    newSocket.on('board-full', ({ max }: { boardId: string; max: number }) => {
+      window.alert(`This board is full (${max.toLocaleString()} items). Erase or clear some work to keep drawing.`);
+    });
 
     // Teachers: boards we aren't viewing arrive as periodic digests of changed elements (see boardDigest.ts).
     newSocket.on('boards-digest', ({ boards }: { boards: BoardDigest<CanvasElement>[] }) => {
@@ -1199,6 +1213,10 @@ export default function App() {
 
     const targetRoomId = effectiveRoomId;
     const cleanPin = initialTeacherPin.trim();
+    if (cleanPin && cleanPin.length < MIN_TEACHER_PIN_LENGTH) {
+      setKickNotice(`Teacher PIN must be at least ${MIN_TEACHER_PIN_LENGTH} characters.`);
+      return;
+    }
     const shouldWarnIfExists = hasEditedLobbyRoom || (!hadInitialUrlRoom && showTeacherSetupOnJoin);
 
     if (shouldWarnIfExists) {
