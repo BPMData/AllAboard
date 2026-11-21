@@ -9,6 +9,8 @@ import {
   clampChatWidth,
   readStoredChatWidth,
   readStoredChatHidden,
+  storeChatHiddenChoice,
+  COMPACT_LAYOUT_MAX_WIDTH,
 } from '../src/lib/chatSidebar';
 
 describe('chatSidebar helpers', () => {
@@ -53,6 +55,34 @@ describe('chatSidebar helpers', () => {
       ),
       DEFAULT_CHAT_WIDTH
     );
+  });
+
+  it('starts hidden on narrow screens unless the person chose otherwise', () => {
+    const store = (values: Record<string, string>) => ({ getItem: (k: string) => values[k] ?? null });
+    const phone = 390;
+    const ipadPortrait = 820;
+    const laptop = 1366;
+    assert.ok(ipadPortrait < COMPACT_LAYOUT_MAX_WIDTH && laptop >= COMPACT_LAYOUT_MAX_WIDTH);
+    // No saved choice: the screen decides.
+    assert.equal(readStoredChatHidden(store({}), phone), true);
+    assert.equal(readStoredChatHidden(store({}), ipadPortrait), true);
+    assert.equal(readStoredChatHidden(store({}), laptop), false);
+    // The legacy key was written on every load, so its 'false' isn't a choice; its 'true' always was.
+    assert.equal(readStoredChatHidden(store({ [CHAT_STORAGE_KEYS.HIDDEN]: 'false' }), phone), true);
+    assert.equal(readStoredChatHidden(store({ [CHAT_STORAGE_KEYS.HIDDEN]: 'true' }), laptop), true);
+    // A real choice wins either way.
+    assert.equal(readStoredChatHidden(store({ [CHAT_STORAGE_KEYS.HIDDEN_CHOICE]: 'false' }), phone), false);
+    assert.equal(readStoredChatHidden(store({ [CHAT_STORAGE_KEYS.HIDDEN_CHOICE]: 'true' }), laptop), true);
+    // Blocked storage: the screen decides.
+    assert.equal(readStoredChatHidden({ getItem: () => { throw new Error('blocked'); } }, phone), true);
+  });
+
+  it('stores only an explicit choice, and survives blocked storage', () => {
+    const saved: Record<string, string> = {};
+    storeChatHiddenChoice({ setItem: (k, v) => { saved[k] = v; } }, true);
+    assert.equal(saved[CHAT_STORAGE_KEYS.HIDDEN_CHOICE], 'true');
+    assert.doesNotThrow(() => storeChatHiddenChoice({ setItem: () => { throw new Error('blocked'); } }, false));
+    assert.doesNotThrow(() => storeChatHiddenChoice(null, false));
   });
 
   it('reads stored chat hidden flag safely from storage', () => {

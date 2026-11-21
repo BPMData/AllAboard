@@ -3711,8 +3711,8 @@ export default function Canvas({
           </div>
         )}
 
-        {/* Navigation & Brush Tools */}
-        <div className="flex items-center gap-0.5 bg-slate-100 p-1 rounded-lg border border-slate-200/80">
+        {/* Navigation & Brush Tools (wraps on narrow screens instead of cutting tools off) */}
+        <div className="flex flex-wrap items-center gap-0.5 bg-slate-100 p-1 rounded-lg border border-slate-200/80">
           <button
             type="button"
             onClick={() => setTool('pan')}
@@ -4448,7 +4448,7 @@ export default function Canvas({
         <div className="flex-1" />
 
         {/* Personal Actions, JSON Room Save & PNG Export */}
-        <div className="flex items-center gap-1.5">
+        <div className="flex flex-wrap items-center gap-1.5">
           <button
             type="button"
             disabled={!canDraw}
@@ -5068,7 +5068,8 @@ export default function Canvas({
             )}
           </div>
 
-          <div className="flex items-center gap-2">
+          {/* Wraps: without it, anything past the right edge (Ink by, Clear Ink on a 1366 px Chromebook) was cut off. */}
+          <div className="flex flex-wrap items-center gap-2">
             <button
               type="button"
               onClick={() => fileInputRef.current?.click()}
