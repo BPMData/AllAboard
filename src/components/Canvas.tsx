@@ -123,7 +123,7 @@ import {
   Undo2,
   Redo2,
   MousePointer2,
-  Paintbrush,
+  PenLine,
   SprayCan,
   Circle as CircleIcon,
   Highlighter,
@@ -3763,9 +3763,10 @@ export default function Canvas({
                 ? "bg-white text-brand-600 shadow-xs"
                 : "text-slate-600 hover:text-slate-900"
             )}
-            title="Solid Pen [P]"
+            title="Pen [P]"
+            aria-label="Pen"
           >
-            <Paintbrush size={17} />
+            <PenLine size={17} />
           </button>
           {/* Hollow Outline Shape Brush with Curved Radial Shape Selector (Circle, Square, Triangle, Diamond, Star) */}
           <div ref={hollowMenuRef} className="relative flex items-center">
@@ -4249,17 +4250,35 @@ export default function Canvas({
 
         <div className="h-5 w-px bg-slate-200" />
 
-        {/* Labeled Brush / Highlight / Eraser / Hollow Size Slider */}
-        <div className="flex items-center gap-1.5">
-          <label htmlFor="brush-size-slider" className="text-xs font-medium text-slate-600 whitespace-nowrap">
+        {/* Ink size: named for the tool it sizes, boxed like the Text group, with a live dot in the ink color so it
+            can't be mistaken for the text-size control next to it. */}
+        <div
+          className="flex items-center gap-1.5 px-2 py-0.5 rounded-lg border bg-slate-100 border-slate-200/80"
+          title="How thick your ink is (separate from text size)"
+        >
+          <label htmlFor="brush-size-slider" className="text-[11px] font-semibold text-slate-600 whitespace-nowrap">
             {tool === 'eraser'
-              ? 'Eraser:'
+              ? 'Eraser size:'
               : tool === 'highlighter'
               ? isCoverMode
-                ? 'Cover:'
-                : 'Highlight:'
-              : 'Size:'}
+                ? 'Cover size:'
+                : 'Highlighter size:'
+              : tool === 'hollow'
+              ? 'Brush size:'
+              : 'Pen size:'}
           </label>
+          <span className="flex items-center justify-center w-6 h-6 shrink-0" aria-hidden="true" data-testid="ink-size-preview">
+            <span
+              className={cn('rounded-full', tool === 'eraser' && 'border border-slate-400 bg-white')}
+              style={{
+                // Scaled so the slider's whole range fits; small sizes stay visible.
+                width: Math.max(3, Math.min(24, Math.round(strokeWidth * (tool === 'eraser' ? 0.06 : 0.48)))),
+                height: Math.max(3, Math.min(24, Math.round(strokeWidth * (tool === 'eraser' ? 0.06 : 0.48)))),
+                backgroundColor: tool === 'eraser' ? undefined : color,
+                opacity: tool === 'highlighter' && !isCoverMode ? 0.5 : 1,
+              }}
+            />
+          </span>
           <input
             id="brush-size-slider"
             type="range"
@@ -4317,7 +4336,7 @@ export default function Canvas({
           )}
           title="Text font size in pixels (independent of brush stroke width)"
         >
-          <span className="text-[11px] font-semibold text-slate-600 whitespace-nowrap">Text:</span>
+          <span className="text-[11px] font-semibold text-slate-600 whitespace-nowrap">Text size:</span>
           <div className="flex items-center gap-0.5">
             {TEXT_SIZE_PRESETS.map((preset) => (
               <button
