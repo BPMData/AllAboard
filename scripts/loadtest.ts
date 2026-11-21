@@ -2,7 +2,7 @@
  * Socket.IO load test: N fake students drawing at once, plus one teacher.
  *
  *   npx tsx scripts/loadtest.ts [--students 20] [--seconds 15] [--mode main|individual]
- *                               [--client legacy|batched] [--duty 0.4]
+ *                               [--client legacy|batched] [--duty 0.4] [--flush-ms 50]
  *
  * The server runs in this process and the fake clients run in a forked child, so the CPU figure is the
  * server's alone. Each client simulates a 60 Hz pointer: pen down for `duty` of the time, cursor always moving.
@@ -28,6 +28,8 @@ const SECONDS = Number(arg('seconds', '15'));
 const MODE = arg('mode', 'main');
 const CLIENT = arg('client', 'batched');
 const DUTY = Number(arg('duty', '0.4'));
+/** How often a batched client sends queued ink (defaults to the app's POINT_FLUSH_MS). */
+const FLUSH_MS = Number(arg('flush-ms', String(POINT_FLUSH_MS)));
 const FRAME_MS = 1000 / 60;
 const STROKE_MS = 1500;
 
@@ -124,7 +126,7 @@ async function runClients(port: number): Promise<void> {
         if (CLIENT === 'legacy') emit(s, 'element-append-points', { id: strokeId, boardId, newPoints: [px, py] });
         else {
           pending.push(px, py);
-          if (now - lastFlush >= POINT_FLUSH_MS) {
+          if (now - lastFlush >= FLUSH_MS) {
             lastFlush = now;
             flush();
           }

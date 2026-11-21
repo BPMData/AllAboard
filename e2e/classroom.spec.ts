@@ -387,16 +387,16 @@ test.describe('teacher and students', () => {
     await joinRoom(teacher.page, room, 'Ms T', PIN);
     await joinRoom(student.page, room, 'Alex');
 
-    // A long, slow stroke spans many 50 ms send batches.
+    // A long, slow stroke (~1.5 s) spans several POINT_FLUSH_MS (500 ms) send batches.
     await student.page.mouse.move(600, 350);
     await student.page.mouse.down();
     for (let i = 1; i <= 40; i++) {
       await student.page.mouse.move(600 + i * 12, 350 + Math.round(Math.sin(i / 4) * 80));
-      await student.page.waitForTimeout(8);
+      await student.page.waitForTimeout(35);
     }
     await student.page.mouse.up();
     await expect(await rosterRow(teacher.page, 'Alex')).toContainText('1 item');
-    await teacher.page.waitForTimeout(300); // last batch + one frame
+    await teacher.page.waitForTimeout(800); // last 500 ms batch + one frame
 
     const strokeOf = async (page: Page) => {
       const download = page.waitForEvent('download');
