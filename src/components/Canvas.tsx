@@ -123,7 +123,9 @@ import {
   Undo2,
   Redo2,
   MousePointer2,
-  Paintbrush,
+  PenLine,
+  SlidersHorizontal,
+  ChevronUp,
   SprayCan,
   Circle as CircleIcon,
   Highlighter,
@@ -170,6 +172,7 @@ import {
 } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { CURSOR_EMIT_MS } from '../lib/drawThrottle';
+import { isPhoneViewport } from '../lib/compactLayout';
 import { STATUS_OPTIONS } from './StudentStatusBadge';
 
 type HistoryAction =
@@ -724,6 +727,19 @@ export default function Canvas({
       : tool === 'hollow'
       ? hollowWidth
       : penWidth;
+
+  // Phones: the full toolbar would cover most of the board, so it folds behind a "Tools" button (closed by default).
+  // Tablets, Chromebooks and laptops always show it.
+  const [isPhone, setIsPhone] = useState(() =>
+    typeof window !== 'undefined' ? isPhoneViewport(window.innerWidth, window.innerHeight) : false
+  );
+  const [phoneToolsOpen, setPhoneToolsOpen] = useState(false);
+  useEffect(() => {
+    const update = () => setIsPhone(isPhoneViewport(window.innerWidth, window.innerHeight));
+    window.addEventListener('resize', update);
+    return () => window.removeEventListener('resize', update);
+  }, []);
+  const toolbarCollapsed = isPhone && !phoneToolsOpen;
 
   // Infinite Canvas Viewport Transform
   const [stageScale, setStageScale] = useState(1);
@@ -3711,8 +3727,58 @@ export default function Canvas({
           </div>
         )}
 
-        {/* Navigation & Brush Tools */}
-        <div className="flex items-center gap-0.5 bg-slate-100 p-1 rounded-lg border border-slate-200/80">
+        {/* Phone-only: Tools toggle (showing the current ink) and Undo, which is the one action worth keeping one tap away. */}
+        {isPhone && (
+          <div className="flex items-center gap-1.5" data-testid="phone-toolbar">
+            <button
+              type="button"
+              onClick={() => setPhoneToolsOpen((open) => !open)}
+              aria-expanded={phoneToolsOpen}
+              aria-label={phoneToolsOpen ? 'Hide tools' : 'Show tools'}
+              className={cn(
+                'flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold border transition-colors cursor-pointer',
+                phoneToolsOpen
+                  ? 'bg-slate-100 text-slate-700 border-slate-200/80'
+                  : 'bg-brand-600 text-white border-brand-700 shadow-xs'
+              )}
+            >
+              {phoneToolsOpen ? <ChevronUp size={15} /> : <SlidersHorizontal size={15} />}
+              <span>{phoneToolsOpen ? 'Done' : 'Tools'}</span>
+              {!phoneToolsOpen && (
+                <span
+                  aria-hidden="true"
+                  className="rounded-full ring-2 ring-white"
+                  style={{
+                    width: Math.max(6, Math.min(14, Math.round(strokeWidth * 0.3))),
+                    height: Math.max(6, Math.min(14, Math.round(strokeWidth * 0.3))),
+                    backgroundColor: tool === 'eraser' ? '#fff' : color,
+                  }}
+                />
+              )}
+            </button>
+            {toolbarCollapsed && (
+              <button
+                type="button"
+                disabled={!canDraw}
+                onClick={() => {
+                  if (editingNote) commitEditingNote();
+                  performUndo();
+                }}
+                className="flex items-center gap-1 px-2 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-100 rounded-lg transition-colors whitespace-nowrap cursor-pointer disabled:opacity-40"
+                aria-label="Undo"
+              >
+                <Undo2 size={15} />
+                <span>Undo</span>
+              </button>
+            )}
+          </div>
+        )}
+
+        {/* Everything below folds away on phones until "Tools" is tapped. `contents` keeps the wrapping layout as is. */}
+        <div className={toolbarCollapsed ? 'hidden' : 'contents'}>
+
+        {/* Navigation & Brush Tools (wraps on narrow screens instead of cutting tools off) */}
+        <div className="flex flex-wrap items-center gap-0.5 bg-slate-100 p-1 rounded-lg border border-slate-200/80">
           <button
             type="button"
             onClick={() => setTool('pan')}
@@ -3763,9 +3829,10 @@ export default function Canvas({
                 ? "bg-white text-brand-600 shadow-xs"
                 : "text-slate-600 hover:text-slate-900"
             )}
-            title="Solid Pen [P]"
+            title="Pen [P]"
+            aria-label="Pen"
           >
-            <Paintbrush size={17} />
+            <PenLine size={17} />
           </button>
           {/* Hollow Outline Shape Brush with Curved Radial Shape Selector (Circle, Square, Triangle, Diamond, Star) */}
           <div ref={hollowMenuRef} className="relative flex items-center">
@@ -4247,19 +4314,36 @@ export default function Canvas({
           </div>
         </div>
 
-        <div className="h-5 w-px bg-slate-200" />
-
-        {/* Labeled Brush / Highlight / Eraser / Hollow Size Slider */}
-        <div className="flex items-center gap-1.5">
-          <label htmlFor="brush-size-slider" className="text-xs font-medium text-slate-600 whitespace-nowrap">
+        {/* Ink size: named for the tool it sizes, boxed like the Text group, with a live dot in the ink color so it
+            can't be mistaken for the text-size control next to it. */}
+        <div
+          className="flex items-center gap-1 px-1.5 py-0.5 rounded-lg border bg-brand-600 border-brand-700 text-white shadow-xs"
+          title="How thick your ink is (separate from text size)"
+        >
+          <label htmlFor="brush-size-slider" className="text-[11px] font-semibold text-white whitespace-nowrap">
             {tool === 'eraser'
-              ? 'Eraser:'
+              ? 'Eraser size:'
               : tool === 'highlighter'
               ? isCoverMode
-                ? 'Cover:'
-                : 'Highlight:'
-              : 'Size:'}
+                ? 'Cover size:'
+                : 'Highlighter size:'
+              : tool === 'hollow'
+              ? 'Brush size:'
+              : 'Pen size:'}
           </label>
+          <span className="flex items-center justify-center w-6 h-6 shrink-0" aria-hidden="true" data-testid="ink-size-preview">
+            <span
+              // White ring keeps the dot visible on the green box whatever the ink color (green ink included).
+              className={cn('rounded-full ring-2 ring-white', tool === 'eraser' && 'bg-white ring-white/60')}
+              style={{
+                // Scaled so the slider's whole range fits; small sizes stay visible.
+                width: Math.max(3, Math.min(24, Math.round(strokeWidth * (tool === 'eraser' ? 0.06 : 0.48)))),
+                height: Math.max(3, Math.min(24, Math.round(strokeWidth * (tool === 'eraser' ? 0.06 : 0.48)))),
+                backgroundColor: tool === 'eraser' ? undefined : color,
+                opacity: tool === 'highlighter' && !isCoverMode ? 0.5 : 1,
+              }}
+            />
+          </span>
           <input
             id="brush-size-slider"
             type="range"
@@ -4275,9 +4359,9 @@ export default function Canvas({
             }
             value={strokeWidth}
             onChange={(e) => handleSelectStrokeWidth(parseInt(e.target.value, 10))}
-            className="w-24 h-1.5 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-brand-600"
+            className="w-24 h-1.5 bg-brand-300 rounded-lg appearance-none cursor-pointer accent-white"
           />
-          <span className="text-xs font-mono tabular-nums text-slate-600 w-8">
+          <span className="text-xs font-mono tabular-nums text-white w-7 text-right">
             {strokeWidth}
           </span>
         </div>
@@ -4307,6 +4391,10 @@ export default function Canvas({
           </div>
         )}
 
+        {/* Line break: text size, smoothing and finger mode always start a new row, so the ink-size control above
+            (on the row with the colors) never sits next to "Text size" and gets mistaken for it. */}
+        <div className="basis-full h-0" aria-hidden="true" />
+
         {/* Dedicated Independent Text Size Controls */}
         <div
           className={cn(
@@ -4317,7 +4405,7 @@ export default function Canvas({
           )}
           title="Text font size in pixels (independent of brush stroke width)"
         >
-          <span className="text-[11px] font-semibold text-slate-600 whitespace-nowrap">Text:</span>
+          <span className="text-[11px] font-semibold text-slate-600 whitespace-nowrap">Text size:</span>
           <div className="flex items-center gap-0.5">
             {TEXT_SIZE_PRESETS.map((preset) => (
               <button
@@ -4426,7 +4514,7 @@ export default function Canvas({
         <div className="flex-1" />
 
         {/* Personal Actions, JSON Room Save & PNG Export */}
-        <div className="flex items-center gap-1.5">
+        <div className="flex flex-wrap items-center gap-1.5">
           <button
             type="button"
             disabled={!canDraw}
@@ -4519,11 +4607,12 @@ export default function Canvas({
             <span>Export PNG</span>
           </button>
         </div>
+        </div>
       </div>
 
       {/* Teacher Classroom Moderation, Breakout Switchboard & Worksheet Deck OR Student Sub-Board Bar */}
       {isTeacher ? (
-        <div className="px-4 py-2 bg-amber-50/90 border-b border-amber-200/80 flex flex-wrap items-center justify-between gap-3 z-10">
+        <div className={cn('px-4 py-2 bg-amber-50/90 border-b border-amber-200/80 flex flex-wrap items-center justify-between gap-3 z-10', toolbarCollapsed && 'hidden')}>
           <div className="flex flex-wrap items-center gap-2 text-xs text-amber-900">
             <span className="font-display font-semibold">Teacher</span>
 
@@ -5046,7 +5135,8 @@ export default function Canvas({
             )}
           </div>
 
-          <div className="flex items-center gap-2">
+          {/* Wraps: without it, anything past the right edge (Ink by, Clear Ink on a 1366 px Chromebook) was cut off. */}
+          <div className="flex flex-wrap items-center gap-2">
             <button
               type="button"
               onClick={() => fileInputRef.current?.click()}

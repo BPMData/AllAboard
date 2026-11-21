@@ -563,6 +563,83 @@ test.describe('chat sidebar', () => {
     await expect.poll(async () => Math.round((await sidebar.boundingBox())!.width)).toBe(320);
   });
 
+  test('no teacher toolbar button is cut off on a Chromebook, an iPad or a phone', async ({ browser }) => {
+    for (const [w, h] of [[1366, 768], [820, 1180], [390, 844]]) {
+      const context = await browser.newContext({ viewport: { width: w, height: h } });
+      const page = await context.newPage();
+      await page.goto(`/?room=${uniqueRoom('fit')}`);
+      await page.getByLabel('Your Display Name').fill('Ms T');
+      await page.getByText('Instructor? Set or enter a room Teacher PIN').click();
+      await page.locator('#teacher-pin-input').fill(PIN);
+      await page.getByRole('button', { name: 'Join Classroom' }).click();
+      if (w < 640) await page.getByRole('button', { name: 'Show tools' }).click(); // phones start folded
+      await expect(page.getByRole('button', { name: 'Clear Ink' })).toBeVisible();
+      const cutOff = await page.evaluate(() =>
+        Array.from(document.querySelectorAll('button'))
+          .filter((b) => {
+            const r = b.getBoundingClientRect();
+            if (r.width === 0 || b.closest('[aria-label="Class chat sidebar"]')) return false;
+            return r.right > window.innerWidth + 1 || r.left < -1;
+          })
+          .map((b) => (b.textContent || b.title || '?').trim())
+      );
+      expect(cutOff, `${w}x${h}`).toEqual([]);
+      await context.close();
+    }
+  });
+
+  test('on a phone the toolbar folds behind Tools; tablets always show it', async ({ browser }) => {
+    const phone = await browser.newContext({ viewport: { width: 390, height: 844 } });
+    const page = await phone.newPage();
+    await page.goto(`/?room=${uniqueRoom('phonetools')}`);
+    await page.getByLabel('Your Display Name').fill('Ms T');
+    await page.getByText('Instructor? Set or enter a room Teacher PIN').click();
+    await page.locator('#teacher-pin-input').fill(PIN);
+    await page.getByRole('button', { name: 'Join Classroom' }).click();
+
+    const canvas = page.locator('.konvajs-content').first();
+    await expect(page.getByRole('button', { name: 'Show tools' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Undo' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Clear Ink' })).toBeHidden();
+    await expect(page.locator('#brush-size-slider')).toBeHidden();
+    const foldedHeight = (await canvas.boundingBox())!.height;
+
+    await page.getByRole('button', { name: 'Show tools' }).click();
+    await expect(page.locator('#brush-size-slider')).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Clear Ink' })).toBeVisible();
+    await page.getByRole('button', { name: 'Hide tools' }).click();
+    await expect(page.locator('#brush-size-slider')).toBeHidden();
+    await expect.poll(async () => Math.round((await canvas.boundingBox())!.height)).toBe(Math.round(foldedHeight));
+    await phone.close();
+
+    const tablet = await browser.newContext({ viewport: { width: 820, height: 1180 } });
+    const tabletPage = await tablet.newPage();
+    await tabletPage.goto(`/?room=${uniqueRoom('tablettools')}`);
+    await tabletPage.getByLabel('Your Display Name').fill('Alex');
+    await tabletPage.getByRole('button', { name: 'Join Classroom' }).click();
+    await expect(tabletPage.locator('#brush-size-slider')).toBeVisible();
+    await expect(tabletPage.getByRole('button', { name: 'Show tools' })).toHaveCount(0);
+    await tablet.close();
+  });
+
+  test('starts hidden on a phone; opening it is remembered across a reload', async ({ browser }) => {
+    const context = await browser.newContext({ viewport: { width: 390, height: 844 } });
+    const page = await context.newPage();
+    await page.goto(`/?room=${uniqueRoom('phonechat')}`);
+    await page.getByLabel('Your Display Name').fill('Alex');
+    await page.getByRole('button', { name: 'Join Classroom' }).click();
+
+    const showChat = page.getByRole('button', { name: 'Show chat sidebar' });
+    await expect(showChat).toBeVisible();
+    await expect(page.getByLabel('Class chat sidebar')).toHaveCount(0);
+
+    await showChat.click();
+    await expect(page.getByLabel('Class chat sidebar')).toBeVisible();
+    await page.reload();
+    await expect(page.getByLabel('Class chat sidebar')).toBeVisible();
+    await context.close();
+  });
+
   test('can be hidden with one click to focus on drawing and restored with unread count', async ({ browser }) => {
     const room = uniqueRoom('hidechat');
     const teacher = await newUser(browser);

@@ -23,6 +23,7 @@ import {
   clampChatWidth,
   readStoredChatWidth,
   readStoredChatHidden,
+  storeChatHiddenChoice,
 } from './lib/chatSidebar';
 import Chat, { getUserColor } from './components/Chat';
 import Canvas from './components/Canvas';
@@ -194,7 +195,7 @@ export default function App() {
   });
   const [isChatHidden, setIsChatHidden] = useState<boolean>(() => {
     try {
-      return readStoredChatHidden(typeof window !== 'undefined' ? window.localStorage : null);
+      return typeof window !== 'undefined' ? readStoredChatHidden(window.localStorage, window.innerWidth) : false;
     } catch {
       return false;
     }
@@ -209,11 +210,8 @@ export default function App() {
     if (!isChatHidden) {
       setUnreadChatCount(0);
     }
-    try {
-      localStorage.setItem(CHAT_STORAGE_KEYS.HIDDEN, isChatHidden ? 'true' : 'false');
-    } catch {
-      // Ignore
-    }
+    // Not saved here: only a click on hide/show is saved (storeChatHiddenChoice), so the narrow-screen default
+    // keeps applying until someone actually chooses.
   }, [isChatHidden]);
 
   useEffect(() => {
@@ -1963,7 +1961,10 @@ export default function App() {
               )
             )
           }
-          onHideChat={() => setIsChatHidden(true)}
+          onHideChat={() => {
+            setIsChatHidden(true);
+            storeChatHiddenChoice(window.localStorage, true);
+          }}
         />
       )}
 
@@ -2018,7 +2019,10 @@ export default function App() {
           fullMainBackground={background}
           isChatHidden={isChatHidden}
           unreadChatCount={unreadChatCount}
-          onShowChat={() => setIsChatHidden(false)}
+          onShowChat={() => {
+            setIsChatHidden(false);
+            storeChatHiddenChoice(window.localStorage, false);
+          }}
         />
       </div>
 
