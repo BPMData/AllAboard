@@ -8,5 +8,9 @@
  */
 export const POINT_FLUSH_MS = 500;
 
-/** Remote cursors: send our pointer position at most this often (10/s). */
-export const CURSOR_EMIT_MS = 100;
+/**
+ * Remote cursors: send our pointer position at most this often (4/s); the server also batches each board's cursors on
+ * this tick. Your own pointer is the real mouse and never waits on this. Other people's cursors hop four times a
+ * second, like their ink arriving in chunks, instead of gliding.
+ */
+export const CURSOR_EMIT_MS = 250;

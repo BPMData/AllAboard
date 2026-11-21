@@ -163,13 +163,13 @@ describe('AllAboard server & Socket.IO integration tests', () => {
   it('batches cursors: one message per board per tick, latest position per user, none for other boards', async () => {
     const { socket: a } = await joinTracked({ roomId: 'cursor-batch', userId: 'a', name: 'A' });
     const { socket: b } = await joinTracked({ roomId: 'cursor-batch', userId: 'b', name: 'B' });
-    await delay(150); // let any join-time batch go out
+    await delay(400); // let any join-time batch go out
     const got: any[] = [];
     b.on('cursors-batch', (msg: any) => got.push(msg));
     for (let i = 0; i < 5; i++) a.emit('cursor-move', { boardId: 'main', x: i, y: i });
     b.emit('cursor-move', { boardId: 'main', x: 9, y: 9 });
     a.emit('cursor-move', { boardId: 'some-other-board', x: 50, y: 50 }); // not the board A is on: dropped
-    await delay(250);
+    await delay(400);
     // The moves can straddle one tick boundary, so allow two batches, never one message per move.
     assert.ok(got.length >= 1 && got.length <= 2, `got ${got.length} batches`);
     const all = got.flatMap((m) => m.cursors);
@@ -183,7 +183,7 @@ describe('AllAboard server & Socket.IO integration tests', () => {
     a.on('cursors-batch', (msg: any) => toA.push(msg));
     got.length = 0;
     a.emit('cursor-move', { boardId: 'main', x: 7, y: 7 });
-    await delay(250);
+    await delay(400);
     assert.equal(toA.length, 0);
     assert.equal(got.length, 1);
   });
@@ -2009,7 +2009,7 @@ describe('AllAboard server & Socket.IO integration tests', () => {
       s1.emit('element-start', stroke('live', 'r1_ind_s1', 's1'));
       s1.emit('cursor-move', { userId: 's1', boardId: 'r1_ind_s1', x: 1, y: 1 });
       s2.emit('element-start', stroke('other', 'r1_ind_s2', 's2'));
-      await delay(300);
+      await delay(500); // one cursor tick (CURSOR_EMIT_MS) plus slack
       const evs = t.map((e) => e.ev);
       assert.ok(evs.includes('element-start') && evs.includes('cursors-batch'));
       const digested = t.filter((e) => e.ev === 'boards-digest').flatMap((e) => e.data.boards.map((d: any) => d.boardId));

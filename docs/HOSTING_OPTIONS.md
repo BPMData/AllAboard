@@ -47,7 +47,9 @@ always draws instantly).
 | 200 students, individual breakouts | ~15% | ~15% | ~0 | ~0.4 MB/s |
 
 Flush-rate sweep (90 students, pen down 40%): 50 ms → 45% CPU, 333 ms → 18%, 500 ms → 15%, 1000 ms → 14%. Past 500 ms
-the remaining cost is cursors (10/s, already batched per board) and the per-stroke `element-start`.
+the remaining cost is cursors and the per-stroke `element-start`. Cursors were then cut from 10/s to 4/s
+(`CURSOR_EMIT_MS` 250 ms): 30 students pen 15% → ~3% CPU, 18 msgs/s per student; 90 students pen 40% → ~12%, 101/s.
+The capacity table below wasn't raised for this; treat it as conservative.
 
 Takeaways:
 - **Each app is one Node process, so it uses at most one core**, whatever the machine has. AllAboard can't be spread
@@ -79,7 +81,7 @@ itself. Memory and network bandwidth aren't the limit on either machine.
 
 ### 3.2 If more is ever needed (not planned)
 
-- Cheap knobs first: cursor rate (`CURSOR_EMIT_MS`, now 100 ms; 250 ms would roughly halve what's left on a busy board).
+- Cheap knobs are mostly used up: ink is at 2/s and cursors at 4/s. Going lower saves little (see the sweep above).
 - **Split rooms across processes:** rooms never interact, so one AllAboard process per core, with the proxy routing
   each room code to the same process, scales with cores (`e2-standard-2` ≈ 2×, `e2-standard-4` ≈ 4×) without a shared
   database. Needs the room code in the connection URL and one SQLite file per process.
