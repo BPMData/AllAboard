@@ -55,6 +55,8 @@ specs are in git history.
 - [ ] **PowerPoint (`.pptx`) uploads:** add a tip to use *Save as PDF*, or to import through Slides / PDF from Drive.
 
 ### Housekeeping
+- [ ] **Hosting: undecided.** Options, measurements, prices and a Compute Engine VM sketch are archived in
+      [`docs/HOSTING_OPTIONS.md`](docs/HOSTING_OPTIONS.md). Nothing chosen; first read the `[load]` logs after PR #48.
 - [ ] Add a lifecycle rule to the `run-sources-loyal-rookery-403218-us-east1` bucket (delete objects older than 30 days).
       It stores ~80 MB of uploaded source per deploy.
 
