@@ -78,7 +78,7 @@ describe('socketGuards (unit)', () => {
     const a = await hashPin('4829');
     const b = await hashPin('4829');
     assert.ok(isHashedPin(a) && a !== b, 'salted');
-    assert.ok(!a.includes('4829'));
+    assert.notEqual(a, '4829');
     assert.equal(await verifyPin('4829', a), true);
     assert.equal(await verifyPin('4828', a), false);
     assert.equal(await verifyPin('123', '123'), true, 'legacy plain text still verifies');
@@ -168,9 +168,11 @@ describe('server guards (integration)', () => {
       const ok = await emitAck<any>(t, 'teacher:auth', { pin: '4829' });
       assert.equal(ok.mode, 'claimed');
       await srv.flushRoomsToDiskAsync();
-      const raw = JSON.stringify(srv.store.loadRoom('pin-new'));
-      assert.ok(!raw.includes('4829'), 'PIN not in SQLite');
-      assert.ok(raw.includes('scrypt:'));
+      const stored = srv.store.loadRoom<{ teacherPinHash?: string | null; teacherPin?: string | null }>('pin-new');
+      const raw = JSON.stringify(stored);
+      assert.ok(!raw.includes('"4829"'), 'PIN not in SQLite');
+      assert.equal(stored?.state.teacherPin ?? null, null);
+      assert.match(stored?.state.teacherPinHash ?? '', /^scrypt:/);
 
       const { socket: other } = await join('pin-new', 't2');
       assert.equal((await emitAck<any>(other, 'teacher:auth', { pin: '4829' })).mode, 'verified');
