@@ -327,17 +327,17 @@ export default function Chat({
     <aside
       aria-label="Class chat sidebar"
       style={{ width: `${width}px` }}
-      className="relative flex flex-col h-full bg-slate-50 border-r border-slate-200 shrink-0 select-text"
+      className="relative flex flex-col h-full bg-slate-50 border-r border-[#CBD5E1] shrink-0 select-text"
     >
       {/* Top Studio Header, Room Switcher & PIN-Protected Teacher Control */}
-      <div className="p-3.5 border-b border-slate-200 bg-white space-y-2.5">
+      <div className="p-3.5 border-b border-[#CBD5E1] oh-chrome-bar space-y-2.5">
         <div className="flex items-center justify-between gap-1.5">
           <div className="flex items-center gap-2 min-w-0 shrink-0">
             <img
               src="/assets/aistudio/favicon_68cc1684.svg"
               alt="AllAboard"
               referrerPolicy="no-referrer"
-              className="w-7 h-7 rounded-lg shrink-0 object-contain shadow-xs"
+              className="w-7 h-7 rounded-[2px] border border-[#CBD5E1] shrink-0 object-contain"
             />
             <span className="font-display font-bold text-base tracking-tight text-slate-900 whitespace-nowrap shrink-0">
               AllAboard
@@ -349,7 +349,7 @@ export default function Chat({
               <button
                 type="button"
                 onClick={onStepDownTeacher}
-                className="flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium bg-amber-50 text-amber-800 border border-amber-200 hover:bg-amber-100 transition-colors whitespace-nowrap shrink-0 cursor-pointer"
+                className="flex items-center gap-1.5 px-2.5 py-1 rounded-[2px] text-xs font-medium oh-btn text-amber-800 border transition-colors whitespace-nowrap shrink-0 cursor-pointer"
                 title="Click to exit Teacher Mode"
               >
                 <Shield size={13} className="text-amber-600" />
@@ -364,10 +364,10 @@ export default function Chat({
                   setPinError(null);
                 }}
                 className={cn(
-                  "flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium transition-colors whitespace-nowrap shrink-0 cursor-pointer",
+                  "flex items-center gap-1.5 px-2.5 py-1 rounded-[2px] border text-xs font-medium transition-colors whitespace-nowrap shrink-0 cursor-pointer",
                   showPinPrompt
-                    ? "bg-slate-900 text-white"
-                    : "bg-slate-100 text-slate-600 hover:text-slate-900"
+                    ? "oh-btn-dark text-white"
+                    : "oh-btn text-slate-700 hover:text-slate-900"
                 )}
                 title={
                   hasTeacherPin
@@ -383,7 +383,7 @@ export default function Chat({
             <button
               type="button"
               onClick={onHideChat}
-              className="p-1.5 rounded-md text-slate-500 hover:text-slate-900 hover:bg-slate-100 transition-colors cursor-pointer shrink-0"
+              className="p-1.5 rounded-[2px] border oh-btn text-slate-600 hover:text-slate-900 transition-colors cursor-pointer shrink-0"
               title="Hide chat sidebar to focus on drawing"
               aria-label="Hide chat sidebar"
             >
@@ -393,7 +393,7 @@ export default function Chat({
         </div>
 
         {/* Room Code Bar + Custom or Random "New Room" Controls */}
-        <div className="px-2.5 py-2 rounded-lg bg-brand-50/45 border border-brand-200/70 text-xs space-y-1.5">
+        <div className="px-2.5 py-2 rounded-[3px] bg-brand-50/55 border border-brand-300/70 text-xs space-y-1.5">
           {isEditingRoom ? (
             <form onSubmit={handleRoomSubmit} className="flex items-center gap-1 flex-1 min-w-0">
               <input
@@ -408,12 +408,12 @@ export default function Chat({
                 placeholder="room-code"
                 autoFocus
                 maxLength={24}
-                className="w-full min-w-0 px-2 py-0.5 bg-white border border-slate-300 rounded font-mono text-xs text-slate-900 focus:outline-none focus:border-brand-500"
+                className="w-full min-w-0 px-2 py-0.5 bg-white border border-[#CBD5E1] rounded-[2px] font-mono text-xs text-slate-900 focus:outline-none focus:border-brand-500"
               />
               <button
                 type="submit"
                 disabled={!roomDraft.replace(/^-|-$/g, '').trim()}
-                className="p-1 bg-brand-600 text-white rounded hover:bg-brand-700 disabled:opacity-40 cursor-pointer shrink-0"
+                className="p-1 oh-btn-primary border text-white rounded-[2px] disabled:opacity-40 cursor-pointer shrink-0"
                 title="Switch to custom room code"
               >
                 <Check size={12} />
@@ -424,7 +424,7 @@ export default function Chat({
                   setIsEditingRoom(false);
                   onCreateNewRoom();
                 }}
-                className="flex items-center gap-1 px-1.5 py-0.5 bg-slate-200/80 hover:bg-slate-300/80 text-slate-700 rounded text-[11px] font-medium transition-colors cursor-pointer shrink-0"
+                className="flex items-center gap-1 px-1.5 py-0.5 oh-btn border text-slate-700 rounded-[2px] text-[11px] font-medium transition-colors cursor-pointer shrink-0"
                 title="Generate a random room code"
               >
                 <Shuffle size={11} />
@@ -473,7 +473,7 @@ export default function Chat({
                 <button
                   type="button"
                   onClick={handleCopyRoomLink}
-                  className="flex items-center gap-1 px-1.5 py-0.5 text-[11px] font-medium text-slate-600 hover:text-slate-900 hover:bg-brand-100/60 rounded transition-colors cursor-pointer whitespace-nowrap"
+                  className="flex items-center gap-1 px-1.5 py-0.5 text-[11px] font-medium text-slate-600 hover:text-slate-900 hover:bg-brand-100/60 rounded-[2px] transition-colors cursor-pointer whitespace-nowrap"
                   title="Copy room invite link for students"
                 >
                   <Copy size={11} />
@@ -486,7 +486,7 @@ export default function Chat({
                     setRoomDraft('');
                     setIsEditingRoom(true);
                   }}
-                  className="flex items-center gap-1 px-1.5 py-0.5 text-[11px] font-medium text-brand-600 hover:text-brand-700 hover:bg-brand-100/70 rounded transition-colors cursor-pointer whitespace-nowrap"
+                  className="flex items-center gap-1 px-1.5 py-0.5 text-[11px] font-medium text-brand-600 hover:text-brand-700 hover:bg-brand-100/70 rounded-[2px] transition-colors cursor-pointer whitespace-nowrap"
                   title="Enter a custom room code or generate a random room"
                 >
                   <PlusCircle size={11} />
@@ -498,7 +498,7 @@ export default function Chat({
                     <button
                       type="button"
                       onClick={onLeaveRoom}
-                      className="flex items-center gap-1 px-1.5 py-0.5 text-[11px] font-medium text-slate-600 hover:text-slate-900 hover:bg-slate-200/60 rounded transition-colors cursor-pointer whitespace-nowrap"
+                      className="flex items-center gap-1 px-1.5 py-0.5 text-[11px] font-medium text-slate-600 hover:text-slate-900 hover:bg-slate-200/60 rounded-[2px] transition-colors cursor-pointer whitespace-nowrap"
                       title="Return to Welcome screen"
                     >
                       <LogOut size={11} />
@@ -513,7 +513,7 @@ export default function Chat({
 
         {/* Teacher PIN Claim / Verification Drawer */}
         {showPinPrompt && !isTeacher && (
-          <div className="p-3 rounded-lg bg-slate-900 text-white space-y-2.5">
+          <div className="p-3 rounded-[3px] bg-slate-900 border border-[#243044] text-white space-y-2.5">
             <div className="flex items-center justify-between">
               <span className="font-display font-semibold text-xs">
                 {hasTeacherPin ? 'Unlock Teacher Mode' : 'Claim Teacher Mode (Set PIN)'}
@@ -554,7 +554,7 @@ export default function Chat({
                   data-lpignore="true"
                   data-1p-ignore="true"
                   className={cn(
-                    'w-full pl-2.5 pr-8 py-1.5 bg-slate-800 border border-slate-700 rounded text-xs text-white placeholder:text-slate-500 font-mono focus:outline-none focus:border-brand-500',
+                    'w-full pl-2.5 pr-8 py-1.5 bg-slate-800 border border-[#243044] rounded-[2px] text-xs text-white placeholder:text-slate-500 font-mono focus:outline-none focus:border-brand-500',
                     !showPinInput && 'pin-masked'
                   )}
                 />
@@ -571,7 +571,12 @@ export default function Chat({
               <button
                 type="submit"
                 disabled={pinInput.trim().length < (hasTeacherPin ? 3 : MIN_TEACHER_PIN_LENGTH) || isSubmittingPin}
-                className="px-3 py-1.5 bg-brand-600 hover:bg-brand-500 disabled:bg-slate-800 disabled:text-slate-600 text-xs font-semibold rounded transition-colors whitespace-nowrap cursor-pointer"
+                className={cn(
+                  "px-3 py-1.5 border text-xs font-semibold rounded-[2px] transition-colors whitespace-nowrap",
+                  pinInput.trim().length < (hasTeacherPin ? 3 : MIN_TEACHER_PIN_LENGTH) || isSubmittingPin
+                    ? "bg-slate-800 border-[#243044] text-slate-500 cursor-not-allowed"
+                    : "oh-btn-primary text-white cursor-pointer"
+                )}
               >
                 {hasTeacherPin ? 'Unlock' : 'Set PIN'}
               </button>
@@ -587,7 +592,7 @@ export default function Chat({
                     setPinError(null);
                     onCreateNewRoom();
                   }}
-                  className="w-full py-1.5 px-2.5 bg-amber-500 hover:bg-amber-400 text-slate-950 font-semibold text-xs rounded flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+                  className="w-full py-1.5 px-2.5 oh-btn-amber border text-slate-950 font-semibold text-xs rounded-[2px] flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
                 >
                   <PlusCircle size={13} />
                   <span>Create Fresh Room & Claim Teacher</span>
@@ -598,20 +603,20 @@ export default function Chat({
         )}
 
         {/* Interactive Filter Tabs */}
-        <div className="grid grid-cols-2 gap-1 p-1 bg-slate-100 rounded-lg">
+        <div className="grid grid-cols-2 gap-1 p-0.5 bg-slate-100 border border-[#CBD5E1] rounded-[2px]">
           <button
             type="button"
             onClick={() => setActiveTab('chat')}
             className={cn(
-              "flex items-center justify-center gap-1.5 py-1.5 px-3 text-xs font-medium rounded-md transition-colors whitespace-nowrap shrink-0 cursor-pointer",
+              "flex items-center justify-center gap-1.5 py-1.5 px-3 text-xs rounded-[2px] border transition-colors whitespace-nowrap shrink-0 cursor-pointer",
               activeTab === 'chat'
-                ? "bg-white text-slate-900 shadow-xs"
-                : "text-slate-600 hover:text-slate-900"
+                ? "oh-btn-active font-semibold text-brand-900"
+                : "border-transparent font-medium text-slate-600 hover:text-slate-900"
             )}
           >
             <MessageSquare size={14} />
             <span>Chat</span>
-            <span className="font-mono tabular-nums text-[11px] text-slate-400">
+            <span className="font-mono tabular-nums text-[11px] text-slate-500">
               ({messages.length})
             </span>
           </button>
@@ -619,15 +624,15 @@ export default function Chat({
             type="button"
             onClick={() => setActiveTab('roster')}
             className={cn(
-              "flex items-center justify-center gap-1.5 py-1.5 px-3 text-xs font-medium rounded-md transition-colors whitespace-nowrap shrink-0 cursor-pointer",
+              "flex items-center justify-center gap-1.5 py-1.5 px-3 text-xs rounded-[2px] border transition-colors whitespace-nowrap shrink-0 cursor-pointer",
               activeTab === 'roster'
-                ? "bg-white text-slate-900 shadow-xs"
-                : "text-slate-600 hover:text-slate-900"
+                ? "oh-btn-active font-semibold text-brand-900"
+                : "border-transparent font-medium text-slate-600 hover:text-slate-900"
             )}
           >
             <Users size={14} />
             <span>Class</span>
-            <span className="font-mono tabular-nums text-[11px] text-slate-400">
+            <span className="font-mono tabular-nums text-[11px] text-slate-500">
               ({users.length})
             </span>
           </button>
@@ -665,7 +670,7 @@ export default function Chat({
                     >
                       <div className="flex items-center gap-1.5 mb-1 px-0.5 text-xs w-full">
                         <span
-                          className="w-2 h-2 rounded-xs shrink-0"
+                          className="w-2 h-2 rounded-[2px] shrink-0"
                           style={{ backgroundColor: resolvedColor }}
                           aria-hidden="true"
                         />
@@ -695,7 +700,7 @@ export default function Chat({
                           <button
                             type="button"
                             onClick={() => onTeacherDeleteMessage(msg.id)}
-                            className="p-0.5 text-slate-400 hover:text-red-600 rounded transition-colors cursor-pointer shrink-0"
+                            className="p-0.5 text-slate-400 hover:text-red-600 rounded-[2px] transition-colors cursor-pointer shrink-0"
                             title="Delete chat message"
                             aria-label={`Delete message from ${msg.userName}`}
                           >
@@ -705,10 +710,10 @@ export default function Chat({
                       </div>
                       <div
                         className={cn(
-                          "w-full px-3 py-2 rounded-lg text-sm leading-relaxed border break-words",
+                          "w-full px-3 py-2 rounded-[3px] text-sm leading-relaxed border break-words",
                           isMe
-                            ? "bg-brand-50/75 border-brand-200/80 text-slate-900"
-                            : "bg-white border-slate-200/90 text-slate-800"
+                            ? "bg-brand-50/75 border-brand-200 text-slate-900"
+                            : "bg-white border-[#CBD5E1] text-slate-800"
                         )}
                       >
                         {msg.text}
@@ -720,19 +725,19 @@ export default function Chat({
             )}
           </div>
 
-          <form onSubmit={handleSubmit} className="p-3 bg-white border-t border-slate-200">
+          <form onSubmit={handleSubmit} className="p-3 oh-chrome-bar border-t border-[#CBD5E1]">
             <div className="relative flex items-center">
               <input
                 type="text"
                 value={inputText}
                 onChange={(e) => setInputText(e.target.value)}
                 placeholder="Message the class..."
-                className="w-full pl-3.5 pr-10 py-2 bg-slate-100 border border-transparent rounded-lg text-sm text-slate-900 placeholder:text-slate-400 focus:bg-white focus:border-brand-500 focus:outline-none transition-colors"
+                className="w-full pl-3.5 pr-10 py-2 bg-white border border-[#CBD5E1] rounded-[2px] text-sm text-slate-900 placeholder:text-slate-400 focus:border-brand-500 focus:outline-none transition-colors"
               />
               <button
                 type="submit"
                 disabled={!inputText.trim()}
-                className="absolute right-1.5 p-1.5 text-brand-600 hover:bg-brand-50 rounded-md disabled:text-slate-300 disabled:hover:bg-transparent transition-colors cursor-pointer"
+                className="absolute right-1.5 p-1.5 text-brand-600 hover:bg-brand-50 rounded-[2px] disabled:text-slate-300 disabled:hover:bg-transparent transition-colors cursor-pointer"
                 title="Send message"
               >
                 <Send size={16} />
@@ -742,7 +747,7 @@ export default function Chat({
         </>
       ) : (
         <div className="flex-1 overflow-y-auto p-3.5 space-y-2">
-          <div className="flex items-center justify-between text-xs text-slate-500 pb-1 border-b border-slate-200/80">
+          <div className="flex items-center justify-between text-xs text-slate-500 pb-1 border-b border-[#CBD5E1]">
             <span>Student / Role</span>
             <span>Actions / Items</span>
           </div>
@@ -764,7 +769,7 @@ export default function Chat({
             return (
               <div
                 key={participant.userId}
-                className="flex flex-col gap-2 p-2.5 rounded-lg bg-white border border-slate-200/80"
+                className="flex flex-col gap-2 p-2.5 rounded-[3px] bg-white border border-[#CBD5E1]"
               >
                 <div className="flex items-center justify-between gap-2">
                   <div className="min-w-0 flex-1">
@@ -780,11 +785,11 @@ export default function Chat({
                           placeholder="New name..."
                           autoFocus
                           maxLength={28}
-                          className="w-full px-2 py-0.5 bg-slate-50 border border-slate-300 rounded text-xs text-slate-900 focus:outline-none focus:border-brand-500"
+                          className="w-full px-2 py-0.5 bg-slate-50 border border-[#CBD5E1] rounded-[2px] text-xs text-slate-900 focus:outline-none focus:border-brand-500"
                         />
                         <button
                           type="submit"
-                          className="p-1 bg-brand-600 text-white rounded hover:bg-brand-700 cursor-pointer shrink-0"
+                          className="p-1 oh-btn-primary border text-white rounded-[2px] cursor-pointer shrink-0"
                           title="Save & lock student name"
                         >
                           <Check size={12} />
@@ -804,7 +809,7 @@ export default function Chat({
                     ) : (
                       <div className="flex items-center gap-1.5">
                         <span
-                          className="w-2.5 h-2.5 rounded-xs shrink-0"
+                          className="w-2.5 h-2.5 rounded-[2px] shrink-0"
                           style={{ backgroundColor: participant.color }}
                         />
                         <span className="font-medium text-sm text-slate-900 truncate">
@@ -812,7 +817,7 @@ export default function Chat({
                         </span>
                         {participant.isNameLocked && (
                           <span
-                            className="inline-flex items-center gap-0.5 px-1 py-0.5 rounded bg-slate-100 text-[10px] text-slate-500 font-medium shrink-0"
+                            className="inline-flex items-center gap-0.5 px-1 py-0.5 rounded-[2px] bg-slate-100 border border-[#CBD5E1] text-[10px] text-slate-500 font-medium shrink-0"
                             title="Name locked by teacher"
                           >
                             <Lock size={9} />
@@ -852,7 +857,7 @@ export default function Chat({
                           setConfirmRemoveUserId(null);
                           setConfirmEraseUserId(null);
                         }}
-                        className="p-1.5 text-slate-400 hover:text-brand-600 hover:bg-brand-50 rounded-md transition-colors cursor-pointer"
+                        className="p-1.5 text-slate-400 hover:text-brand-600 hover:bg-brand-50 rounded-[2px] transition-colors cursor-pointer"
                         title={`Rename ${participant.name} (locks student from changing it back)`}
                       >
                         <Edit2 size={13} />
@@ -868,7 +873,7 @@ export default function Chat({
                               onClearUserDrawings(participant.userId);
                               setConfirmEraseUserId(null);
                             }}
-                            className="px-2 py-1 text-xs font-medium bg-red-600 text-white rounded hover:bg-red-700 transition-colors whitespace-nowrap cursor-pointer"
+                            className="px-2 py-1 text-xs font-medium oh-btn-danger border text-white rounded-[2px] transition-colors whitespace-nowrap cursor-pointer"
                           >
                             Erase
                           </button>
@@ -887,7 +892,7 @@ export default function Chat({
                             setConfirmEraseUserId(participant.userId);
                             setConfirmRemoveUserId(null);
                           }}
-                          className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-md transition-colors cursor-pointer"
+                          className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-[2px] transition-colors cursor-pointer"
                           title={`Erase all drawings by ${participant.name}`}
                         >
                           <Eraser size={14} />
@@ -906,7 +911,7 @@ export default function Chat({
                           setRenamingUserId(null);
                         }}
                         className={cn(
-                          "p-1.5 rounded-md transition-colors cursor-pointer",
+                          "p-1.5 rounded-[2px] transition-colors cursor-pointer",
                           isConfirmingRemove
                             ? "text-red-600 bg-red-50"
                             : "text-slate-400 hover:text-red-600 hover:bg-red-50"
@@ -921,7 +926,7 @@ export default function Chat({
 
                 {/* Inline Kick / Ban Confirmation Warning */}
                 {isTeacher && !isMe && isConfirmingRemove && (
-                  <div className="p-2.5 rounded-lg bg-red-50/90 border border-red-200 text-xs space-y-2">
+                  <div className="p-2.5 rounded-[3px] bg-red-50/90 border border-red-200 text-xs space-y-2">
                     <p className="text-red-900 font-medium leading-snug">
                       Remove <span className="font-semibold">{participant.name}</span> from this classroom?
                       <span className="block text-[11px] text-red-700 font-normal mt-0.5">
@@ -935,7 +940,7 @@ export default function Chat({
                           onTeacherKickUser?.(participant.userId, 'kick', participant.name);
                           setConfirmRemoveUserId(null);
                         }}
-                        className="px-2.5 py-1 rounded bg-amber-600 hover:bg-amber-700 text-white font-semibold text-xs transition-colors cursor-pointer"
+                        className="px-2.5 py-1 rounded-[2px] oh-btn-amber border text-white font-semibold text-xs transition-colors cursor-pointer"
                         title="Boot student to the lobby (they can rejoin)"
                       >
                         Kick
@@ -946,7 +951,7 @@ export default function Chat({
                           onTeacherKickUser?.(participant.userId, 'ban', participant.name);
                           setConfirmRemoveUserId(null);
                         }}
-                        className="px-2.5 py-1 rounded bg-red-600 hover:bg-red-700 text-white font-semibold text-xs transition-colors cursor-pointer"
+                        className="px-2.5 py-1 rounded-[2px] oh-btn-danger border text-white font-semibold text-xs transition-colors cursor-pointer"
                         title="Boot student and block them from rejoining until unbanned"
                       >
                         Ban
@@ -967,14 +972,14 @@ export default function Chat({
 
           {/* Banned Students Management Section (Teacher Only) */}
           {isTeacher && bannedUsers.length > 0 && (
-            <div className="pt-3 mt-3 border-t border-slate-200 space-y-2">
+            <div className="pt-3 mt-3 border-t border-[#CBD5E1] space-y-2">
               <div className="flex items-center justify-between text-xs font-semibold text-red-700">
                 <span>Banned Students ({bannedUsers.length})</span>
               </div>
               {bannedUsers.map((banned) => (
                 <div
                   key={banned.userId}
-                  className="flex items-center justify-between gap-2 p-2 rounded-lg bg-red-50/60 border border-red-200/80 text-xs"
+                  className="flex items-center justify-between gap-2 p-2 rounded-[3px] bg-red-50/60 border border-red-200/80 text-xs"
                 >
                   <div className="min-w-0">
                     <span className="font-medium text-slate-900 truncate block">
@@ -985,7 +990,7 @@ export default function Chat({
                   <button
                     type="button"
                     onClick={() => onTeacherUnbanUser?.(banned.userId)}
-                    className="flex items-center gap-1 px-2 py-1 rounded bg-white border border-slate-300 hover:bg-slate-100 text-slate-700 font-medium text-xs cursor-pointer shrink-0"
+                    className="flex items-center gap-1 px-2 py-1 rounded-[2px] oh-btn border text-slate-700 font-medium text-xs cursor-pointer shrink-0"
                     title={`Unban ${banned.name}`}
                   >
                     <RotateCcw size={11} />
@@ -999,20 +1004,20 @@ export default function Chat({
       )}
 
       {/* Persistent Student Identity Footer */}
-      <div className="p-3 bg-slate-100/80 border-t border-slate-200 text-xs">
+      <div className="p-3 oh-panel-header border-t border-[#CBD5E1] text-xs">
         {isEditingName && (!isNameLocked || isTeacher) ? (
           <form onSubmit={handleSaveName} className="flex items-center gap-1.5">
             <input
               type="text"
               value={nameDraft}
               onChange={(e) => setNameDraft(e.target.value)}
-              className="flex-1 px-2.5 py-1 bg-white border border-slate-300 rounded text-xs text-slate-900 focus:outline-none focus:border-brand-500"
+              className="flex-1 px-2.5 py-1 bg-white border border-[#CBD5E1] rounded-[2px] text-xs text-slate-900 focus:outline-none focus:border-brand-500"
               autoFocus
               maxLength={28}
             />
             <button
               type="submit"
-              className="p-1.5 bg-brand-600 text-white rounded hover:bg-brand-700 cursor-pointer"
+              className="p-1.5 oh-btn-primary border text-white rounded-[2px] cursor-pointer"
               title="Save name"
             >
               <Check size={13} />
@@ -1022,7 +1027,7 @@ export default function Chat({
           <div className="flex items-center justify-between gap-2">
             <div className="flex items-center gap-2 min-w-0">
               <span
-                className="w-2.5 h-2.5 rounded-xs shrink-0"
+                className="w-2.5 h-2.5 rounded-[2px] shrink-0"
                 style={{ backgroundColor: userColor }}
               />
               <span className="font-medium text-slate-800 truncate">{userName}</span>

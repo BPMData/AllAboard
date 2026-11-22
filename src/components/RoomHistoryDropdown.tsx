@@ -113,25 +113,25 @@ export default function RoomHistoryDropdown({
   const isDark = theme === 'dark';
 
   const triggerClasses = isDark
-    ? `flex items-center gap-1 px-1.5 py-0.5 rounded font-medium whitespace-nowrap cursor-pointer disabled:opacity-50 transition-colors ${
+    ? `flex items-center gap-1 px-2 py-1 rounded-[2px] border font-medium whitespace-nowrap cursor-pointer disabled:opacity-50 transition-colors ${
         isOpen
-          ? 'bg-brand-500/20 text-brand-300'
-          : 'bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white'
+          ? 'bg-brand-500/20 border-brand-500/60 text-brand-300'
+          : 'oh-btn-dark text-slate-200 hover:text-white'
       }`
-    : `flex items-center gap-1 px-1.5 py-0.5 rounded text-[11px] font-medium whitespace-nowrap cursor-pointer disabled:opacity-50 transition-colors ${
+    : `flex items-center gap-1 px-2 py-0.5 rounded-[2px] border text-[11px] font-medium whitespace-nowrap cursor-pointer disabled:opacity-50 transition-colors ${
         isOpen
-          ? 'bg-brand-100 text-brand-800'
-          : 'text-slate-600 hover:text-slate-900 hover:bg-brand-100/60'
+          ? 'oh-btn-active text-brand-900'
+          : 'oh-btn text-slate-700 hover:text-slate-900'
       }`;
 
   const menuClasses = isDark
-    ? 'bg-slate-900 border-slate-700 text-slate-100 shadow-2xl'
-    : 'bg-white border-slate-200 text-slate-900 shadow-xl';
+    ? 'bg-slate-900 border-2 border-[#243044] text-slate-100'
+    : 'bg-white border-2 border-[#CBD5E1] text-slate-900';
 
   const mutedText = isDark ? 'text-slate-400' : 'text-slate-500';
   const subtleBtn = isDark
-    ? 'px-1.5 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition-colors cursor-pointer'
-    : 'px-1.5 py-0.5 rounded bg-slate-100 hover:bg-slate-200 text-slate-600 hover:text-slate-900 transition-colors cursor-pointer';
+    ? 'px-1.5 py-0.5 rounded-[2px] border oh-btn-dark text-slate-200 hover:text-white transition-colors cursor-pointer'
+    : 'px-1.5 py-0.5 rounded-[2px] border oh-btn text-slate-700 hover:text-slate-900 transition-colors cursor-pointer';
 
   const getRowClasses = (status: RoomLiveStatus) => {
     if (status === 'live') {
@@ -181,7 +181,7 @@ export default function RoomHistoryDropdown({
           aria-label="Recent room history"
           className={`absolute top-[calc(100%+6px)] ${
             align === 'left' ? 'left-0' : 'right-0'
-          } z-50 w-80 max-w-[calc(100vw-2rem)] rounded-xl border p-2.5 flex flex-col gap-2 text-left ${menuClasses}`}
+          } z-50 w-80 max-w-[calc(100vw-2rem)] rounded-[3px] p-2.5 flex flex-col gap-2 text-left ${menuClasses}`}
         >
           <div className="flex items-center justify-between gap-2 text-xs">
             <strong className="font-semibold">Recent rooms</strong>
@@ -246,7 +246,7 @@ export default function RoomHistoryDropdown({
                         setIsOpen(false);
                         onSelectRoom(entry.code);
                       }}
-                      className={`flex-1 min-w-0 flex items-center gap-2 px-2.5 py-1.5 rounded-lg border text-left text-xs transition-colors cursor-pointer ${getRowClasses(
+                      className={`flex-1 min-w-0 flex items-center gap-2 px-2.5 py-1.5 rounded-[2px] border text-left text-xs transition-colors cursor-pointer ${getRowClasses(
                         st
                       )}`}
                     >

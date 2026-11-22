@@ -3685,7 +3685,7 @@ export default function Canvas({
       {/* Primary Drawing & Studio Toolbar (`data-keep-note` lets users restyle an open note without closing it) */}
       <div
         data-keep-note="true"
-        className="px-4 py-2 border-b border-slate-200 flex flex-wrap items-center gap-2.5 bg-white z-20"
+        className="oh-chrome-bar px-4 py-2 border-b border-[#CBD5E1] flex flex-wrap items-center gap-2.5 z-20"
       >
         {isChatHidden && onShowChat && (
           <div className="flex items-center gap-1.5 shrink-0">
@@ -3693,12 +3693,12 @@ export default function Canvas({
               src="/assets/aistudio/favicon_68cc1684.svg"
               alt="AllAboard"
               referrerPolicy="no-referrer"
-              className="w-6 h-6 rounded-md shrink-0 object-contain shadow-xs"
+              className="w-6 h-6 rounded-[2px] border border-[#CBD5E1] shrink-0 object-contain"
             />
             <button
               type="button"
               onClick={onShowChat}
-              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-slate-100 hover:bg-slate-200/80 text-slate-700 hover:text-slate-900 border border-slate-200/80 transition-colors whitespace-nowrap shrink-0 cursor-pointer"
+              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-[2px] border oh-btn text-xs font-semibold text-slate-700 hover:text-slate-900 transition-colors whitespace-nowrap shrink-0 cursor-pointer"
               title="Show chat sidebar"
               aria-label="Show chat sidebar"
             >
@@ -3715,7 +3715,7 @@ export default function Canvas({
             </button>
             <span
               data-testid="room-chip"
-              className="px-2.5 py-1.5 rounded-lg text-xs bg-slate-100 text-slate-700 border border-slate-200/80 whitespace-nowrap"
+              className="px-2.5 py-1.5 rounded-[2px] text-xs bg-slate-100 text-slate-700 border border-[#CBD5E1] whitespace-nowrap"
             >
               Room: <span className="font-mono font-semibold text-slate-900">{roomId}</span>
             </span>
@@ -3726,7 +3726,7 @@ export default function Canvas({
           <div className="flex flex-wrap items-center gap-1" aria-label="My status">
             {(Object.entries(STATUS_OPTIONS) as Array<[Exclude<StudentStatus, 'none'>, typeof STATUS_OPTIONS[keyof typeof STATUS_OPTIONS]]>).map(([value, option]) => {
               const selected = users.find((user) => user.userId === userId)?.status === value;
-              return <button key={value} type="button" aria-pressed={selected} onClick={() => onSetStatus(selected ? 'none' : value)} className={cn('rounded-full border px-2 py-1 text-xs font-medium cursor-pointer', option.className, selected && 'ring-2 ring-offset-1 ring-slate-500')}>{option.label}</button>;
+              return <button key={value} type="button" aria-pressed={selected} onClick={() => onSetStatus(selected ? 'none' : value)} className={cn('rounded-[2px] border px-2 py-1 text-xs font-medium cursor-pointer', option.className, selected && 'ring-2 ring-offset-1 ring-slate-500')}>{option.label}</button>;
             })}
           </div>
         )}
@@ -3740,10 +3740,10 @@ export default function Canvas({
               aria-expanded={phoneToolsOpen}
               aria-label={phoneToolsOpen ? 'Hide tools' : 'Show tools'}
               className={cn(
-                'flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold border transition-colors cursor-pointer',
+                'flex items-center gap-1.5 px-2.5 py-1.5 rounded-[2px] text-xs font-semibold border transition-colors cursor-pointer',
                 phoneToolsOpen
-                  ? 'bg-slate-100 text-slate-700 border-slate-200/80'
-                  : 'bg-brand-600 text-white border-brand-700 shadow-xs'
+                  ? 'oh-btn text-slate-700'
+                  : 'oh-btn-primary text-white'
               )}
             >
               {phoneToolsOpen ? <ChevronUp size={15} /> : <SlidersHorizontal size={15} />}
@@ -3768,7 +3768,7 @@ export default function Canvas({
                   if (editingNote) commitEditingNote();
                   performUndo();
                 }}
-                className="flex items-center gap-1 px-2 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-100 rounded-lg transition-colors whitespace-nowrap cursor-pointer disabled:opacity-40"
+                className="flex items-center gap-1 px-2 py-1.5 text-xs font-medium oh-btn border text-slate-700 rounded-[2px] transition-colors whitespace-nowrap cursor-pointer disabled:opacity-40"
                 aria-label="Undo"
               >
                 <Undo2 size={15} />
@@ -3782,15 +3782,15 @@ export default function Canvas({
         <div className={toolbarCollapsed ? 'hidden' : 'contents'}>
 
         {/* Navigation & Brush Tools (wraps on narrow screens instead of cutting tools off) */}
-        <div className="flex flex-wrap items-center gap-0.5 bg-slate-100 p-1 rounded-lg border border-slate-200/80">
+        <div className="flex flex-wrap items-center gap-0.5 bg-slate-100 p-0.5 rounded-[3px] border border-[#CBD5E1]">
           <button
             type="button"
             onClick={() => setTool('pan')}
             className={cn(
-              "p-1.5 rounded-md transition-colors cursor-pointer",
+              "p-1.5 rounded-[2px] border transition-colors cursor-pointer",
               effectiveTool === 'pan'
-                ? "bg-white text-brand-600 shadow-xs"
-                : "text-slate-600 hover:text-slate-900"
+                ? "oh-btn-active text-brand-700"
+                : "border-transparent text-slate-600 hover:text-slate-900 hover:bg-white/70"
             )}
             title="Pan Tool [H] (or hold Spacebar + Drag, or use Arrow Keys)"
           >
@@ -3802,10 +3802,10 @@ export default function Canvas({
             disabled={!canDraw}
             onClick={() => setTool('select')}
             className={cn(
-              "px-2 py-1.5 rounded-md transition-colors cursor-pointer disabled:opacity-40 flex items-center gap-1 text-xs font-semibold",
+              "px-2 py-1.5 rounded-[2px] border transition-colors cursor-pointer disabled:opacity-40 flex items-center gap-1 text-xs font-semibold",
               effectiveTool === 'select'
-                ? "bg-white text-indigo-600 shadow-xs ring-1 ring-indigo-200"
-                : "text-slate-600 hover:text-slate-900"
+                ? "oh-btn-active text-indigo-700"
+                : "border-transparent text-slate-600 hover:text-slate-900 hover:bg-white/70"
             )}
             title="Select & Lasso Tool [V]: Tap or circle annotations and text to move, resize, restyle, copy, duplicate, or delete"
           >
@@ -3816,7 +3816,7 @@ export default function Canvas({
           {isTeacher && (
             <button type="button" title="Laser pointer" aria-label="Laser pointer" aria-pressed={effectiveTool === 'laser'}
               onClick={() => setTool('laser')}
-              className={cn("p-1.5 rounded-md transition-colors cursor-pointer", effectiveTool === 'laser' ? "bg-white text-red-600 shadow-xs" : "text-slate-600 hover:text-red-600")}>
+              className={cn("p-1.5 rounded-[2px] border transition-colors cursor-pointer", effectiveTool === 'laser' ? "oh-btn-active text-red-600" : "border-transparent text-slate-600 hover:text-red-600 hover:bg-white/70")}>
               <Crosshair size={17} />
             </button>
           )}
@@ -3828,10 +3828,10 @@ export default function Canvas({
             disabled={!canDraw}
             onClick={() => setTool('solid')}
             className={cn(
-              "p-1.5 rounded-md transition-colors cursor-pointer disabled:opacity-40",
+              "p-1.5 rounded-[2px] border transition-colors cursor-pointer disabled:opacity-40",
               tool === 'solid' && effectiveTool !== 'pan'
-                ? "bg-white text-brand-600 shadow-xs"
-                : "text-slate-600 hover:text-slate-900"
+                ? "oh-btn-active text-brand-700"
+                : "border-transparent text-slate-600 hover:text-slate-900 hover:bg-white/70"
             )}
             title="Pen [P]"
             aria-label="Pen"
@@ -3850,10 +3850,10 @@ export default function Canvas({
               aria-haspopup="true"
               aria-expanded={showHollowMenu}
               className={cn(
-                "p-1.5 rounded-md transition-colors cursor-pointer disabled:opacity-40 flex items-center justify-center",
+                "p-1.5 rounded-[2px] border transition-colors cursor-pointer disabled:opacity-40 flex items-center justify-center",
                 tool === 'hollow' && effectiveTool !== 'pan'
-                  ? "bg-white text-brand-600 shadow-xs"
-                  : "text-slate-600 hover:text-slate-900"
+                  ? "oh-btn-active text-brand-700"
+                  : "border-transparent text-slate-600 hover:text-slate-900 hover:bg-white/70"
               )}
               title={`Hollow ${hollowShape.charAt(0).toUpperCase() + hollowShape.slice(1)} Brush (Click to stamp, drag to draw hollow stroke — click to pick shape)`}
             >
@@ -3872,7 +3872,7 @@ export default function Canvas({
                   width="168"
                   height="88"
                   viewBox="-84 0 168 88"
-                  className="overflow-visible pointer-events-none drop-shadow-xs"
+                  className="overflow-visible pointer-events-none"
                   style={{ position: 'absolute', left: -84, top: 0 }}
                 >
                   <path
@@ -3912,7 +3912,7 @@ export default function Canvas({
                         transform: 'translate(-50%, -50%)',
                       }}
                       className={cn(
-                        "pointer-events-auto w-8 h-8 rounded-full flex items-center justify-center transition-all cursor-pointer shadow-md border",
+                        "pointer-events-auto w-8 h-8 rounded-full flex items-center justify-center transition-all cursor-pointer border",
                         isActive
                           ? "bg-brand-600 text-white border-white scale-110 ring-2 ring-brand-300"
                           : "bg-slate-900 text-slate-200 border-slate-600 hover:bg-slate-800 hover:text-white hover:scale-110"
@@ -3931,10 +3931,10 @@ export default function Canvas({
             disabled={!canDraw}
             onClick={() => setTool('spray')}
             className={cn(
-              "p-1.5 rounded-md transition-colors cursor-pointer disabled:opacity-40",
+              "p-1.5 rounded-[2px] border transition-colors cursor-pointer disabled:opacity-40",
               tool === 'spray' && effectiveTool !== 'pan'
-                ? "bg-white text-brand-600 shadow-xs"
-                : "text-slate-600 hover:text-slate-900"
+                ? "oh-btn-active text-brand-700"
+                : "border-transparent text-slate-600 hover:text-slate-900 hover:bg-white/70"
             )}
             title="Spray Paint"
           >
@@ -3948,12 +3948,12 @@ export default function Canvas({
               disabled={!canDraw}
               onClick={() => setTool('highlighter')}
               className={cn(
-                "px-2 py-1.5 rounded-l-md transition-colors cursor-pointer disabled:opacity-40 flex items-center gap-1 text-xs font-semibold",
+                "px-2 py-1.5 rounded-l-[2px] border-y border-l transition-colors cursor-pointer disabled:opacity-40 flex items-center gap-1 text-xs font-semibold",
                 tool === 'highlighter' && effectiveTool !== 'pan'
                   ? isCoverMode
-                    ? "bg-slate-800 text-white shadow-xs"
-                    : "bg-amber-200 text-slate-900 shadow-xs"
-                  : "text-slate-600 hover:text-slate-900"
+                    ? "bg-slate-800 border-slate-900 text-white"
+                    : "bg-amber-200 border-amber-400 text-slate-900"
+                  : "border-transparent text-slate-600 hover:text-slate-900 hover:bg-white/70"
               )}
               title={
                 isCoverMode
@@ -3974,12 +3974,12 @@ export default function Canvas({
               aria-haspopup="true"
               aria-expanded={showHlMenu}
               className={cn(
-                "px-1 py-1.5 rounded-r-md border-l border-slate-300/70 transition-colors cursor-pointer disabled:opacity-40",
+                "px-1 py-1.5 rounded-r-[2px] border transition-colors cursor-pointer disabled:opacity-40",
                 showHlMenu || (tool === 'highlighter' && effectiveTool !== 'pan')
                   ? isCoverMode
-                    ? "bg-slate-700 text-white"
-                    : "bg-amber-300/80 text-slate-900"
-                  : "text-slate-500 hover:text-slate-900"
+                    ? "bg-slate-700 border-slate-900 text-white"
+                    : "bg-amber-300/80 border-amber-400 text-slate-900"
+                  : "border-transparent border-l-slate-300/70 text-slate-500 hover:text-slate-900 hover:bg-white/70"
               )}
               title="Switch between See-Through Highlight & Opaque Cover Mode"
             >
@@ -3991,9 +3991,9 @@ export default function Canvas({
               <div
                 role="menu"
                 aria-label="Highlighter options"
-                className="absolute left-0 top-full mt-1.5 z-50 w-64 p-3 rounded-xl bg-slate-900 text-white shadow-xl border border-slate-700 space-y-2.5"
+                className="absolute left-0 top-full mt-1.5 z-50 w-64 p-3 rounded-[3px] bg-slate-900 text-white border-2 border-[#243044] space-y-2.5"
               >
-                <div className="grid grid-cols-2 gap-1 bg-slate-800 p-1 rounded-lg">
+                <div className="grid grid-cols-2 gap-1 bg-slate-800 border border-[#243044] p-0.5 rounded-[2px]">
                   <button
                     type="button"
                     onClick={() => {
@@ -4001,9 +4001,9 @@ export default function Canvas({
                       setTool('highlighter');
                     }}
                     className={cn(
-                      "px-2 py-1.5 rounded-md text-xs font-semibold transition-colors cursor-pointer",
+                      "px-2 py-1.5 rounded-[2px] text-xs font-semibold transition-colors cursor-pointer",
                       !isCoverMode
-                        ? "bg-amber-400 text-slate-950 shadow-xs"
+                        ? "bg-amber-400 text-slate-950"
                         : "text-slate-300 hover:text-white"
                     )}
                   >
@@ -4016,9 +4016,9 @@ export default function Canvas({
                       setTool('highlighter');
                     }}
                     className={cn(
-                      "px-2 py-1.5 rounded-md text-xs font-semibold transition-colors cursor-pointer",
+                      "px-2 py-1.5 rounded-[2px] text-xs font-semibold transition-colors cursor-pointer",
                       isCoverMode
-                        ? "bg-white text-slate-950 shadow-xs"
+                        ? "bg-white text-slate-950"
                         : "text-slate-300 hover:text-white"
                     )}
                   >
@@ -4030,7 +4030,7 @@ export default function Canvas({
                   <>
                     <div className="flex items-center gap-2.5">
                       <span
-                        className="w-6 h-6 rounded border-2 border-white shrink-0"
+                        className="w-6 h-6 rounded-[2px] border-2 border-white shrink-0"
                         style={{ backgroundColor: hlInk(hlColor, hlStrength) }}
                       />
                       <div>
@@ -4056,7 +4056,7 @@ export default function Canvas({
                           saveLocal('allaboard-hl-strength', String(next));
                           setTool('highlighter');
                         }}
-                        className="w-full h-2 rounded-lg appearance-none cursor-pointer accent-amber-400"
+                        className="w-full h-2 rounded-full appearance-none cursor-pointer accent-amber-400"
                         style={{
                           background: `linear-gradient(90deg, #ffffff, ${hlInk(hlColor, hlStrength)})`,
                         }}
@@ -4067,7 +4067,7 @@ export default function Canvas({
                   <div className="space-y-2">
                     <div className="flex items-center gap-2.5">
                       <span
-                        className="w-6 h-6 rounded border-2 border-white shrink-0"
+                        className="w-6 h-6 rounded-[2px] border-2 border-white shrink-0"
                         style={{ backgroundColor: coverColor }}
                       />
                       <div>
@@ -4106,10 +4106,10 @@ export default function Canvas({
             disabled={!canDraw}
             onClick={() => setTool('eraser')}
             className={cn(
-              "p-1.5 rounded-md transition-colors cursor-pointer disabled:opacity-40",
+              "p-1.5 rounded-[2px] border transition-colors cursor-pointer disabled:opacity-40",
               tool === 'eraser' && effectiveTool !== 'pan'
-                ? "bg-white text-brand-600 shadow-xs"
-                : "text-slate-600 hover:text-slate-900"
+                ? "oh-btn-active text-brand-700"
+                : "border-transparent text-slate-600 hover:text-slate-900 hover:bg-white/70"
             )}
             title="Personal Eraser [E] (Erases your own ink, highlights, and whole text notes — SMART Board palm always erases)"
           >
@@ -4124,10 +4124,10 @@ export default function Canvas({
             disabled={!canDraw}
             onClick={() => setTool('line')}
             className={cn(
-              "p-1.5 rounded-md transition-colors cursor-pointer disabled:opacity-40",
+              "p-1.5 rounded-[2px] border transition-colors cursor-pointer disabled:opacity-40",
               tool === 'line' && effectiveTool !== 'pan'
-                ? "bg-white text-brand-600 shadow-xs"
-                : "text-slate-600 hover:text-slate-900"
+                ? "oh-btn-active text-brand-700"
+                : "border-transparent text-slate-600 hover:text-slate-900 hover:bg-white/70"
             )}
             title="Straight Line [L]"
           >
@@ -4138,10 +4138,10 @@ export default function Canvas({
             disabled={!canDraw}
             onClick={() => setTool('rect')}
             className={cn(
-              "p-1.5 rounded-md transition-colors cursor-pointer disabled:opacity-40",
+              "p-1.5 rounded-[2px] border transition-colors cursor-pointer disabled:opacity-40",
               tool === 'rect' && effectiveTool !== 'pan'
-                ? "bg-white text-brand-600 shadow-xs"
-                : "text-slate-600 hover:text-slate-900"
+                ? "oh-btn-active text-brand-700"
+                : "border-transparent text-slate-600 hover:text-slate-900 hover:bg-white/70"
             )}
             title="Rectangle [R]"
           >
@@ -4152,10 +4152,10 @@ export default function Canvas({
             disabled={!canDraw}
             onClick={() => setTool('circle')}
             className={cn(
-              "p-1.5 rounded-md transition-colors cursor-pointer disabled:opacity-40",
+              "p-1.5 rounded-[2px] border transition-colors cursor-pointer disabled:opacity-40",
               tool === 'circle' && effectiveTool !== 'pan'
-                ? "bg-white text-brand-600 shadow-xs"
-                : "text-slate-600 hover:text-slate-900"
+                ? "oh-btn-active text-brand-700"
+                : "border-transparent text-slate-600 hover:text-slate-900 hover:bg-white/70"
             )}
             title="Circle [C]"
           >
@@ -4166,10 +4166,10 @@ export default function Canvas({
             disabled={!canDraw}
             onClick={() => setTool('text')}
             className={cn(
-              "px-2 py-1.5 rounded-md transition-colors cursor-pointer disabled:opacity-40 flex items-center gap-1 text-xs font-semibold",
+              "px-2 py-1.5 rounded-[2px] border transition-colors cursor-pointer disabled:opacity-40 flex items-center gap-1 text-xs font-semibold",
               tool === 'text' && effectiveTool !== 'pan'
-                ? "bg-white text-brand-600 shadow-xs"
-                : "text-slate-600 hover:text-slate-900"
+                ? "oh-btn-active text-brand-700"
+                : "border-transparent text-slate-600 hover:text-slate-900 hover:bg-white/70"
             )}
             title="Type Note [T]: Tap canvas to type, drag any note to move it, or tap/double-click a note to re-type it"
           >
@@ -4181,10 +4181,10 @@ export default function Canvas({
             disabled={!canDraw}
             onClick={() => setTool('stamp')}
             className={cn(
-              "p-1.5 rounded-md transition-colors cursor-pointer disabled:opacity-40",
+              "p-1.5 rounded-[2px] border transition-colors cursor-pointer disabled:opacity-40",
               tool === 'stamp' && effectiveTool !== 'pan'
-                ? "bg-white text-brand-600 shadow-xs"
-                : "text-slate-600 hover:text-slate-900"
+                ? "oh-btn-active text-brand-700"
+                : "border-transparent text-slate-600 hover:text-slate-900 hover:bg-white/70"
             )}
             title="Quick Stamp Tool [S] (Checkmark, Question Mark, Star, Thumbs Up, Heart, or Your Username)"
           >
@@ -4195,7 +4195,7 @@ export default function Canvas({
         {/* Inline Stamp Selector when Stamp Tool is Active */}
         {tool === 'stamp' && canDraw && (
           <div className="flex flex-wrap items-center gap-1.5">
-            <div className="flex items-center gap-1 bg-brand-50/80 px-2 py-1 rounded-lg border border-brand-200/80">
+            <div className="flex items-center gap-1 bg-brand-50/80 px-2 py-1 rounded-[3px] border border-brand-300/80">
               <span className="text-[11px] font-medium text-brand-800 mr-1">Stamp:</span>
               {STAMP_OPTIONS.map((st) => (
                 <button
@@ -4204,10 +4204,10 @@ export default function Canvas({
                   onClick={() => setStampKind(st.kind)}
                   disabled={st.kind === 'username' && nameStampTaken}
                   className={cn(
-                    "px-2 h-6 rounded flex items-center justify-center text-xs font-bold transition-colors cursor-pointer whitespace-nowrap disabled:opacity-40 disabled:cursor-not-allowed",
+                    "px-2 h-6 rounded-[2px] border flex items-center justify-center text-xs font-bold transition-colors cursor-pointer whitespace-nowrap disabled:opacity-40 disabled:cursor-not-allowed",
                     stampKind === st.kind
-                      ? "bg-brand-600 text-white shadow-xs"
-                      : "bg-white text-slate-700 hover:bg-brand-100"
+                      ? "oh-btn-primary text-white"
+                      : "oh-btn text-slate-700"
                   )}
                   title={
                     st.kind === 'username' && nameStampTaken
@@ -4222,7 +4222,7 @@ export default function Canvas({
 
             {isTeacher && (
               <div
-                className="flex flex-wrap items-center gap-1 bg-amber-50/90 px-2 py-1 rounded-lg border border-amber-300/80"
+                className="flex flex-wrap items-center gap-1 bg-amber-50/90 px-2 py-1 rounded-[3px] border border-amber-300/80"
                 data-testid="teacher-stamps-group"
               >
                 <span className="text-[11px] font-semibold text-amber-900 mr-1">Teacher stamps:</span>
@@ -4239,8 +4239,8 @@ export default function Canvas({
                           : { color: st.color, borderColor: st.color }
                       }
                       className={cn(
-                        "px-2 h-6 rounded border text-[11px] font-extrabold tracking-wide transition-colors cursor-pointer whitespace-nowrap",
-                        isSelected ? "shadow-xs" : "bg-white hover:bg-slate-50"
+                        "px-2 h-6 rounded-[2px] border text-[11px] font-extrabold tracking-wide transition-colors cursor-pointer whitespace-nowrap",
+                        isSelected ? "" : "bg-white hover:bg-slate-50"
                       )}
                       title={
                         st.kind === 'teacher-custom'
@@ -4260,7 +4260,7 @@ export default function Canvas({
                     aria-label="Custom teacher stamp text"
                     placeholder="Custom label"
                     maxLength={24}
-                    className="h-6 w-28 px-2 text-[11px] font-bold uppercase bg-white border border-amber-300 rounded text-slate-800 focus:outline-none focus:ring-1 focus:ring-amber-500"
+                    className="h-6 w-28 px-2 text-[11px] font-bold uppercase bg-white border border-amber-300 rounded-[2px] text-slate-800 focus:outline-none focus:ring-1 focus:ring-amber-500"
                   />
                 )}
               </div>
@@ -4321,7 +4321,7 @@ export default function Canvas({
         {/* Ink size: named for the tool it sizes, boxed like the Text group, with a live dot in the ink color so it
             can't be mistaken for the text-size control next to it. */}
         <div
-          className="flex items-center gap-1 px-1.5 py-0.5 rounded-lg border bg-brand-600 border-brand-700 text-white shadow-xs"
+          className="oh-teal-chrome flex items-center gap-1 px-2 py-0.5 rounded-[2px] border text-white"
           title="How thick your ink is (separate from text size)"
         >
           <label htmlFor="brush-size-slider" className="text-[11px] font-semibold text-white whitespace-nowrap">
@@ -4363,7 +4363,7 @@ export default function Canvas({
             }
             value={strokeWidth}
             onChange={(e) => handleSelectStrokeWidth(parseInt(e.target.value, 10))}
-            className="w-24 h-1.5 bg-brand-300 rounded-lg appearance-none cursor-pointer accent-white"
+            className="w-24 h-1.5 bg-brand-300 rounded-full appearance-none cursor-pointer accent-white"
           />
           <span className="text-xs font-mono tabular-nums text-white w-7 text-right">
             {strokeWidth}
@@ -4372,7 +4372,7 @@ export default function Canvas({
 
         {/* Dedicated Line Weight Slider when Hollow Shape Brush is Active */}
         {tool === 'hollow' && (
-          <div className="flex items-center gap-1.5 bg-brand-50/80 px-2 py-0.5 rounded-lg border border-brand-200/80">
+          <div className="flex items-center gap-1.5 bg-brand-50/80 px-2 py-0.5 rounded-[2px] border border-brand-300">
             <label
               htmlFor="hollow-weight-slider"
               className="text-xs font-medium text-brand-900 whitespace-nowrap"
@@ -4387,7 +4387,7 @@ export default function Canvas({
               max={Math.max(2, Math.min(25, Math.floor(hollowWidth / 2) - 1))}
               value={Math.min(hollowWeight, Math.max(1, Math.floor(hollowWidth / 2) - 1))}
               onChange={(e) => handleSelectHollowWeight(parseInt(e.target.value, 10))}
-              className="w-20 h-1.5 bg-brand-200 rounded-lg appearance-none cursor-pointer accent-brand-600"
+              className="w-20 h-1.5 bg-brand-200 rounded-full appearance-none cursor-pointer accent-brand-600"
             />
             <span className="text-xs font-mono tabular-nums text-brand-900 w-6">
               {Math.min(hollowWeight, Math.max(1, Math.floor(hollowWidth / 2) - 1))}
@@ -4402,10 +4402,10 @@ export default function Canvas({
         {/* Dedicated Independent Text Size Controls */}
         <div
           className={cn(
-            "flex items-center gap-1 px-2 py-0.5 rounded-lg border text-xs transition-colors",
+            "flex items-center gap-1 px-2 py-0.5 rounded-[2px] border text-xs transition-colors",
             tool === 'text' || Boolean(editingNote) || selectedTextElements.length > 0
-              ? "bg-brand-50/90 border-brand-200"
-              : "bg-slate-100 border-slate-200/80"
+              ? "bg-brand-50/90 border-brand-300"
+              : "bg-slate-100 border-[#CBD5E1]"
           )}
           title="Text font size in pixels (independent of brush stroke width)"
         >
@@ -4418,10 +4418,10 @@ export default function Canvas({
                 disabled={!canDraw}
                 onClick={() => handleSelectTextFontSize(preset.size)}
                 className={cn(
-                  "px-1.5 py-0.5 rounded text-[11px] font-bold transition-colors cursor-pointer disabled:opacity-40",
+                  "px-1.5 py-0.5 rounded-[2px] border text-[11px] font-bold transition-colors cursor-pointer disabled:opacity-40",
                   activeTextSize === preset.size
-                    ? "bg-brand-600 text-white shadow-xs"
-                    : "text-slate-700 hover:bg-white"
+                    ? "oh-btn-primary text-white"
+                    : "border-transparent text-slate-700 hover:bg-white"
                 )}
                 title={preset.title}
               >
@@ -4433,7 +4433,7 @@ export default function Canvas({
             type="button"
             disabled={!canDraw || activeTextSize <= 12}
             onClick={() => handleSelectTextFontSize(activeTextSize - 2)}
-            className="w-5 h-5 rounded hover:bg-white text-slate-700 font-bold disabled:opacity-35 cursor-pointer"
+            className="w-5 h-5 rounded-[2px] hover:bg-white text-slate-700 font-bold disabled:opacity-35 cursor-pointer"
             title="Decrease text size"
           >
             &minus;
@@ -4445,13 +4445,13 @@ export default function Canvas({
             max={96}
             value={activeTextSize}
             onChange={(e) => handleSelectTextFontSize(parseInt(e.target.value, 10))}
-            className="w-16 h-1.5 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-brand-600 hidden sm:block"
+            className="w-16 h-1.5 bg-slate-200 rounded-full appearance-none cursor-pointer accent-brand-600 hidden sm:block"
           />
           <button
             type="button"
             disabled={!canDraw || activeTextSize >= 96}
             onClick={() => handleSelectTextFontSize(activeTextSize + 2)}
-            className="w-5 h-5 rounded hover:bg-white text-slate-700 font-bold disabled:opacity-35 cursor-pointer"
+            className="w-5 h-5 rounded-[2px] hover:bg-white text-slate-700 font-bold disabled:opacity-35 cursor-pointer"
             title="Increase text size"
           >
             +
@@ -4462,7 +4462,7 @@ export default function Canvas({
         </div>
 
         {/* OverBoard Smoothing Control (0..8) & Smartboard Finger Mode Toggle */}
-        <div className="flex items-center gap-1 bg-slate-100 px-1.5 py-0.5 rounded-lg border border-slate-200/80 text-xs">
+        <div className="flex items-center gap-1 bg-slate-100 px-1.5 py-0.5 rounded-[2px] border border-[#CBD5E1] text-xs">
           <span className="text-[11px] text-slate-500 font-medium" title="OverBoard exponential stroke smoothing (0 = off, 8 = max)">
             Smooth:
           </span>
@@ -4474,7 +4474,7 @@ export default function Canvas({
               setSmoothLevel(next);
               saveLocal('allaboard-smooth-v2', String(next));
             }}
-            className="w-5 h-5 rounded hover:bg-white text-slate-700 font-bold disabled:opacity-35 cursor-pointer"
+            className="w-5 h-5 rounded-[2px] hover:bg-white text-slate-700 font-bold disabled:opacity-35 cursor-pointer"
             title="Less smoothing"
           >
             &minus;
@@ -4490,7 +4490,7 @@ export default function Canvas({
               setSmoothLevel(next);
               saveLocal('allaboard-smooth-v2', String(next));
             }}
-            className="w-5 h-5 rounded hover:bg-white text-slate-700 font-bold disabled:opacity-35 cursor-pointer"
+            className="w-5 h-5 rounded-[2px] hover:bg-white text-slate-700 font-bold disabled:opacity-35 cursor-pointer"
             title="More smoothing"
           >
             +
@@ -4505,10 +4505,10 @@ export default function Canvas({
             saveLocal('allaboard-finger-scrolls', next ? '1' : '0');
           }}
           className={cn(
-            "px-2 py-1 rounded-lg text-[11px] font-medium border transition-colors cursor-pointer whitespace-nowrap",
+            "px-2.5 py-1 rounded-[2px] text-[11px] font-medium border transition-colors cursor-pointer whitespace-nowrap",
             fingerScrolls
               ? "bg-amber-50 text-amber-900 border-amber-300"
-              : "bg-slate-100 text-slate-600 border-slate-200/80 hover:text-slate-900"
+              : "oh-btn text-slate-700 hover:text-slate-900"
           )}
           title="Smartboard / Tablet mode: Choose whether finger/mouse drags pan the board (while stylus writes & palm erases) or draw directly"
         >
@@ -4526,7 +4526,7 @@ export default function Canvas({
               if (editingNote) commitEditingNote();
               performUndo();
             }}
-            className="flex items-center gap-1 px-2 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-100 rounded-lg transition-colors whitespace-nowrap shrink-0 cursor-pointer disabled:opacity-40"
+            className="flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium oh-btn border text-slate-700 rounded-[2px] transition-colors whitespace-nowrap shrink-0 cursor-pointer disabled:opacity-40"
             title={canLocalUndo ? "Undo last action (Ctrl+Z)" : "Undo last stroke (Ctrl+Z)"}
           >
             <Undo2 size={15} />
@@ -4540,7 +4540,7 @@ export default function Canvas({
               if (editingNote) commitEditingNote();
               performRedo();
             }}
-            className="flex items-center gap-1 px-2 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-100 rounded-lg transition-colors whitespace-nowrap shrink-0 cursor-pointer disabled:opacity-40"
+            className="flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium oh-btn border text-slate-700 rounded-[2px] transition-colors whitespace-nowrap shrink-0 cursor-pointer disabled:opacity-40"
             title="Redo (Ctrl+Y / Ctrl+Shift+Z)"
           >
             <Redo2 size={15} />
@@ -4548,7 +4548,7 @@ export default function Canvas({
           </button>
 
           {confirmClearMine ? (
-            <div className="flex items-center gap-1 bg-red-50 px-2 py-1 rounded-lg border border-red-200">
+            <div className="flex items-center gap-1 bg-red-50 px-2 py-1 rounded-[2px] border border-red-300">
               <span className="text-xs text-red-800 font-medium whitespace-nowrap">Erase yours?</span>
               <button
                 type="button"
@@ -4564,7 +4564,7 @@ export default function Canvas({
                   onClearMine();
                   setConfirmClearMine(false);
                 }}
-                className="px-2 py-0.5 text-xs font-medium bg-red-600 text-white rounded hover:bg-red-700 cursor-pointer whitespace-nowrap"
+                className="px-2 py-0.5 text-xs font-medium oh-btn-danger border text-white rounded-[2px] cursor-pointer whitespace-nowrap"
               >
                 Yes
               </button>
@@ -4581,7 +4581,7 @@ export default function Canvas({
               type="button"
               disabled={!canDraw}
               onClick={() => setConfirmClearMine(true)}
-              className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium text-red-600 hover:bg-red-50 rounded-lg transition-colors whitespace-nowrap shrink-0 cursor-pointer disabled:opacity-40"
+              className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium oh-btn border text-red-600 rounded-[2px] transition-colors whitespace-nowrap shrink-0 cursor-pointer disabled:opacity-40"
               title="Erase only your own drawings"
             >
               <Eraser size={15} />
@@ -4589,12 +4589,12 @@ export default function Canvas({
             </button>
           )}
 
-          <div className="h-4 w-px bg-slate-200 mx-0.5" />
+          <div className="h-4 w-px bg-slate-300 mx-0.5" />
 
           <button
             type="button"
             onClick={handleExportJSON}
-            className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium text-slate-700 bg-slate-100 hover:bg-slate-200/80 rounded-lg transition-colors whitespace-nowrap shrink-0 cursor-pointer"
+            className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium oh-btn border text-slate-700 rounded-[2px] transition-colors whitespace-nowrap shrink-0 cursor-pointer"
             title="Save room drawings, breakout boards, worksheet, and chat log as a portable .json snapshot"
           >
             <FileJson size={14} />
@@ -4604,7 +4604,7 @@ export default function Canvas({
           <button
             type="button"
             onClick={handleExportPNG}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-slate-900 text-white hover:bg-slate-800 rounded-lg transition-colors whitespace-nowrap shrink-0 cursor-pointer"
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium oh-btn-dark border text-white rounded-[2px] transition-colors whitespace-nowrap shrink-0 cursor-pointer"
             title="Download current canvas view as PNG"
           >
             <Download size={14} />
@@ -4616,7 +4616,7 @@ export default function Canvas({
 
       {/* Teacher Classroom Moderation, Breakout Switchboard & Worksheet Deck OR Student Sub-Board Bar */}
       {isTeacher ? (
-        <div className={cn('px-4 py-2 bg-amber-50/90 border-b border-amber-200/80 flex flex-wrap items-center justify-between gap-3 z-10', toolbarCollapsed && 'hidden')}>
+        <div className={cn('oh-teacher-bar px-4 py-2 border-b border-amber-300/90 flex flex-wrap items-center justify-between gap-3 z-10', toolbarCollapsed && 'hidden')}>
           <div className="flex flex-wrap items-center gap-2 text-xs text-amber-900">
             <span className="font-display font-semibold">Teacher</span>
 
@@ -4625,12 +4625,12 @@ export default function Canvas({
               type="button"
               onClick={handleOpenBreakoutModal}
               className={cn(
-                "flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium transition-colors whitespace-nowrap shrink-0 cursor-pointer",
+                "flex items-center gap-1.5 px-2.5 py-1 rounded-[2px] border text-xs font-medium transition-colors whitespace-nowrap shrink-0 cursor-pointer",
                 breakoutConfig.mode !== 'main'
-                  ? "bg-brand-600 text-white hover:bg-brand-700"
+                  ? "oh-btn-primary text-white"
                   : breakoutConfig.autoIndividual
-                  ? "bg-emerald-50 text-emerald-900 border border-emerald-400 hover:bg-emerald-100"
-                  : "bg-white text-slate-800 border border-amber-300 hover:bg-amber-100/60"
+                  ? "oh-btn-emerald text-white"
+                  : "oh-btn text-slate-800"
               )}
               title="Assign individual student boards or breakout group rooms"
             >
@@ -4650,7 +4650,7 @@ export default function Canvas({
               <button
                 type="button"
                 onClick={() => onConfigureBreakout({ action: 'return-to-main' })}
-                className="flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium transition-colors whitespace-nowrap shrink-0 cursor-pointer bg-white text-slate-800 border border-amber-300 hover:bg-amber-100/60"
+                className="flex items-center gap-1.5 px-2.5 py-1 rounded-[2px] border oh-btn text-xs font-medium transition-colors whitespace-nowrap shrink-0 cursor-pointer text-slate-800"
                 title="Pull every student back to the Main Board. Their breakout work is kept."
               >
                 Bring All to Main
@@ -4664,7 +4664,7 @@ export default function Canvas({
                     onConfigureBreakout({ action: 'resume', roundId: viewingRound.id });
                     setTeacherViewingRoundId(null);
                   }}
-                  className="flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium transition-colors whitespace-nowrap shrink-0 cursor-pointer bg-white text-brand-800 border border-brand-300 hover:bg-brand-50"
+                  className="flex items-center gap-1.5 px-2.5 py-1 rounded-[2px] border oh-btn-active text-xs font-medium transition-colors whitespace-nowrap shrink-0 cursor-pointer text-brand-900"
                   title={`Send students to ${viewingRound.title} with their work intact`}
                 >
                   {breakoutConfig.mode === 'main' && viewingRound.id === activeRound?.id
@@ -4675,7 +4675,7 @@ export default function Canvas({
 
             {/* Teacher Board Switcher Dropdown + Live Grid Overview Button */}
             {Object.keys(subBoards).length > 0 && (
-              <div className="flex items-center gap-1.5 bg-white px-2 py-0.5 rounded-md border border-amber-300">
+              <div className="flex items-center gap-1.5 bg-white px-2 py-0.5 rounded-[2px] border border-[#CBD5E1]">
                 {rounds.length > 1 && (
                   <>
                     <span className="text-[11px] text-slate-500">Round:</span>
@@ -4725,10 +4725,10 @@ export default function Canvas({
                   type="button"
                   onClick={() => setShowLiveGridOverview(!showLiveGridOverview)}
                   className={cn(
-                    "flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-semibold transition-colors cursor-pointer whitespace-nowrap",
+                    "flex items-center gap-1 px-2 py-0.5 rounded-[2px] border text-[11px] font-semibold transition-colors cursor-pointer whitespace-nowrap",
                     showLiveGridOverview
-                      ? "bg-brand-600 text-white"
-                      : "text-brand-700 hover:bg-brand-50"
+                      ? "oh-btn-primary text-white"
+                      : "border-transparent text-brand-700 hover:bg-brand-50"
                   )}
                   title="View live miniature previews of all student and group boards at once"
                 >
@@ -4742,7 +4742,7 @@ export default function Canvas({
                   type="button"
                   disabled={Boolean(pdfExportProgress)}
                   onClick={handleBatchExportAllPdf}
-                  className="flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-semibold text-emerald-700 hover:bg-emerald-50 disabled:opacity-50 transition-colors cursor-pointer whitespace-nowrap"
+                  className="flex items-center gap-1 px-2 py-0.5 rounded-[2px] text-[11px] font-semibold text-emerald-700 hover:bg-emerald-50 disabled:opacity-50 transition-colors cursor-pointer whitespace-nowrap"
                   title="Download a multi-page PDF containing every student or group board in one file"
                 >
                   <FileSpreadsheet size={12} />
@@ -4763,14 +4763,14 @@ export default function Canvas({
                 type="button"
                 onClick={() => setShowTimerMenu((prev) => !prev)}
                 className={cn(
-                  "flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-semibold transition-colors whitespace-nowrap shrink-0 cursor-pointer border",
+                  "flex items-center gap-1.5 px-2.5 py-1 rounded-[2px] text-xs font-semibold transition-colors whitespace-nowrap shrink-0 cursor-pointer border",
                   timer?.isRunning
                     ? displayRemainingMs <= 60000
-                      ? "bg-red-600 text-white border-red-700 animate-pulse"
-                      : "bg-slate-900 text-amber-300 border-slate-800"
+                      ? "oh-btn-danger text-white animate-pulse"
+                      : "oh-btn-dark text-amber-300"
                     : displayRemainingMs > 0
                     ? "bg-amber-200 text-slate-900 border-amber-400"
-                    : "bg-white text-slate-800 border-amber-300 hover:bg-amber-100/60"
+                    : "oh-btn text-slate-800"
                 )}
                 title="Start, pause, or configure the synchronized classroom countdown timer"
               >
@@ -4783,8 +4783,8 @@ export default function Canvas({
               </button>
 
               {showTimerMenu && (
-                <div className="absolute left-0 top-full mt-1.5 z-50 w-72 p-3.5 rounded-xl bg-white border border-slate-200 shadow-xl space-y-3 text-slate-800 select-text">
-                  <div className="flex items-center justify-between">
+                <div className="absolute left-0 top-full mt-1.5 z-50 w-72 rounded-[3px] bg-white border-2 border-[#CBD5E1] overflow-hidden text-slate-800 select-text">
+                  <div className="oh-panel-header flex items-center justify-between px-3.5 py-2 border-b border-[#CBD5E1]">
                     <span className="font-display font-bold text-xs text-slate-900">
                       Classroom Countdown Timer
                     </span>
@@ -4795,6 +4795,7 @@ export default function Canvas({
                     )}
                   </div>
 
+                  <div className="p-3.5 space-y-3">
                   {/* Default Preset Buttons: 5, 10, 20, 30 minutes */}
                   <div>
                     <span className="block text-[11px] font-medium text-slate-500 mb-1.5">
@@ -4812,7 +4813,7 @@ export default function Canvas({
                             });
                             setShowTimerMenu(false);
                           }}
-                          className="py-1.5 px-2 rounded-lg text-xs font-mono font-semibold bg-slate-100 hover:bg-brand-600 hover:text-white text-slate-800 transition-colors cursor-pointer"
+                          className="py-1.5 px-2 rounded-[2px] border oh-btn text-xs font-mono font-semibold text-slate-800 hover:text-brand-700 transition-colors cursor-pointer"
                         >
                           {mins}m
                         </button>
@@ -4844,12 +4845,12 @@ export default function Canvas({
                         value={customTimeInput}
                         onChange={(e) => setCustomTimeInput(e.target.value)}
                         placeholder="e.g. 7:30 or 15"
-                        className="flex-1 px-2.5 py-1.5 text-xs font-mono border border-slate-300 rounded-lg focus:outline-none focus:border-brand-600"
+                        className="flex-1 px-2.5 py-1.5 text-xs font-mono border border-[#CBD5E1] rounded-[2px] focus:outline-none focus:border-brand-600"
                       />
                       <button
                         type="submit"
                         disabled={!parseCustomTimeSeconds(customTimeInput)}
-                        className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-brand-600 text-white hover:bg-brand-700 disabled:opacity-40 cursor-pointer whitespace-nowrap"
+                        className="px-3 py-1.5 rounded-[2px] border oh-btn-primary text-xs font-semibold text-white disabled:opacity-40 cursor-pointer whitespace-nowrap"
                       >
                         Start
                       </button>
@@ -4858,12 +4859,12 @@ export default function Canvas({
 
                   {/* Active Timer Controls (Pause/Resume, +1m, Stop) */}
                   {(timer?.isRunning || displayRemainingMs > 0) && (
-                    <div className="flex items-center gap-1.5 pt-1 border-t border-slate-100">
+                    <div className="flex items-center gap-1.5 pt-2 border-t border-slate-200">
                       {timer?.isRunning ? (
                         <button
                           type="button"
                           onClick={() => onTeacherTimerControl({ action: 'pause' })}
-                          className="flex-1 flex items-center justify-center gap-1 py-1.5 px-2 rounded-lg text-xs font-semibold bg-amber-100 text-amber-900 hover:bg-amber-200 cursor-pointer"
+                          className="flex-1 flex items-center justify-center gap-1 py-1.5 px-2 rounded-[2px] border border-amber-300 bg-amber-100 text-amber-900 hover:bg-amber-200 text-xs font-semibold cursor-pointer"
                         >
                           <Pause size={12} />
                           <span>Pause</span>
@@ -4872,7 +4873,7 @@ export default function Canvas({
                         <button
                           type="button"
                           onClick={() => onTeacherTimerControl({ action: 'resume' })}
-                          className="flex-1 flex items-center justify-center gap-1 py-1.5 px-2 rounded-lg text-xs font-semibold bg-emerald-600 text-white hover:bg-emerald-700 cursor-pointer"
+                          className="flex-1 flex items-center justify-center gap-1 py-1.5 px-2 rounded-[2px] border oh-btn-emerald text-xs font-semibold text-white cursor-pointer"
                         >
                           <Play size={12} />
                           <span>Resume</span>
@@ -4881,7 +4882,7 @@ export default function Canvas({
                       <button
                         type="button"
                         onClick={() => onTeacherTimerControl({ action: 'add-minute' })}
-                        className="py-1.5 px-2.5 rounded-lg text-xs font-mono font-semibold bg-slate-100 text-slate-700 hover:bg-slate-200 cursor-pointer"
+                        className="py-1.5 px-2.5 rounded-[2px] border oh-btn text-xs font-mono font-semibold text-slate-700 cursor-pointer"
                         title="Add 1 minute"
                       >
                         +1m
@@ -4892,7 +4893,7 @@ export default function Canvas({
                           onTeacherTimerControl({ action: 'stop' });
                           setShowTimerMenu(false);
                         }}
-                        className="flex items-center justify-center gap-1 py-1.5 px-2.5 rounded-lg text-xs font-semibold bg-red-50 text-red-600 hover:bg-red-100 cursor-pointer"
+                        className="flex items-center justify-center gap-1 py-1.5 px-2.5 rounded-[2px] border border-red-200 bg-red-50 text-red-600 hover:bg-red-100 text-xs font-semibold cursor-pointer"
                         title="Stop and clear timer"
                       >
                         <RotateCcw size={12} />
@@ -4902,7 +4903,7 @@ export default function Canvas({
                   )}
 
                   {/* Auto-Lock on Expire Option */}
-                  <label className="flex items-center gap-2 pt-1 border-t border-slate-100 text-xs text-slate-700 cursor-pointer">
+                  <label className="flex items-center gap-2 pt-2 border-t border-slate-200 text-xs text-slate-700 cursor-pointer">
                     <input
                       type="checkbox"
                       checked={Boolean(timer?.autoLockOnExpire)}
@@ -4912,10 +4913,11 @@ export default function Canvas({
                           autoLockOnExpire: e.target.checked,
                         })
                       }
-                      className="rounded border-slate-300 text-brand-600 focus:ring-brand-500"
+                      className="rounded-[2px] border-[#CBD5E1] text-brand-600 focus:ring-brand-500"
                     />
                     <span>Auto-lock board when time expires</span>
                   </label>
+                  </div>
                 </div>
               )}
             </div>
@@ -4926,7 +4928,7 @@ export default function Canvas({
             <button
               type="button"
               onClick={() => setShowTemplateModal(true)}
-              className="flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium bg-white text-slate-800 border border-amber-300 hover:bg-amber-100/60 transition-colors whitespace-nowrap shrink-0 cursor-pointer"
+              className="flex items-center gap-1.5 px-2.5 py-1 rounded-[2px] border oh-btn text-xs font-medium text-slate-800 transition-colors whitespace-nowrap shrink-0 cursor-pointer"
               title="Choose from 3 customizable classroom worksheet templates"
             >
               <LayoutTemplate size={13} className="text-amber-600" />
@@ -4938,7 +4940,7 @@ export default function Canvas({
               type="button"
               disabled={isUploadingWorksheet}
               onClick={() => worksheetInputRef.current?.click()}
-              className="flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium bg-white text-slate-800 border border-amber-300 hover:bg-amber-100/60 transition-colors whitespace-nowrap shrink-0 cursor-pointer"
+              className="flex items-center gap-1.5 px-2.5 py-1 rounded-[2px] border oh-btn text-xs font-medium text-slate-800 transition-colors whitespace-nowrap shrink-0 cursor-pointer"
               title="Upload a .jpg, .png, or multi-page .pdf worksheet as a non-erasable background"
             >
               <ImagePlus size={13} className="text-brand-600" />
@@ -4957,7 +4959,7 @@ export default function Canvas({
                   type="button"
                   disabled={isUploadingWorksheet || Boolean(driveBusy)}
                   onClick={handleWorksheetFromDrive}
-                  className="flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium bg-white text-slate-800 border border-amber-300 hover:bg-amber-100/60 transition-colors whitespace-nowrap shrink-0 cursor-pointer disabled:opacity-50"
+                  className="flex items-center gap-1.5 px-2.5 py-1 rounded-[2px] border oh-btn text-xs font-medium text-slate-800 transition-colors whitespace-nowrap shrink-0 cursor-pointer disabled:opacity-50"
                   title="Import a Google Slides deck or PDF from your Google Drive as a worksheet"
                 >
                   <HardDrive size={13} className="text-emerald-600" />
@@ -4977,7 +4979,7 @@ export default function Canvas({
 
             {/* Import Size Multiplier Selector (0.5x to 3x, default 2x) */}
             <label
-              className="flex items-center gap-1 px-2 py-0.5 rounded-md bg-white/90 border border-amber-300 text-xs text-slate-700 shrink-0"
+              className="flex items-center gap-1 px-2 py-0.5 rounded-[2px] bg-white border border-[#b6c2d2] text-xs text-slate-700 shrink-0"
               title="Set the size at which PDFs, Google Slides, PowerPoint decks, and images are imported onto the board (default 2x so standard pen and text sizes feel natural)"
             >
               <span className="text-[11px] font-medium text-slate-500">Import Size:</span>
@@ -4997,15 +4999,15 @@ export default function Canvas({
 
             {/* Active Background Worksheet Controls */}
             {background && (
-              <div className="flex items-center gap-1.5 bg-white/90 px-2 py-0.5 rounded-md border border-amber-200 text-xs text-slate-700">
+              <div className="flex items-center gap-1.5 bg-white px-2 py-0.5 rounded-[2px] border border-[#b6c2d2] text-xs text-slate-700">
                 <button
                   type="button"
                   onClick={() => setTool(tool === 'move-bg' ? 'solid' : 'move-bg')}
                   className={cn(
-                    "flex items-center gap-1 px-1.5 py-0.5 rounded text-[11px] font-medium transition-colors cursor-pointer whitespace-nowrap",
+                    "flex items-center gap-1 px-1.5 py-0.5 rounded-[2px] border text-[11px] font-medium transition-colors cursor-pointer whitespace-nowrap",
                     effectiveTool === 'move-bg'
-                      ? "bg-brand-600 text-white"
-                      : "hover:bg-slate-100 text-slate-700"
+                      ? "oh-btn-primary text-white"
+                      : "border-transparent hover:bg-slate-100 text-slate-700"
                   )}
                   title="Drag background worksheet on the canvas"
                 >
@@ -5021,7 +5023,7 @@ export default function Canvas({
                         scale: Math.max(0.2, Number(((background.scale || 1) - 0.15).toFixed(2))),
                       })
                     }
-                    className="px-1.5 py-0.5 rounded hover:bg-slate-100 font-mono text-xs cursor-pointer"
+                    className="px-1.5 py-0.5 rounded-[2px] hover:bg-slate-100 font-mono text-xs cursor-pointer"
                     title="Shrink worksheet"
                   >
                     -
@@ -5036,7 +5038,7 @@ export default function Canvas({
                         scale: Math.min(4.0, Number(((background.scale || 1) + 0.15).toFixed(2))),
                       })
                     }
-                    className="px-1.5 py-0.5 rounded hover:bg-slate-100 font-mono text-xs cursor-pointer"
+                    className="px-1.5 py-0.5 rounded-[2px] hover:bg-slate-100 font-mono text-xs cursor-pointer"
                     title="Enlarge worksheet"
                   >
                     +
@@ -5048,7 +5050,7 @@ export default function Canvas({
                     <span className="text-slate-300" aria-hidden="true">|</span>
                     <div className="flex items-center gap-1" role="group" aria-label="Worksheet page layout">
                       <span className="text-[11px] font-medium text-slate-500">Layout:</span>
-                      <div className="flex items-center bg-slate-100 rounded p-0.5 border border-slate-200/80">
+                      <div className="flex items-center bg-slate-100 rounded-[2px] p-0.5 border border-[#CBD5E1]">
                         {(
                           [
                             { value: 'row', label: 'Row', title: 'Pages side by side', Icon: Columns },
@@ -5081,10 +5083,10 @@ export default function Canvas({
                                 onTeacherUpdateBackground({ layout: value });
                               }}
                               className={cn(
-                                'flex items-center gap-1 px-1.5 py-0.5 rounded text-[11px] font-medium transition-colors cursor-pointer whitespace-nowrap',
+                                'flex items-center gap-1 px-1.5 py-0.5 rounded-[2px] border text-[11px] font-medium transition-colors cursor-pointer whitespace-nowrap',
                                 isActive
-                                  ? 'bg-white text-brand-700 shadow-xs'
-                                  : 'text-slate-600 hover:text-slate-900'
+                                  ? 'oh-btn-active text-brand-800'
+                                  : 'border-transparent text-slate-600 hover:text-slate-900'
                               )}
                             >
                               <Icon size={11} />
@@ -5122,7 +5124,7 @@ export default function Canvas({
                     if (tool === 'move-bg') setTool('solid');
                   }}
                   className={cn(
-                    'px-1.5 py-0.5 rounded text-[11px] cursor-pointer whitespace-nowrap transition-colors',
+                    'px-1.5 py-0.5 rounded-[2px] text-[11px] cursor-pointer whitespace-nowrap transition-colors',
                     confirmRemoveWorksheet
                       ? 'bg-red-50 text-red-700 font-bold'
                       : 'text-red-600 hover:bg-red-50 font-medium'
@@ -5144,7 +5146,7 @@ export default function Canvas({
             <button
               type="button"
               onClick={() => fileInputRef.current?.click()}
-              className="flex items-center gap-1.5 px-3 py-1 rounded-md text-xs font-medium bg-white text-slate-800 border border-amber-300 hover:bg-amber-100/60 transition-colors whitespace-nowrap shrink-0 cursor-pointer"
+              className="flex items-center gap-1.5 px-3 py-1 rounded-[2px] border oh-btn text-xs font-medium text-slate-800 transition-colors whitespace-nowrap shrink-0 cursor-pointer"
               title="Restore or merge a previously saved .json room snapshot"
             >
               <Upload size={13} />
@@ -5157,7 +5159,7 @@ export default function Canvas({
                   type="button"
                   disabled={driveOpening}
                   onClick={handleOpenFromDrive}
-                  className="flex items-center gap-1.5 px-3 py-1 rounded-md text-xs font-medium bg-white text-slate-800 border border-amber-300 hover:bg-amber-100/60 transition-colors whitespace-nowrap shrink-0 cursor-pointer disabled:opacity-50"
+                  className="flex items-center gap-1.5 px-3 py-1 rounded-[2px] border oh-btn text-xs font-medium text-slate-800 transition-colors whitespace-nowrap shrink-0 cursor-pointer disabled:opacity-50"
                   title="Open a room you saved to Google Drive"
                 >
                   <HardDrive size={13} className="text-emerald-600" />
@@ -5166,7 +5168,7 @@ export default function Canvas({
                 <button
                   type="button"
                   onClick={handleSaveToDrive}
-                  className="flex items-center gap-1.5 px-3 py-1 rounded-md text-xs font-medium bg-white text-slate-800 border border-amber-300 hover:bg-amber-100/60 transition-colors whitespace-nowrap shrink-0 cursor-pointer"
+                  className="flex items-center gap-1.5 px-3 py-1 rounded-[2px] border oh-btn text-xs font-medium text-slate-800 transition-colors whitespace-nowrap shrink-0 cursor-pointer"
                   title="Save this room (drawings, chat, worksheets and breakout boards) to your Google Drive"
                 >
                   <HardDrive size={13} className="text-emerald-600" />
@@ -5204,10 +5206,10 @@ export default function Canvas({
               type="button"
               onClick={() => onTeacherToggleLock(!isCanvasLocked)}
               className={cn(
-                "flex items-center gap-1.5 px-3 py-1 rounded-md text-xs font-medium transition-colors whitespace-nowrap shrink-0 cursor-pointer",
+                "flex items-center gap-1.5 px-3 py-1 rounded-[2px] border text-xs font-medium transition-colors whitespace-nowrap shrink-0 cursor-pointer",
                 isCanvasLocked
-                  ? "bg-amber-600 text-white hover:bg-amber-700"
-                  : "bg-white text-amber-900 border border-amber-300 hover:bg-amber-100/60"
+                  ? "oh-btn-amber text-white"
+                  : "oh-btn text-amber-900"
               )}
             >
               {isCanvasLocked ? <Unlock size={13} /> : <Lock size={13} />}
@@ -5219,10 +5221,10 @@ export default function Canvas({
               onClick={() => onTeacherToggleHideCursors(!hideStudentCursors)}
               aria-pressed={hideStudentCursors}
               className={cn(
-                "flex items-center gap-1.5 px-3 py-1 rounded-md text-xs font-medium transition-colors whitespace-nowrap shrink-0 cursor-pointer",
+                "flex items-center gap-1.5 px-3 py-1 rounded-[2px] border text-xs font-medium transition-colors whitespace-nowrap shrink-0 cursor-pointer",
                 hideStudentCursors
-                  ? "bg-amber-600 text-white hover:bg-amber-700"
-                  : "bg-white text-amber-900 border border-amber-300 hover:bg-amber-100/60"
+                  ? "oh-btn-amber text-white"
+                  : "oh-btn text-amber-900"
               )}
             >
               <MousePointer2 size={13} />
@@ -5235,10 +5237,10 @@ export default function Canvas({
               aria-pressed={oneNameStamp}
               title="Limit each student to one name stamp per board. They can still drag or delete it."
               className={cn(
-                "flex items-center gap-1.5 px-3 py-1 rounded-md text-xs font-medium transition-colors whitespace-nowrap shrink-0 cursor-pointer",
+                "flex items-center gap-1.5 px-3 py-1 rounded-[2px] border text-xs font-medium transition-colors whitespace-nowrap shrink-0 cursor-pointer",
                 oneNameStamp
-                  ? "bg-amber-600 text-white hover:bg-amber-700"
-                  : "bg-white text-amber-900 border border-amber-300 hover:bg-amber-100/60"
+                  ? "oh-btn-amber text-white"
+                  : "oh-btn text-amber-900"
               )}
             >
               <span>One Name Stamp: {oneNameStamp ? 'On' : 'Off'}</span>
@@ -5246,8 +5248,8 @@ export default function Canvas({
 
             <label
               className={cn(
-                "flex items-center gap-1 px-2 py-0.5 rounded-md border text-xs shrink-0",
-                focusedInkAuthor ? "bg-amber-600 border-amber-600 text-white" : "bg-white border-amber-300 text-amber-900"
+                "flex items-center gap-1 px-2 py-0.5 rounded-[2px] border text-xs shrink-0",
+                focusedInkAuthor ? "oh-btn-amber text-white" : "bg-white border-[#b6c2d2] text-amber-900"
               )}
               title="Fade everyone else's ink on your screen. Students and exports are not affected."
             >
@@ -5268,7 +5270,7 @@ export default function Canvas({
             </label>
 
             {confirmClearAll ? (
-              <div className="flex items-center gap-1.5 bg-white px-2.5 py-1 rounded-md border border-red-300">
+              <div className="flex items-center gap-1.5 bg-white px-2.5 py-1 rounded-[2px] border border-red-300">
                 <span className="text-xs font-medium text-red-700 whitespace-nowrap">
                   Clear ink on {activeBoardTitle}?
                 </span>
@@ -5278,7 +5280,7 @@ export default function Canvas({
                     onTeacherClearAll();
                     setConfirmClearAll(false);
                   }}
-                  className="px-2 py-0.5 text-xs font-medium bg-red-600 text-white rounded hover:bg-red-700 cursor-pointer whitespace-nowrap"
+                  className="px-2 py-0.5 text-xs font-medium oh-btn-danger border text-white rounded-[2px] cursor-pointer whitespace-nowrap"
                 >
                   Confirm
                 </button>
@@ -5294,7 +5296,7 @@ export default function Canvas({
               <button
                 type="button"
                 onClick={() => setConfirmClearAll(true)}
-                className="flex items-center gap-1.5 px-3 py-1 rounded-md text-xs font-medium bg-white text-red-600 border border-red-200 hover:bg-red-50 transition-colors whitespace-nowrap shrink-0 cursor-pointer"
+                className="flex items-center gap-1.5 px-3 py-1 rounded-[2px] border oh-btn text-xs font-medium text-red-600 transition-colors whitespace-nowrap shrink-0 cursor-pointer"
               >
                 <Trash2 size={13} />
                 <span>Clear Ink</span>
@@ -5308,7 +5310,7 @@ export default function Canvas({
           isCanvasLocked ||
           timer?.isRunning ||
           displayRemainingMs > 0) && (
-          <div className="px-4 py-1.5 bg-brand-50/90 border-b border-brand-200/80 flex flex-wrap items-center justify-between gap-2 text-xs text-slate-800 z-10">
+          <div className="oh-chrome-bar px-4 py-1.5 border-b border-brand-300 flex flex-wrap items-center justify-between gap-2 text-xs text-slate-800 z-10">
             <div className="flex items-center gap-2">
               <span className="font-display font-semibold text-brand-900">
                 Active Board: {activeBoardTitle}
@@ -5325,12 +5327,12 @@ export default function Canvas({
               {(timer?.isRunning || displayRemainingMs > 0) && (
                 <span
                   className={cn(
-                    "flex items-center gap-1.5 px-2.5 py-0.5 rounded-md font-mono tabular-nums font-bold text-xs",
+                    "flex items-center gap-1.5 px-2.5 py-0.5 rounded-[2px] border font-mono tabular-nums font-bold text-xs",
                     timer?.isRunning
                       ? displayRemainingMs <= 60000
-                        ? "bg-red-600 text-white animate-pulse"
-                        : "bg-slate-900 text-amber-300"
-                      : "bg-amber-200 text-slate-900"
+                        ? "bg-red-600 border-red-700 text-white animate-pulse"
+                        : "bg-slate-900 border-[#243044] text-amber-300"
+                      : "bg-amber-200 border-amber-400 text-slate-900"
                   )}
                 >
                   <Timer size={12} />
@@ -5347,7 +5349,7 @@ export default function Canvas({
                   <select
                     value={activeBoardId}
                     onChange={(e) => onAssignUserToBoard(e.target.value)}
-                    className="bg-white border border-brand-300 rounded px-2 py-0.5 text-xs font-semibold text-brand-900 cursor-pointer"
+                    className="bg-white border border-brand-300 rounded-[2px] px-2 py-0.5 text-xs font-semibold text-brand-900 cursor-pointer"
                   >
                     {activeRoundBoards.filter((sb) => sb.kind === 'group').map((sb) => (
                       <option key={sb.id} value={sb.id}>
@@ -5735,7 +5737,7 @@ export default function Canvas({
             data-keep-note="true"
             onPointerDown={(e) => e.stopPropagation()}
             onDoubleClick={(e) => e.stopPropagation()}
-            className="absolute z-40 flex flex-wrap items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-slate-900/95 text-white shadow-xl border border-slate-700 text-xs"
+            className="absolute z-40 flex flex-wrap items-center gap-1.5 px-2.5 py-1.5 rounded-[3px] bg-slate-900 text-white border-2 border-[#243044] text-xs"
             style={{
               left: Math.max(
                 12,
@@ -5773,7 +5775,7 @@ export default function Canvas({
                 <button
                   type="button"
                   onClick={() => handleSelectTextFontSize(activeTextSize - 4)}
-                  className="px-1.5 py-0.5 rounded bg-slate-800 hover:bg-slate-700 font-semibold cursor-pointer"
+                  className="px-1.5 py-0.5 rounded-[2px] border oh-btn-dark font-semibold cursor-pointer"
                   title="Shrink selected text"
                 >
                   A&minus;
@@ -5781,7 +5783,7 @@ export default function Canvas({
                 <button
                   type="button"
                   onClick={() => handleSelectTextFontSize(activeTextSize + 4)}
-                  className="px-1.5 py-0.5 rounded bg-slate-800 hover:bg-slate-700 font-semibold cursor-pointer"
+                  className="px-1.5 py-0.5 rounded-[2px] border oh-btn-dark font-semibold cursor-pointer"
                   title="Grow selected text"
                 >
                   A+
@@ -5794,7 +5796,7 @@ export default function Canvas({
                       setSelectedIds([]);
                       openOrTapNoteAt(target.x || 0, target.y || 0, target);
                     }}
-                    className="flex items-center gap-1 px-2 py-0.5 rounded bg-brand-600 hover:bg-brand-500 font-medium cursor-pointer whitespace-nowrap"
+                    className="flex items-center gap-1 px-2 py-0.5 rounded-[2px] border oh-btn-primary font-medium cursor-pointer whitespace-nowrap"
                     title="Edit text content"
                   >
                     <Edit3 size={12} />
@@ -5809,7 +5811,7 @@ export default function Canvas({
             <button
               type="button"
               onClick={handleCopySelection}
-              className="flex items-center gap-1 px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 font-medium cursor-pointer whitespace-nowrap"
+              className="flex items-center gap-1 px-2 py-0.5 rounded-[2px] border oh-btn-dark font-medium cursor-pointer whitespace-nowrap"
               title="Copy selection (Ctrl+C)"
             >
               <Copy size={12} />
@@ -5818,7 +5820,7 @@ export default function Canvas({
             <button
               type="button"
               onClick={handleDuplicateSelection}
-              className="px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 font-medium cursor-pointer whitespace-nowrap"
+              className="px-2 py-0.5 rounded-[2px] border oh-btn-dark font-medium cursor-pointer whitespace-nowrap"
               title="Duplicate selection (Ctrl+D)"
             >
               Duplicate
@@ -5826,7 +5828,7 @@ export default function Canvas({
             <button
               type="button"
               onClick={handleDeleteSelection}
-              className="flex items-center gap-1 px-2 py-0.5 rounded bg-red-600/90 hover:bg-red-500 font-medium cursor-pointer whitespace-nowrap"
+              className="flex items-center gap-1 px-2 py-0.5 rounded-[2px] border oh-btn-danger font-medium cursor-pointer whitespace-nowrap"
               title="Delete selected items (Delete)"
             >
               <Trash2 size={12} />
@@ -5840,7 +5842,7 @@ export default function Canvas({
                   aria-label="Target board to send copy"
                   value={sendToBoardTarget}
                   onChange={(e) => setSendToBoardTarget(e.target.value)}
-                  className="bg-slate-800 border border-slate-600 rounded px-1.5 py-0.5 text-[11px] text-white"
+                  className="bg-slate-800 border border-[#243044] rounded-[2px] px-1.5 py-0.5 text-[11px] text-white"
                 >
                   <option value="ALL_SUBBOARDS">All Boards in Current Round</option>
                   <option value="main">Main Class Board</option>
@@ -5853,7 +5855,7 @@ export default function Canvas({
                 <button
                   type="button"
                   onClick={() => handleSendSelectionToBoard(sendToBoardTarget)}
-                  className="px-2 py-0.5 rounded bg-emerald-600 hover:bg-emerald-500 font-semibold cursor-pointer whitespace-nowrap"
+                  className="px-2 py-0.5 rounded-[2px] border oh-btn-emerald font-semibold cursor-pointer whitespace-nowrap"
                 >
                   Send Copy
                 </button>
@@ -5868,7 +5870,7 @@ export default function Canvas({
             <button
               type="button"
               onClick={() => setSelectedIds([])}
-              className="p-0.5 rounded text-slate-400 hover:text-white cursor-pointer"
+              className="p-0.5 rounded-[2px] text-slate-400 hover:text-white cursor-pointer"
               title="Deselect (Esc)"
             >
               <X size={13} />
@@ -5881,7 +5883,7 @@ export default function Canvas({
           <div
             data-hud="true"
             onPointerDown={(e) => e.stopPropagation()}
-            className="absolute z-40 flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-slate-900 text-white shadow-xl border border-slate-700 text-xs"
+            className="absolute z-40 flex items-center gap-1.5 px-2.5 py-1.5 rounded-[3px] bg-slate-900 text-white border-2 border-[#243044] text-xs"
             style={{
               left: Math.max(12, Math.min(dimensions.width - 180, stagePos.x + pastePrompt.worldX * stageScale)),
               top: Math.max(12, Math.min(dimensions.height - 48, stagePos.y + pastePrompt.worldY * stageScale - 36)),
@@ -5890,7 +5892,7 @@ export default function Canvas({
             <button
               type="button"
               onClick={() => handlePasteElements({ x: pastePrompt.worldX, y: pastePrompt.worldY })}
-              className="px-2 py-0.5 rounded bg-indigo-600 hover:bg-indigo-500 font-semibold cursor-pointer whitespace-nowrap"
+              className="px-2 py-0.5 rounded-[2px] border oh-btn-primary font-semibold cursor-pointer whitespace-nowrap"
             >
               Paste {clipboardElements.length} item{clipboardElements.length > 1 ? 's' : ''} here
             </button>
@@ -5921,7 +5923,7 @@ export default function Canvas({
             {/* Floating Drag Handle & Quick Size Controls */}
             <div
               data-keep-note="true"
-              className="absolute -top-8 left-0 flex items-center gap-1 px-1.5 py-0.5 rounded-lg bg-slate-900/95 text-white shadow-md border border-slate-700 text-[11px] whitespace-nowrap"
+              className="absolute -top-8 left-0 flex items-center gap-1 px-1.5 py-0.5 rounded-[3px] bg-slate-900 text-white border border-[#243044] text-[11px] whitespace-nowrap"
             >
               <button
                 type="button"
@@ -5957,7 +5959,7 @@ export default function Canvas({
                   window.addEventListener('pointerup', onUp);
                   window.addEventListener('pointercancel', onUp);
                 }}
-                className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-slate-800 hover:bg-slate-700 cursor-grab active:cursor-grabbing text-slate-200 font-medium"
+                className="flex items-center gap-1 px-1.5 py-0.5 rounded-[2px] border oh-btn-dark cursor-grab active:cursor-grabbing text-slate-200 font-medium"
               >
                 <Move size={11} />
                 <span>Drag</span>
@@ -5972,10 +5974,10 @@ export default function Canvas({
                   onPointerDown={(e) => e.preventDefault()}
                   onClick={() => handleSelectTextFontSize(preset.size)}
                   className={cn(
-                    "px-1 py-0.5 rounded font-bold cursor-pointer",
+                    "px-1 py-0.5 rounded-[2px] border font-bold cursor-pointer",
                     editingNote.fontSize === preset.size
-                      ? "bg-brand-600 text-white"
-                      : "text-slate-300 hover:bg-slate-800"
+                      ? "oh-btn-primary text-white"
+                      : "border-transparent text-slate-300 hover:bg-slate-800"
                   )}
                   title={preset.title}
                 >
@@ -5987,7 +5989,7 @@ export default function Canvas({
                 type="button"
                 onPointerDown={(e) => e.preventDefault()}
                 onClick={() => handleSelectTextFontSize(editingNote.fontSize - 3)}
-                className="px-1 py-0.5 rounded text-slate-300 hover:bg-slate-800 font-bold cursor-pointer"
+                className="px-1 py-0.5 rounded-[2px] text-slate-300 hover:bg-slate-800 font-bold cursor-pointer"
                 title="Smaller text"
               >
                 &minus;
@@ -5996,7 +5998,7 @@ export default function Canvas({
                 type="button"
                 onPointerDown={(e) => e.preventDefault()}
                 onClick={() => handleSelectTextFontSize(editingNote.fontSize + 3)}
-                className="px-1 py-0.5 rounded text-slate-300 hover:bg-slate-800 font-bold cursor-pointer"
+                className="px-1 py-0.5 rounded-[2px] text-slate-300 hover:bg-slate-800 font-bold cursor-pointer"
                 title="Larger text"
               >
                 +
@@ -6007,7 +6009,7 @@ export default function Canvas({
                 aria-label="Done editing note"
                 onPointerDown={(e) => e.preventDefault()}
                 onClick={() => commitEditingNote()}
-                className="flex items-center gap-0.5 px-1.5 py-0.5 rounded bg-emerald-600 hover:bg-emerald-500 text-white font-semibold cursor-pointer ml-0.5"
+                className="flex items-center gap-0.5 px-1.5 py-0.5 rounded-[2px] border oh-btn-emerald text-white font-semibold cursor-pointer ml-0.5"
                 title="Save note (Esc or Ctrl+Enter)"
               >
                 <Check size={11} />
@@ -6091,7 +6093,7 @@ export default function Canvas({
           onPointerMove={(e) => e.stopPropagation()}
           onPointerUp={(e) => e.stopPropagation()}
           onDoubleClick={(e) => e.stopPropagation()}
-          className="absolute bottom-4 right-4 z-20 flex items-center gap-1 bg-white/95 backdrop-blur-xs px-2 py-1.5 rounded-lg border border-slate-200 shadow-sm text-xs text-slate-700"
+          className="oh-chrome-bar absolute bottom-4 right-4 z-20 flex items-center gap-1 px-2 py-1.5 rounded-[3px] border border-[#CBD5E1] text-xs text-slate-700"
         >
           {/* Upward Curved Radial Background Grid Selector (Blank, Dots, Graph Paper, Isometric 3D) */}
           <div ref={gridMenuRef} className="relative flex items-center">
@@ -6101,10 +6103,10 @@ export default function Canvas({
               aria-haspopup="true"
               aria-expanded={showGridMenu}
               className={cn(
-                "p-1.5 rounded hover:bg-slate-100 transition-colors cursor-pointer",
+                "p-1.5 rounded-[2px] border transition-colors cursor-pointer",
                 gridMode !== 'blank' || showGridMenu
-                  ? "text-brand-600 bg-brand-50/70"
-                  : "text-slate-400"
+                  ? "oh-btn-active text-brand-700"
+                  : "border-transparent text-slate-500 hover:bg-white/80 hover:text-slate-800"
               )}
               title={`Background Grid: ${GRID_MODE_OPTIONS.find((o) => o.mode === gridMode)?.label || gridMode} (click to choose Blank, Dots, Graph Paper, or Isometric 3D)`}
             >
@@ -6155,10 +6157,10 @@ export default function Canvas({
                         transform: 'translate(-50%, -50%)',
                       }}
                       className={cn(
-                        "pointer-events-auto absolute w-8 h-8 rounded-full flex items-center justify-center shadow-lg border transition-transform hover:scale-110 cursor-pointer",
+                        "pointer-events-auto absolute w-8 h-8 rounded-full flex items-center justify-center border transition-transform hover:scale-110 cursor-pointer",
                         isSelected
                           ? "bg-brand-600 text-white border-white ring-2 ring-brand-500/50"
-                          : "bg-slate-900/95 text-slate-200 border-slate-700 hover:bg-slate-800 hover:text-white"
+                          : "bg-slate-900 text-slate-200 border-[#243044] hover:bg-slate-800 hover:text-white"
                       )}
                       title={opt.label}
                     >
@@ -6170,12 +6172,12 @@ export default function Canvas({
             )}
           </div>
 
-          <div className="h-4 w-px bg-slate-200 mx-0.5" />
+          <div className="h-4 w-px bg-slate-300 mx-0.5" />
 
           <button
             type="button"
             onClick={() => zoomStep(1 / 1.25)}
-            className="p-1.5 rounded hover:bg-slate-100 transition-colors cursor-pointer"
+            className="p-1.5 rounded-[2px] border oh-btn transition-colors cursor-pointer"
             title="Zoom Out"
           >
             <ZoomOut size={14} />
@@ -6184,7 +6186,7 @@ export default function Canvas({
           <button
             type="button"
             onClick={resetView}
-            className="px-2 py-1 rounded hover:bg-slate-100 font-mono tabular-nums font-medium text-slate-700 cursor-pointer"
+            className="px-2 py-1 rounded-[2px] hover:bg-white font-mono tabular-nums font-medium text-slate-700 cursor-pointer"
             title="Click to reset zoom to 100% at origin (0,0)"
           >
             {Math.round(stageScale * 100)}%
@@ -6193,34 +6195,34 @@ export default function Canvas({
           <button
             type="button"
             onClick={() => zoomStep(1.25)}
-            className="p-1.5 rounded hover:bg-slate-100 transition-colors cursor-pointer"
+            className="p-1.5 rounded-[2px] border oh-btn transition-colors cursor-pointer"
             title="Zoom In"
           >
             <ZoomIn size={14} />
           </button>
 
-          <div className="h-4 w-px bg-slate-200 mx-0.5" />
+          <div className="h-4 w-px bg-slate-300 mx-0.5" />
 
           <button
             type="button"
             onClick={fitAllContent}
-            className="flex items-center gap-1 px-2 py-1 rounded hover:bg-slate-100 font-medium text-slate-700 whitespace-nowrap cursor-pointer"
+            className="flex items-center gap-1 px-2 py-1 rounded-[2px] border oh-btn font-medium text-slate-700 whitespace-nowrap cursor-pointer"
             title="Fit worksheet and all drawings into view [F]"
           >
             <Maximize2 size={13} />
             <span>Fit All</span>
           </button>
 
-          <div className="h-4 w-px bg-slate-200 mx-0.5" />
+          <div className="h-4 w-px bg-slate-300 mx-0.5" />
 
           <button
             type="button"
             onClick={() => setShowHotkeysModal((prev) => !prev)}
             className={cn(
-              "flex items-center gap-1 px-2 py-1 rounded font-medium whitespace-nowrap cursor-pointer transition-colors",
+              "flex items-center gap-1 px-2 py-1 rounded-[2px] border font-medium whitespace-nowrap cursor-pointer transition-colors",
               showHotkeysModal
-                ? "bg-brand-600 text-white"
-                : "hover:bg-slate-100 text-slate-700"
+                ? "oh-btn-primary text-white"
+                : "oh-btn text-slate-700"
             )}
             title="Keyboard Shortcuts & Navigation [?]"
           >
@@ -6235,13 +6237,13 @@ export default function Canvas({
             data-hud="true"
             onPointerDown={(e) => e.stopPropagation()}
             onClick={() => setShowHotkeysModal(false)}
-            className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 backdrop-blur-xs p-4"
+            className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 p-4"
           >
             <div
               onClick={(e) => e.stopPropagation()}
-              className="bg-white border border-slate-200 rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden text-slate-800"
+              className="bg-white border-2 border-[#CBD5E1] rounded-[3px] w-full max-w-lg overflow-hidden text-slate-800"
             >
-              <div className="flex items-center justify-between px-5 py-3.5 border-b border-slate-200 bg-slate-50">
+              <div className="oh-panel-header flex items-center justify-between px-5 py-3.5 border-b border-[#CBD5E1]">
                 <div className="flex items-center gap-2">
                   <Keyboard size={17} className="text-brand-600" />
                   <h2 className="font-display font-bold text-sm text-slate-900">
@@ -6251,7 +6253,7 @@ export default function Canvas({
                 <button
                   type="button"
                   onClick={() => setShowHotkeysModal(false)}
-                  className="p-1 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-200/60 cursor-pointer"
+                  className="p-1 rounded-[2px] border border-transparent hover:border-[#CBD5E1] text-slate-400 hover:text-slate-700 cursor-pointer"
                   title="Close (Esc)"
                 >
                   <X size={16} />

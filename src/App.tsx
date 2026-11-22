@@ -1707,201 +1707,221 @@ export default function App() {
 
   if (!isJoined) {
     return (
-      <div className="min-h-screen bg-slate-950 bg-[radial-gradient(ellipse_at_top,_rgba(8,127,115,0.16),_transparent_55%)] flex items-center justify-center p-4">
+      <div
+        className="min-h-screen flex items-center justify-center p-4"
+        style={{
+          backgroundColor: '#f8fafc',
+          backgroundImage: 'radial-gradient(#cbd5e1 1.25px, transparent 1.25px)',
+          backgroundSize: '28px 28px',
+        }}
+      >
         <motion.div
-          initial={{ opacity: 0, scale: 0.96 }}
+          initial={{ opacity: 0, scale: 0.98 }}
           animate={{ opacity: 1, scale: 1 }}
-          transition={{ duration: 0.16 }}
-          className="bg-slate-900 border border-slate-800/90 p-8 rounded-2xl shadow-xl w-full max-w-md"
+          transition={{ duration: 0.14 }}
+          className="bg-white border-2 border-[#CBD5E1] rounded-[3px] w-full max-w-md"
         >
-          <div className="flex justify-center mb-5">
-            <img
-              src="/assets/aistudio/icon-192_ea534733.png"
-              alt="AllAboard"
-              referrerPolicy="no-referrer"
-              className="w-14 h-14 rounded-xl shadow-md object-contain"
-            />
+          <div className="oh-panel-header px-5 py-3 border-b border-[#CBD5E1] flex items-center justify-between gap-3">
+            <div className="flex items-center gap-2 min-w-0">
+              <img
+                src="/assets/aistudio/favicon_68cc1684.svg"
+                alt="AllAboard"
+                referrerPolicy="no-referrer"
+                className="w-6 h-6 rounded-[2px] border border-[#CBD5E1] shrink-0 object-contain"
+              />
+              <h1 className="font-display text-base font-bold tracking-tight text-slate-900 truncate">
+                AllAboard
+              </h1>
+            </div>
+            <span className="px-2 py-0.5 rounded-[2px] bg-brand-50 border border-brand-200 font-mono text-xs font-semibold text-brand-800 truncate max-w-[12rem]">
+              #{effectiveRoomId}
+            </span>
           </div>
 
-          <h1 className="font-display text-2xl font-bold text-white text-center mb-1.5 text-balance">
-            Welcome to AllAboard
-          </h1>
-          <p className="text-slate-400 text-center mb-6 text-sm">
-            Enter your name to join room <span className="font-mono text-brand-200">#{effectiveRoomId}</span>
-          </p>
-
-          {kickNotice && (
-            <div className="mb-4 p-3 rounded-xl bg-red-950/70 border border-red-800/80 text-xs text-red-200 leading-relaxed text-center">
-              {kickNotice}
-            </div>
-          )}
-
-          <form onSubmit={handleJoin} autoComplete="off" className="space-y-4">
-            <div>
-              <label
-                htmlFor="display-name-input"
-                className="block text-xs font-medium text-slate-300 mb-1.5"
-              >
-                Your Display Name
-              </label>
-              <input
-                ref={displayNameInputRef}
-                id="display-name-input"
-                type="text"
-                value={userName}
-                onChange={(e) => setUserName(e.target.value)}
-                placeholder="e.g. Alex"
-                autoFocus
-                maxLength={28}
-                className="w-full px-4 py-3 bg-slate-800 border border-slate-700 rounded-xl text-white placeholder:text-slate-500 focus:ring-2 focus:ring-brand-500 focus:border-transparent transition-colors outline-none"
-              />
-            </div>
-
-            <div className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 rounded-xl bg-slate-800/50 border border-slate-800 text-xs">
-              <div className="flex items-center gap-2 min-w-0 flex-1">
-                <span className="text-slate-400 shrink-0">Room Code:</span>
-                <input
-                  ref={roomCodeInputRef}
-                  aria-label="Room Code"
-                  type="text"
-                  value={roomId}
-                  placeholder="main"
-                  onChange={(e) => {
-                    setKickNotice(null);
-                    setHasEditedLobbyRoom(true);
-                    setRoomId(sanitizeRoomCodeDraft(e.target.value));
-                  }}
-                  onBlur={() => {
-                    setRoomId((prev) => prev.replace(/^-|-$/g, ''));
-                  }}
-                  maxLength={24}
-                  className="bg-slate-900 border border-slate-700 px-2 py-1 rounded font-mono text-xs text-white placeholder:text-slate-500 w-28 flex-1 min-w-[6.5rem] focus:outline-none focus:border-brand-500"
-                />
-              </div>
-              <div className="flex items-center gap-1.5 shrink-0">
-                <button
-                  type="button"
-                  disabled={isCheckingRoom}
-                  onClick={() => {
-                    setKickNotice(null);
-                    setHasEditedLobbyRoom(true);
-                    setRoomId('');
-                    roomCodeInputRef.current?.focus();
-                  }}
-                  className="flex items-center gap-1 text-brand-400 hover:text-brand-300 font-medium whitespace-nowrap cursor-pointer disabled:opacity-50"
-                  title="Type a custom room code"
-                >
-                  <PlusCircle size={13} />
-                  <span>New Room</span>
-                </button>
-                <span className="text-slate-700" aria-hidden="true">·</span>
-                <button
-                  type="button"
-                  disabled={isCheckingRoom}
-                  onClick={handleCreateNewRoom}
-                  className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white font-medium whitespace-nowrap cursor-pointer disabled:opacity-50 transition-colors"
-                  title="Generate a random unused room code"
-                >
-                  <Shuffle size={12} />
-                  <span>Random</span>
-                </button>
-                <span className="text-slate-700" aria-hidden="true">·</span>
-                <RoomHistoryDropdown
-                  theme="dark"
-                  align="right"
-                  disabled={isCheckingRoom}
-                  historyVersion={historyVersion}
-                  hintText="Click a room to fill its code, then join."
-                  onSelectRoom={(code) => {
-                    setKickNotice(null);
-                    setHasEditedLobbyRoom(true);
-                    setRoomId(code);
-                    if (showTeacherSetupOnJoin) {
-                      teacherPinInputRef.current?.focus();
-                    } else if (!userName.trim()) {
-                      displayNameInputRef.current?.focus();
-                    }
-                  }}
-                />
-              </div>
-            </div>
-
-            {showTeacherSetupOnJoin ? (
-              <div className="p-3.5 rounded-xl bg-slate-800/80 border border-slate-700 space-y-2">
-                <div className="flex items-center justify-between">
-                  <label
-                    htmlFor="teacher-pin-input"
-                    className="text-xs font-medium text-amber-400 flex items-center gap-1.5"
-                  >
-                    <KeyRound size={13} />
-                    <span>Set or Enter Room Teacher PIN</span>
-                  </label>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setShowTeacherSetupOnJoin(false);
-                      setInitialTeacherPin('');
-                      setShowInitialTeacherPin(false);
-                    }}
-                    className="text-[11px] text-slate-400 hover:text-slate-200 cursor-pointer"
-                  >
-                    Cancel
-                  </button>
+          <form onSubmit={handleJoin} autoComplete="off">
+            <div className="p-5 space-y-4">
+              {kickNotice && (
+                <div className="p-3 rounded-[3px] bg-red-50 border border-red-200 text-xs text-red-800 leading-relaxed">
+                  {kickNotice}
                 </div>
-                <div className="relative">
+              )}
+
+              <div>
+                <label
+                  htmlFor="display-name-input"
+                  className="block text-xs font-semibold text-slate-700 mb-1.5"
+                >
+                  Your Display Name
+                </label>
+                <input
+                  ref={displayNameInputRef}
+                  id="display-name-input"
+                  type="text"
+                  value={userName}
+                  onChange={(e) => setUserName(e.target.value)}
+                  placeholder="e.g. Alex"
+                  autoFocus
+                  maxLength={28}
+                  className="w-full px-3 py-2 bg-white border border-[#CBD5E1] rounded-[2px] text-sm text-slate-900 placeholder:text-slate-400 focus:border-brand-600 focus:outline-none transition-colors"
+                />
+              </div>
+
+              <div>
+                <div className="flex items-center justify-between gap-2 mb-1.5">
+                  <label
+                    htmlFor="lobby-room-code-input"
+                    className="text-xs font-semibold text-slate-700"
+                  >
+                    Room Code
+                  </label>
+                  <RoomHistoryDropdown
+                    theme="light"
+                    align="right"
+                    disabled={isCheckingRoom}
+                    historyVersion={historyVersion}
+                    hintText="Click a room to fill its code, then join."
+                    onSelectRoom={(code) => {
+                      setKickNotice(null);
+                      setHasEditedLobbyRoom(true);
+                      setRoomId(code);
+                      if (showTeacherSetupOnJoin) {
+                        teacherPinInputRef.current?.focus();
+                      } else if (!userName.trim()) {
+                        displayNameInputRef.current?.focus();
+                      }
+                    }}
+                  />
+                </div>
+                <div className="flex items-center gap-1.5">
                   <input
-                    ref={teacherPinInputRef}
-                    id="teacher-pin-input"
+                    ref={roomCodeInputRef}
+                    id="lobby-room-code-input"
+                    aria-label="Room Code"
                     type="text"
-                    value={initialTeacherPin}
-                    onChange={(e) => setInitialTeacherPin(e.target.value)}
-                    placeholder="Choose a 4+ digit PIN (e.g. 4829)"
-                    maxLength={16}
-                    autoComplete="off"
-                    autoCorrect="off"
-                    autoCapitalize="off"
-                    spellCheck={false}
-                    data-lpignore="true"
-                    data-1p-ignore="true"
-                    className={`w-full pl-3 pr-9 py-2 bg-slate-900 border border-slate-700 rounded-lg text-xs text-white font-mono placeholder:text-slate-500 focus:outline-none focus:border-amber-500${
-                      showInitialTeacherPin ? '' : ' pin-masked'
-                    }`}
+                    value={roomId}
+                    placeholder="main"
+                    onChange={(e) => {
+                      setKickNotice(null);
+                      setHasEditedLobbyRoom(true);
+                      setRoomId(sanitizeRoomCodeDraft(e.target.value));
+                    }}
+                    onBlur={() => {
+                      setRoomId((prev) => prev.replace(/^-|-$/g, ''));
+                    }}
+                    maxLength={24}
+                    className="flex-1 min-w-0 px-3 py-1.5 bg-white border border-[#CBD5E1] rounded-[2px] font-mono text-xs text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-brand-600"
                   />
                   <button
                     type="button"
-                    onClick={() => setShowInitialTeacherPin((v) => !v)}
-                    aria-label={showInitialTeacherPin ? 'Hide Teacher PIN' : 'Show Teacher PIN'}
-                    title={showInitialTeacherPin ? 'Hide PIN' : 'Show PIN'}
-                    className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-slate-200 cursor-pointer"
+                    disabled={isCheckingRoom}
+                    onClick={() => {
+                      setKickNotice(null);
+                      setHasEditedLobbyRoom(true);
+                      setRoomId('');
+                      roomCodeInputRef.current?.focus();
+                    }}
+                    className="flex items-center gap-1 px-2.5 py-1.5 rounded-[2px] border oh-btn text-brand-700 text-xs font-medium whitespace-nowrap cursor-pointer disabled:opacity-50 transition-colors shrink-0"
+                    title="Type a custom room code"
                   >
-                    {showInitialTeacherPin ? <EyeOff size={14} /> : <Eye size={14} />}
+                    <PlusCircle size={13} />
+                    <span>New Room</span>
+                  </button>
+                  <button
+                    type="button"
+                    disabled={isCheckingRoom}
+                    onClick={handleCreateNewRoom}
+                    className="flex items-center gap-1 px-2.5 py-1.5 rounded-[2px] border oh-btn text-slate-700 text-xs font-medium whitespace-nowrap cursor-pointer disabled:opacity-50 transition-colors shrink-0"
+                    title="Generate a random unused room code"
+                  >
+                    <Shuffle size={12} />
+                    <span>Random</span>
                   </button>
                 </div>
-                <p className="text-[11px] text-slate-400 leading-snug">
-                  The first person to set a PIN in a room locks Teacher Mode so students cannot click it.
-                </p>
               </div>
-            ) : (
-              <div className="flex justify-center pt-1">
-                <button
-                  type="button"
-                  onClick={() => setShowTeacherSetupOnJoin(true)}
-                  className="text-xs text-slate-500 hover:text-slate-300 flex items-center gap-1.5 transition-colors cursor-pointer"
-                >
-                  <KeyRound size={12} />
-                  <span>Instructor? Set or enter a room Teacher PIN</span>
-                </button>
-              </div>
-            )}
 
-            <button
-              type="submit"
-              disabled={!userName.trim() || isCheckingRoom}
-              className="w-full py-3 px-4 bg-brand-600 hover:bg-brand-500 disabled:bg-slate-800 disabled:text-slate-600 text-white font-semibold rounded-xl transition-colors flex items-center justify-center gap-2 cursor-pointer"
-            >
-              <LogIn size={18} />
-              <span>{isCheckingRoom ? 'Checking Room...' : 'Join Classroom'}</span>
-            </button>
+              <div className="pt-3 border-t border-slate-200">
+                {showTeacherSetupOnJoin ? (
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <label
+                        htmlFor="teacher-pin-input"
+                        className="text-xs font-semibold text-amber-800 flex items-center gap-1.5"
+                      >
+                        <KeyRound size={13} className="text-amber-600" />
+                        <span>Set or Enter Room Teacher PIN</span>
+                      </label>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setShowTeacherSetupOnJoin(false);
+                          setInitialTeacherPin('');
+                          setShowInitialTeacherPin(false);
+                        }}
+                        className="text-[11px] text-slate-500 hover:text-slate-800 cursor-pointer"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                    <div className="relative">
+                      <input
+                        ref={teacherPinInputRef}
+                        id="teacher-pin-input"
+                        type="text"
+                        value={initialTeacherPin}
+                        onChange={(e) => setInitialTeacherPin(e.target.value)}
+                        placeholder="Choose a 4+ digit PIN (e.g. 4829)"
+                        maxLength={16}
+                        autoComplete="off"
+                        autoCorrect="off"
+                        autoCapitalize="off"
+                        spellCheck={false}
+                        data-lpignore="true"
+                        data-1p-ignore="true"
+                        className={`w-full pl-3 pr-9 py-1.5 bg-slate-50 border border-[#CBD5E1] rounded-[2px] text-xs text-slate-900 font-mono placeholder:text-slate-400 focus:bg-white focus:outline-none focus:border-amber-500${
+                          showInitialTeacherPin ? '' : ' pin-masked'
+                        }`}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowInitialTeacherPin((v) => !v)}
+                        aria-label={showInitialTeacherPin ? 'Hide Teacher PIN' : 'Show Teacher PIN'}
+                        title={showInitialTeacherPin ? 'Hide PIN' : 'Show PIN'}
+                        className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-slate-700 cursor-pointer"
+                      >
+                        {showInitialTeacherPin ? <EyeOff size={14} /> : <Eye size={14} />}
+                      </button>
+                    </div>
+                    <p className="text-[11px] text-slate-500 leading-snug">
+                      The first person to set a PIN in a room locks Teacher Mode so students cannot click it.
+                    </p>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => setShowTeacherSetupOnJoin(true)}
+                    className="text-xs text-slate-500 hover:text-slate-800 flex items-center gap-1.5 transition-colors cursor-pointer"
+                  >
+                    <KeyRound size={12} />
+                    <span>Instructor? Set or enter a room Teacher PIN</span>
+                  </button>
+                )}
+              </div>
+            </div>
+
+            <div className="oh-panel-header px-5 py-3 border-t border-[#CBD5E1]">
+              <button
+                type="submit"
+                disabled={!userName.trim() || isCheckingRoom}
+                className={`w-full py-2 px-4 text-sm font-semibold rounded-[2px] border transition-colors flex items-center justify-center gap-2 ${
+                  !userName.trim() || isCheckingRoom
+                    ? 'bg-slate-100 border-[#CBD5E1] text-slate-400 cursor-not-allowed'
+                    : 'oh-btn-primary text-white cursor-pointer'
+                }`}
+              >
+                <LogIn size={16} />
+                <span>{isCheckingRoom ? 'Checking Room...' : 'Join Classroom'}</span>
+              </button>
+            </div>
           </form>
         </motion.div>
 

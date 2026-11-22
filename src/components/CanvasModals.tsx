@@ -102,7 +102,7 @@ export function LiveGridOverview({
   return (
     <div className="flex-1 bg-slate-100 overflow-y-auto p-6 z-30 select-text">
       <div className="max-w-6xl mx-auto space-y-5">
-        <div className="flex flex-wrap items-center justify-between gap-4 bg-white p-4 rounded-xl border border-slate-200">
+        <div className="oh-chrome-bar flex flex-wrap items-center justify-between gap-4 p-4 rounded-[3px] border border-[#CBD5E1]">
           <div>
             <h2 className="font-display text-lg font-bold text-slate-900">
               Live Classroom Boards Overview — {roundLabel} ({boards.length + 1} Boards)
@@ -116,7 +116,7 @@ export function LiveGridOverview({
               <button
                 type="button"
                 onClick={() => onSendClassToRound(viewingRound.id)}
-                className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-brand-600 text-white hover:bg-brand-700 cursor-pointer"
+                className="px-3 py-1.5 rounded-[2px] border oh-btn-primary text-xs font-semibold text-white cursor-pointer"
                 title={`Move the whole class into ${viewingRound.title} with their saved work intact`}
               >
                 Send Class to Round {viewingRound.number}
@@ -126,7 +126,7 @@ export function LiveGridOverview({
               type="button"
               disabled={Boolean(pdfExportProgress)}
               onClick={onBatchExportAllPdf}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-50 cursor-pointer"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-[2px] border oh-btn-emerald text-xs font-semibold text-white disabled:opacity-50 cursor-pointer"
               title="Download a single multi-page PDF with every student and group board for grading or portfolios"
             >
               <Download size={14} />
@@ -139,14 +139,14 @@ export function LiveGridOverview({
             <button
               type="button"
               onClick={onOpenBreakoutModal}
-              className="px-3 py-1.5 rounded-lg text-xs font-medium bg-slate-100 text-slate-800 hover:bg-slate-200 cursor-pointer"
+              className="px-3 py-1.5 rounded-[2px] border oh-btn text-xs font-medium text-slate-800 cursor-pointer"
             >
               Configure Breakouts / Groups
             </button>
             <button
               type="button"
               onClick={onClose}
-              className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-900 text-white hover:bg-slate-800 cursor-pointer"
+              className="px-3 py-1.5 rounded-[2px] border oh-btn-dark text-xs font-semibold text-white cursor-pointer"
             >
               Back to Active Canvas
             </button>
@@ -161,8 +161,8 @@ export function LiveGridOverview({
               onClose();
             }}
             className={cn(
-              "bg-white rounded-xl border p-4 cursor-pointer transition-all hover:shadow-md flex flex-col justify-between gap-3",
-              activeBoardId === 'main' ? "border-brand-600 ring-2 ring-brand-600/20" : "border-slate-200"
+              "bg-white rounded-[3px] border p-4 cursor-pointer transition-colors flex flex-col justify-between gap-3",
+              activeBoardId === 'main' ? "border-brand-600 ring-2 ring-brand-600/20" : "border-[#CBD5E1] hover:border-slate-400"
             )}
           >
             <div className="flex items-center justify-between">
@@ -173,7 +173,7 @@ export function LiveGridOverview({
                 {fullMainElements.length} items
               </span>
             </div>
-            <div className="h-32 rounded-lg bg-slate-50 border border-slate-200/80 flex items-center justify-center overflow-hidden relative">
+            <div className="h-32 rounded-[2px] bg-slate-50 border border-[#CBD5E1] flex items-center justify-center overflow-hidden relative">
               {fullMainBackground?.pages?.[0] ? (
                 <img
                   src={fullMainBackground.pages[0].dataUrl}
@@ -205,8 +205,8 @@ export function LiveGridOverview({
                   onClose();
                 }}
                 className={cn(
-                  "bg-white rounded-xl border p-4 cursor-pointer transition-all hover:shadow-md flex flex-col justify-between gap-3",
-                  activeBoardId === sb.id ? "border-brand-600 ring-2 ring-brand-600/20" : "border-slate-200"
+                  "bg-white rounded-[3px] border p-4 cursor-pointer transition-colors flex flex-col justify-between gap-3",
+                  activeBoardId === sb.id ? "border-brand-600 ring-2 ring-brand-600/20" : "border-[#CBD5E1] hover:border-slate-400"
                 )}
               >
                 <div>
@@ -236,7 +236,7 @@ export function LiveGridOverview({
                             aria-label="Move student to another group"
                             value={sb.id}
                             onChange={(e) => onAssignUserToBoard(e.target.value, uid)}
-                            className="bg-slate-50 border border-slate-300 rounded px-1.5 py-0.5 text-[11px] text-slate-800 cursor-pointer"
+                            className="bg-slate-50 border border-[#CBD5E1] rounded-[2px] px-1.5 py-0.5 text-[11px] text-slate-800 cursor-pointer"
                           >
                             {activeRoundGroupBoards.map((g) => (
                               <option key={g.id} value={g.id}>{g.title}</option>
@@ -248,7 +248,7 @@ export function LiveGridOverview({
                   )}
                 </div>
 
-                <div className="h-32 rounded-lg bg-slate-50 border border-slate-200/80 flex items-center justify-center overflow-hidden relative">
+                <div className="h-32 rounded-[2px] bg-slate-50 border border-[#CBD5E1] flex items-center justify-center overflow-hidden relative">
                   {sb.background?.pages?.[0] ? (
                     <img
                       src={sb.background.pages[0].dataUrl}
@@ -271,9 +271,12 @@ export function LiveGridOverview({
           })}
         </div>
         {shareBoard && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 p-4" role="dialog" aria-modal="true" aria-labelledby="share-board-title">
-            <div className="w-full max-w-md rounded-xl bg-white p-5 shadow-xl space-y-4">
-              <h3 id="share-board-title" className="font-bold text-slate-900">Share {shareBoard.title} to Main</h3>
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 p-4" role="dialog" aria-modal="true" aria-labelledby="share-board-title">
+            <div className="w-full max-w-md rounded-[3px] border-2 border-[#CBD5E1] bg-white overflow-hidden">
+              <div className="oh-panel-header px-5 py-3 border-b border-[#CBD5E1]">
+                <h3 id="share-board-title" className="font-bold text-slate-900">Share {shareBoard.title} to Main</h3>
+              </div>
+              <div className="p-5 space-y-4">
               <p className="text-sm text-slate-600">This replaces the ink currently on Main. Review the work for names written in the drawing or worksheet before sharing.</p>
               <div className="space-y-2 text-sm text-slate-800">
                 <label className="flex gap-2"><input type="checkbox" checked={anonymize} onChange={(e) => setAnonymize(e.target.checked)} /> Anonymize authors and remove name stamps</label>
@@ -281,15 +284,16 @@ export function LiveGridOverview({
                 <label className="flex gap-2"><input type="checkbox" checked={returnToMain} onChange={(e) => setReturnToMain(e.target.checked)} /> Bring class to Main</label>
               </div>
               {shareError && <p role="alert" className="text-sm text-red-700">{shareError}</p>}
-              <div className="flex justify-end gap-2">
-                <button type="button" disabled={sharing} onClick={() => setShareBoard(null)} className="px-3 py-1.5 text-sm rounded bg-slate-100 cursor-pointer">Cancel</button>
+              <div className="flex justify-end gap-2 pt-2 border-t border-slate-200">
+                <button type="button" disabled={sharing} onClick={() => setShareBoard(null)} className="px-3 py-1.5 text-sm rounded-[2px] border oh-btn text-slate-700 cursor-pointer">Cancel</button>
                 <button type="button" disabled={sharing} onClick={async () => {
                   setSharing(true);
                   const result = await onSpotlightBoard({ sourceBoardId: shareBoard.id, anonymize, copyBackground, returnToMain });
                   setSharing(false);
                   if (!result.ok) { setShareError(result.error || 'Could not share this board.'); return; }
                   setShareBoard(null); onSelectBoard('main'); onClose();
-                }} className="px-3 py-1.5 text-sm rounded bg-brand-600 text-white disabled:opacity-50 cursor-pointer">{sharing ? 'Sharing…' : 'Share to Main'}</button>
+                }} className="px-3 py-1.5 text-sm rounded-[2px] border oh-btn-primary text-white disabled:opacity-50 cursor-pointer">{sharing ? 'Sharing…' : 'Share to Main'}</button>
+              </div>
               </div>
             </div>
           </div>
@@ -419,9 +423,9 @@ export function BreakoutManagerModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-xs flex items-center justify-center p-4 select-text">
-      <div className="bg-white border border-slate-200 rounded-2xl shadow-xl w-full max-w-2xl p-6 space-y-5 max-h-[90vh] overflow-y-auto">
-        <div className="flex items-start justify-between gap-4">
+    <div className="fixed inset-0 z-50 bg-slate-950/60 flex items-center justify-center p-4 select-text">
+      <div className="bg-white border-2 border-[#CBD5E1] rounded-[3px] w-full max-w-2xl max-h-[90vh] flex flex-col overflow-hidden">
+        <div className="oh-panel-header flex items-start justify-between gap-4 px-5 py-3.5 border-b border-[#CBD5E1] shrink-0">
           <div>
             <h3 className="font-display text-lg font-bold text-slate-900">
               Classroom Breakout & Individual Boards Manager
@@ -433,20 +437,21 @@ export function BreakoutManagerModal({
           <button
             type="button"
             onClick={onClose}
-            className="p-1 text-slate-400 hover:text-slate-700 rounded-lg cursor-pointer"
+            className="p-1 text-slate-400 hover:text-slate-700 rounded-[2px] border border-transparent hover:border-[#CBD5E1] cursor-pointer"
           >
             <X size={18} />
           </button>
         </div>
 
+        <div className="p-5 space-y-5 overflow-y-auto">
         {targetRound && (
           <div className="grid grid-cols-2 gap-2.5">
             <button
               type="button"
               onClick={() => onChangeDraftRoundAction('update-current')}
               className={cn(
-                "p-3 rounded-xl border text-left transition-colors cursor-pointer",
-                draftRoundAction === 'update-current' ? "bg-brand-50/80 border-brand-600" : "bg-white border-slate-200 hover:border-slate-300"
+                "p-3 rounded-[3px] border text-left transition-colors cursor-pointer",
+                draftRoundAction === 'update-current' ? "oh-btn-active" : "bg-white border-[#CBD5E1] hover:border-slate-400"
               )}
             >
               <div className="font-display font-semibold text-xs text-slate-900">
@@ -462,8 +467,8 @@ export function BreakoutManagerModal({
               type="button"
               onClick={() => onChangeDraftRoundAction('new-round')}
               className={cn(
-                "p-3 rounded-xl border text-left transition-colors cursor-pointer",
-                draftRoundAction === 'new-round' ? "bg-brand-50/80 border-brand-600" : "bg-white border-slate-200 hover:border-slate-300"
+                "p-3 rounded-[3px] border text-left transition-colors cursor-pointer",
+                draftRoundAction === 'new-round' ? "oh-btn-active" : "bg-white border-[#CBD5E1] hover:border-slate-400"
               )}
             >
               <div className="font-display font-semibold text-xs text-slate-900">Start New Round {nextRoundNumber}</div>
@@ -476,7 +481,7 @@ export function BreakoutManagerModal({
 
         {/* Round Picker when multiple rounds exist and teacher is in Resume / Edit mode */}
         {isEditing && rounds.length > 1 && targetRound && (
-          <div className="p-3 rounded-xl bg-slate-50 border border-slate-200 space-y-2">
+          <div className="p-3 rounded-[3px] bg-slate-50 border border-[#CBD5E1] space-y-2">
             <label className="block text-xs font-semibold text-slate-700">
               Choose Which Round to Send Class To / Edit:
             </label>
@@ -490,17 +495,17 @@ export function BreakoutManagerModal({
                     type="button"
                     onClick={() => onSelectDraftEditRound?.(r.id)}
                     className={cn(
-                      "px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors cursor-pointer flex items-center gap-1.5",
+                      "px-3 py-1.5 rounded-[2px] text-xs font-medium border transition-colors cursor-pointer flex items-center gap-1.5",
                       isSelected
-                        ? "bg-brand-600 text-white border-brand-600"
-                        : "bg-white text-slate-800 border-slate-300 hover:bg-slate-100"
+                        ? "oh-btn-primary text-white"
+                        : "oh-btn text-slate-800"
                     )}
                   >
                     <span>{r.title}</span>
                     {isLive && (
                       <span
                         className={cn(
-                          "px-1.5 py-0.2 rounded text-[10px] font-semibold",
+                          "px-1.5 py-0.2 rounded-[2px] text-[10px] font-semibold",
                           isSelected ? "bg-brand-500 text-white" : "bg-emerald-100 text-emerald-800"
                         )}
                       >
@@ -521,10 +526,10 @@ export function BreakoutManagerModal({
               type="button"
               onClick={() => setDraftBreakoutMode('individual')}
               className={cn(
-                "p-3 rounded-xl border text-left transition-colors cursor-pointer",
+                "p-3 rounded-[3px] border text-left transition-colors cursor-pointer",
                 draftBreakoutMode === 'individual'
-                  ? "bg-brand-50/80 border-brand-600"
-                  : "bg-white border-slate-200 hover:border-slate-300"
+                  ? "oh-btn-active"
+                  : "bg-white border-[#CBD5E1] hover:border-slate-400"
               )}
             >
               <div className="font-display font-semibold text-xs text-slate-900">
@@ -544,10 +549,10 @@ export function BreakoutManagerModal({
                 }
               }}
               className={cn(
-                "p-3 rounded-xl border text-left transition-colors cursor-pointer",
+                "p-3 rounded-[3px] border text-left transition-colors cursor-pointer",
                 draftBreakoutMode === 'groups'
-                  ? "bg-brand-50/80 border-brand-600"
-                  : "bg-white border-slate-200 hover:border-slate-300"
+                  ? "oh-btn-active"
+                  : "bg-white border-[#CBD5E1] hover:border-slate-400"
               )}
             >
               <div className="font-display font-semibold text-xs text-slate-900">
@@ -560,7 +565,7 @@ export function BreakoutManagerModal({
           </div>
         )}
         {isEditing && targetRound && (
-          <p className="text-xs text-slate-600 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2">
+          <p className="text-xs text-slate-600 bg-slate-50 border border-[#CBD5E1] rounded-[3px] px-3 py-2">
             {targetRound.mode === 'groups' ? 'Group round' : 'Individual round'} · Students&apos; drawings and worksheets in {targetRound.title} are kept intact.
             {targetRound.mode === 'individual' && ' Students who join late automatically get their own board.'}
           </p>
@@ -568,7 +573,7 @@ export function BreakoutManagerModal({
 
         {/* 2. Group Assignment Controls (when 'groups' is selected) */}
         {draftBreakoutMode === 'groups' && (
-          <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-3">
+          <div className="p-4 rounded-[3px] bg-slate-50 border border-[#CBD5E1] space-y-3">
             {!isEditing && (
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <div className="flex items-center gap-2 text-xs">
@@ -582,10 +587,10 @@ export function BreakoutManagerModal({
                         initializeDraftGroups(n, true);
                       }}
                       className={cn(
-                        "w-7 h-7 rounded-md font-mono text-xs font-semibold cursor-pointer",
+                        "w-7 h-7 rounded-[2px] border font-mono text-xs font-semibold cursor-pointer",
                         draftGroupCount === n
-                          ? "bg-brand-600 text-white"
-                          : "bg-white border border-slate-300 text-slate-700 hover:bg-slate-100"
+                          ? "oh-btn-primary text-white"
+                          : "oh-btn text-slate-700"
                       )}
                     >
                       {n}
@@ -596,7 +601,7 @@ export function BreakoutManagerModal({
                 <button
                   type="button"
                   onClick={() => initializeDraftGroups(draftGroupCount, true)}
-                  className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium bg-white border border-slate-300 text-slate-700 hover:bg-slate-100 cursor-pointer"
+                  className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-[2px] border oh-btn text-xs font-medium text-slate-700 cursor-pointer"
                 >
                   <Shuffle size={13} />
                   <span>Auto-Randomize Students</span>
@@ -621,11 +626,11 @@ export function BreakoutManagerModal({
                     return (
                       <div
                         key={student.userId}
-                        className="flex items-center justify-between bg-white px-3 py-1.5 rounded-lg border border-slate-200 text-xs"
+                        className="flex items-center justify-between bg-white px-3 py-1.5 rounded-[2px] border border-[#CBD5E1] text-xs"
                       >
                         <div className="flex items-center gap-2">
                           <span
-                            className="w-2.5 h-2.5 rounded-xs"
+                            className="w-2.5 h-2.5 rounded-[2px]"
                             style={{ backgroundColor: student.color }}
                           />
                           <span className="font-medium text-slate-800">{student.name}</span>
@@ -644,7 +649,7 @@ export function BreakoutManagerModal({
                               }))
                             );
                           }}
-                          className="bg-slate-50 border border-slate-300 rounded px-2 py-0.5 text-xs font-medium text-slate-800 cursor-pointer"
+                          className="bg-slate-50 border border-[#CBD5E1] rounded-[2px] px-2 py-0.5 text-xs font-medium text-slate-800 cursor-pointer"
                         >
                           {draftGroups.map((g) => (
                             <option key={g.id} value={g.id}>
@@ -663,7 +668,7 @@ export function BreakoutManagerModal({
                 type="checkbox"
                 checked={draftAllowSelfSelect}
                 onChange={(e) => setDraftAllowSelfSelect(e.target.checked)}
-                className="rounded border-slate-300 text-brand-600 focus:ring-brand-500"
+                className="rounded-[2px] border-[#CBD5E1] text-brand-600 focus:ring-brand-500"
               />
               <span>Allow students to freely switch between breakout groups themselves</span>
             </label>
@@ -672,7 +677,7 @@ export function BreakoutManagerModal({
 
         {/* 3. Pre-load Worksheet / Template on Sub-Boards */}
         {!isEditing && (
-          <div className="space-y-3 pt-1 border-t border-slate-100">
+          <div className="space-y-3 pt-1 border-t border-slate-200">
             <label className="block text-xs font-semibold text-slate-700">
               Pre-load Worksheet / Template onto Every Board:
             </label>
@@ -681,10 +686,10 @@ export function BreakoutManagerModal({
                 type="button"
                 onClick={() => setDraftWorksheetChoice('frayer')}
                 className={cn(
-                  "p-2.5 rounded-lg border text-left cursor-pointer",
+                  "p-2.5 rounded-[2px] border text-left cursor-pointer",
                   draftWorksheetChoice === 'frayer'
-                    ? "bg-brand-50 border-brand-600 font-semibold text-slate-900"
-                    : "border-slate-200 text-slate-700"
+                    ? "oh-btn-active font-semibold text-slate-900"
+                    : "oh-btn text-slate-700"
                 )}
               >
                 4-Box Frayer Concept Model
@@ -693,10 +698,10 @@ export function BreakoutManagerModal({
                 type="button"
                 onClick={() => setDraftWorksheetChoice('checkin')}
                 className={cn(
-                  "p-2.5 rounded-lg border text-left cursor-pointer",
+                  "p-2.5 rounded-[2px] border text-left cursor-pointer",
                   draftWorksheetChoice === 'checkin'
-                    ? "bg-brand-50 border-brand-600 font-semibold text-slate-900"
-                    : "border-slate-200 text-slate-700"
+                    ? "oh-btn-active font-semibold text-slate-900"
+                    : "oh-btn text-slate-700"
                 )}
               >
                 Task Pulse Check (3 Columns)
@@ -705,10 +710,10 @@ export function BreakoutManagerModal({
                 type="button"
                 onClick={() => setDraftWorksheetChoice('corners')}
                 className={cn(
-                  "p-2.5 rounded-lg border text-left cursor-pointer",
+                  "p-2.5 rounded-[2px] border text-left cursor-pointer",
                   draftWorksheetChoice === 'corners'
-                    ? "bg-brand-50 border-brand-600 font-semibold text-slate-900"
-                    : "border-slate-200 text-slate-700"
+                    ? "oh-btn-active font-semibold text-slate-900"
+                    : "oh-btn text-slate-700"
                 )}
               >
                 Four Corners Debate
@@ -717,10 +722,10 @@ export function BreakoutManagerModal({
                 type="button"
                 onClick={() => setDraftWorksheetChoice('current')}
                 className={cn(
-                  "p-2.5 rounded-lg border text-left cursor-pointer",
+                  "p-2.5 rounded-[2px] border text-left cursor-pointer",
                   draftWorksheetChoice === 'current'
-                    ? "bg-brand-50 border-brand-600 font-semibold text-slate-900"
-                    : "border-slate-200 text-slate-700"
+                    ? "oh-btn-active font-semibold text-slate-900"
+                    : "oh-btn text-slate-700"
                 )}
               >
                 {fullMainBackground
@@ -740,7 +745,7 @@ export function BreakoutManagerModal({
                   type="text"
                   value={draftWorksheetTopic}
                   onChange={(e) => setDraftWorksheetTopic(e.target.value)}
-                  className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg text-xs text-slate-900 focus:bg-white focus:border-brand-600 focus:outline-none"
+                  className="w-full px-3 py-2 bg-slate-50 border border-[#CBD5E1] rounded-[2px] text-xs text-slate-900 focus:bg-white focus:border-brand-600 focus:outline-none"
                 />
               </div>
             )}
@@ -750,15 +755,15 @@ export function BreakoutManagerModal({
         {/* Chat Scope Selector */}
         <div className="flex items-center justify-between pt-2">
           <span className="text-xs font-semibold text-slate-700">Chat Room Mode:</span>
-          <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-lg text-xs">
+          <div className="flex items-center gap-1 bg-slate-100 border border-[#CBD5E1] p-0.5 rounded-[2px] text-xs">
             <button
               type="button"
               onClick={() => setDraftChatScope('unified')}
               className={cn(
-                "px-2.5 py-1 rounded-md font-medium cursor-pointer",
+                "px-2.5 py-1 rounded-[2px] border font-medium cursor-pointer",
                 draftChatScope === 'unified'
-                  ? "bg-white text-slate-900 shadow-xs"
-                  : "text-slate-600"
+                  ? "oh-btn-active text-brand-900 font-semibold"
+                  : "border-transparent text-slate-600 hover:text-slate-900"
               )}
             >
               Unified Class Chat
@@ -767,10 +772,10 @@ export function BreakoutManagerModal({
               type="button"
               onClick={() => setDraftChatScope('board')}
               className={cn(
-                "px-2.5 py-1 rounded-md font-medium cursor-pointer",
+                "px-2.5 py-1 rounded-[2px] border font-medium cursor-pointer",
                 draftChatScope === 'board'
-                  ? "bg-white text-slate-900 shadow-xs"
-                  : "text-slate-600"
+                  ? "oh-btn-active text-brand-900 font-semibold"
+                  : "border-transparent text-slate-600 hover:text-slate-900"
               )}
             >
               Per-Board Group Chat
@@ -779,13 +784,13 @@ export function BreakoutManagerModal({
         </div>
 
         {activeRound && !isEditing && (
-          <p className="text-[11px] text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+          <p className="text-[11px] text-amber-800 bg-amber-50 border border-amber-200 rounded-[3px] px-3 py-2">
             {activeRound.title} will be archived. Nothing is deleted. You can still open and export it from the Round selector.
           </p>
         )}
 
         {/* Auto-Start on Entry: Students start on their own boards */}
-        <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200 space-y-2.5">
+        <div className="p-3.5 rounded-[3px] bg-slate-50 border border-[#CBD5E1] space-y-2.5">
           <div className="flex items-start justify-between gap-3">
             <div>
               <div className="flex items-center gap-2">
@@ -793,7 +798,7 @@ export function BreakoutManagerModal({
                   Students start on their own boards
                 </span>
                 {autoIndividual && (
-                  <span className="px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-800 text-[10px] font-semibold">
+                  <span className="px-1.5 py-0.5 rounded-[2px] bg-emerald-100 border border-emerald-200 text-emerald-800 text-[10px] font-semibold">
                     {currentMode === 'main'
                       ? `Armed${autoIndividualTemplateLabel ? ` · ${autoIndividualTemplateLabel}` : ''}`
                       : 'Active'}
@@ -810,20 +815,20 @@ export function BreakoutManagerModal({
                 checked={autoDraftEnabled}
                 disabled={!hasTeacherPin}
                 onChange={(e) => setAutoDraftEnabled(e.target.checked)}
-                className="rounded border-slate-300 text-brand-600 focus:ring-brand-500"
+                className="rounded-[2px] border-[#CBD5E1] text-brand-600 focus:ring-brand-500"
               />
               <span>Enable</span>
             </label>
           </div>
 
           {!hasTeacherPin && (
-            <p className="text-[11px] text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-2.5 py-1.5">
+            <p className="text-[11px] text-amber-800 bg-amber-50 border border-amber-200 rounded-[3px] px-2.5 py-1.5">
               Set a Room Teacher PIN in the sidebar first before enabling automatic student boards.
             </p>
           )}
 
           {hasTeacherPin && autoDraftEnabled && (
-            <div className="space-y-2 pt-1 border-t border-slate-200/80">
+            <div className="space-y-2 pt-1 border-t border-slate-200">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <label className="text-[11px] font-semibold text-slate-700">
                   Starting worksheet for students:
@@ -836,7 +841,7 @@ export function BreakoutManagerModal({
                       e.target.value as 'current' | 'frayer' | 'checkin' | 'corners' | 'none'
                     )
                   }
-                  className="bg-white border border-slate-300 rounded-md px-2 py-1 text-xs font-medium text-slate-800 cursor-pointer"
+                  className="bg-white border border-[#CBD5E1] rounded-[2px] px-2 py-1 text-xs font-medium text-slate-800 cursor-pointer"
                 >
                   <option value="frayer">4-Box Frayer Concept Model</option>
                   <option value="checkin">Task Pulse Check (3 Columns)</option>
@@ -857,7 +862,7 @@ export function BreakoutManagerModal({
                   value={autoWorksheetTopic}
                   onChange={(e) => setAutoWorksheetTopic(e.target.value)}
                   placeholder="Worksheet Header / Concept Prompt..."
-                  className="w-full px-2.5 py-1.5 bg-white border border-slate-300 rounded-lg text-xs text-slate-900 focus:border-brand-600 focus:outline-none"
+                  className="w-full px-2.5 py-1.5 bg-white border border-[#CBD5E1] rounded-[2px] text-xs text-slate-900 focus:border-brand-600 focus:outline-none"
                 />
               )}
             </div>
@@ -885,10 +890,10 @@ export function BreakoutManagerModal({
                   }
                 }}
                 className={cn(
-                  "px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors cursor-pointer disabled:opacity-50",
+                  "px-3 py-1.5 rounded-[2px] border text-xs font-semibold transition-colors cursor-pointer disabled:opacity-50",
                   autoDraftEnabled
-                    ? "bg-emerald-600 text-white hover:bg-emerald-500"
-                    : "bg-white border border-slate-300 text-slate-700 hover:bg-slate-100"
+                    ? "oh-btn-emerald text-white"
+                    : "oh-btn text-slate-700"
                 )}
               >
                 {autoSaving
@@ -902,12 +907,13 @@ export function BreakoutManagerModal({
             </div>
           )}
         </div>
+        </div>
 
-        <div className="flex flex-wrap items-center justify-end gap-2 pt-3 border-t border-slate-100">
+        <div className="oh-panel-header flex flex-wrap items-center justify-end gap-2 px-5 py-3 border-t border-[#CBD5E1] shrink-0">
           <button
             type="button"
             onClick={onClose}
-            className="px-4 py-2 rounded-lg text-xs font-medium text-slate-600 hover:bg-slate-100 cursor-pointer"
+            className="px-4 py-1.5 rounded-[2px] border oh-btn text-xs font-medium text-slate-700 cursor-pointer"
           >
             Cancel
           </button>
@@ -920,7 +926,7 @@ export function BreakoutManagerModal({
                 onClose();
                 onShowLiveGridOverview(false);
               }}
-              className="px-4 py-2 rounded-lg text-xs font-semibold bg-white border border-slate-300 text-slate-800 hover:bg-slate-100 cursor-pointer"
+              className="px-4 py-1.5 rounded-[2px] border oh-btn text-xs font-semibold text-slate-800 cursor-pointer"
             >
               Bring Everyone to Main
             </button>
@@ -960,7 +966,7 @@ export function BreakoutManagerModal({
               onClose();
               onShowLiveGridOverview(payload.action !== 'update-current');
             }}
-            className="px-4 py-2 rounded-lg text-xs font-semibold bg-brand-600 text-white hover:bg-brand-500 cursor-pointer"
+            className="px-4 py-1.5 rounded-[2px] border oh-btn-primary text-xs font-semibold text-white cursor-pointer"
           >
             {isEditing && targetRound
               ? isSwitchingOrResuming
@@ -997,9 +1003,9 @@ export function WorksheetTemplateModal({
   onClose,
 }: WorksheetTemplateModalProps) {
   return (
-    <div className="fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-xs flex items-center justify-center p-4 select-text">
-      <div className="bg-white border border-slate-200 rounded-2xl shadow-xl w-full max-w-lg p-6 space-y-5">
-        <div className="flex items-start justify-between gap-4">
+    <div className="fixed inset-0 z-50 bg-slate-950/60 flex items-center justify-center p-4 select-text">
+      <div className="bg-white border-2 border-[#CBD5E1] rounded-[3px] w-full max-w-lg overflow-hidden">
+        <div className="oh-panel-header flex items-start justify-between gap-4 px-5 py-3.5 border-b border-[#CBD5E1]">
           <div>
             <h3 className="font-display text-lg font-bold text-slate-900">
               Classroom Worksheet Templates
@@ -1011,12 +1017,13 @@ export function WorksheetTemplateModal({
           <button
             type="button"
             onClick={onClose}
-            className="p-1 text-slate-400 hover:text-slate-700 rounded-lg cursor-pointer"
+            className="p-1 text-slate-400 hover:text-slate-700 rounded-[2px] border border-transparent hover:border-[#CBD5E1] cursor-pointer"
           >
             <X size={18} />
           </button>
         </div>
 
+        <div className="p-5 space-y-4">
         <div className="space-y-2">
           {BUILT_IN_TEMPLATES.map((tpl) => {
             const isSelected = selectedTemplateId === tpl.id;
@@ -1029,10 +1036,10 @@ export function WorksheetTemplateModal({
                   setTemplatePromptText(tpl.defaultPrompt);
                 }}
                 className={cn(
-                  "w-full text-left p-3.5 rounded-xl border transition-colors flex items-start justify-between gap-3 cursor-pointer",
+                  "w-full text-left p-3.5 rounded-[3px] border transition-colors flex items-start justify-between gap-3 cursor-pointer",
                   isSelected
-                    ? "bg-brand-50/70 border-brand-600"
-                    : "bg-white border-slate-200 hover:border-slate-300"
+                    ? "oh-btn-active"
+                    : "bg-white border-[#CBD5E1] hover:border-slate-400"
                 )}
               >
                 <div>
@@ -1063,15 +1070,16 @@ export function WorksheetTemplateModal({
               BUILT_IN_TEMPLATES.find((t) => t.id === selectedTemplateId)?.promptPlaceholder
             }
             maxLength={80}
-            className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-sm text-slate-900 focus:bg-white focus:border-brand-600 focus:outline-none"
+            className="w-full px-3.5 py-2 bg-slate-50 border border-[#CBD5E1] rounded-[2px] text-sm text-slate-900 focus:bg-white focus:border-brand-600 focus:outline-none"
           />
         </div>
+        </div>
 
-        <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
+        <div className="oh-panel-header flex items-center justify-end gap-2 px-5 py-3 border-t border-[#CBD5E1]">
           <button
             type="button"
             onClick={onClose}
-            className="px-4 py-2 rounded-lg text-xs font-medium text-slate-600 hover:bg-slate-100 transition-colors cursor-pointer"
+            className="px-4 py-1.5 rounded-[2px] border oh-btn text-xs font-medium text-slate-700 transition-colors cursor-pointer"
           >
             Cancel
           </button>
@@ -1085,7 +1093,7 @@ export function WorksheetTemplateModal({
               onClose();
               await onApplyTemplate(generatedBg);
             }}
-            className="px-4 py-2 rounded-lg text-xs font-semibold bg-brand-600 text-white hover:bg-brand-500 transition-colors cursor-pointer"
+            className="px-4 py-1.5 rounded-[2px] border oh-btn-primary text-xs font-semibold text-white transition-colors cursor-pointer"
           >
             Apply Worksheet to Board
           </button>
@@ -1120,9 +1128,9 @@ export function RestoreSnapshotModal({
   onCancel,
 }: RestoreSnapshotModalProps) {
   return (
-    <div className="fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-xs flex items-center justify-center p-4 select-text">
-      <div className="bg-white border border-slate-200 rounded-2xl shadow-xl w-full max-w-lg p-6 space-y-5">
-        <div className="flex items-start justify-between gap-4">
+    <div className="fixed inset-0 z-50 bg-slate-950/60 flex items-center justify-center p-4 select-text">
+      <div className="bg-white border-2 border-[#CBD5E1] rounded-[3px] w-full max-w-lg overflow-hidden">
+        <div className="oh-panel-header flex items-start justify-between gap-4 px-5 py-3.5 border-b border-[#CBD5E1]">
           <div>
             <h3 className="font-display text-lg font-bold text-slate-900">
               Restore Room Snapshot (.JSON)
@@ -1134,20 +1142,21 @@ export function RestoreSnapshotModal({
           <button
             type="button"
             onClick={onCancel}
-            className="p-1 text-slate-400 hover:text-slate-700 rounded-lg cursor-pointer"
+            className="p-1 text-slate-400 hover:text-slate-700 rounded-[2px] border border-transparent hover:border-[#CBD5E1] cursor-pointer"
           >
             <X size={18} />
           </button>
         </div>
 
+        <div className="p-5 space-y-4">
         {importError ? (
-          <div className="p-3.5 rounded-xl bg-red-50 border border-red-200 flex items-start gap-2.5 text-xs text-red-800">
+          <div className="p-3.5 rounded-[3px] bg-red-50 border border-red-200 flex items-start gap-2.5 text-xs text-red-800">
             <AlertCircle size={16} className="text-red-600 shrink-0 mt-0.5" />
             <span>{importError}</span>
           </div>
         ) : (
           <>
-            <div className="grid grid-cols-3 gap-3 p-3.5 rounded-xl bg-slate-50 border border-slate-200/80 text-xs">
+            <div className="grid grid-cols-3 gap-3 p-3.5 rounded-[3px] bg-slate-50 border border-[#CBD5E1] text-xs">
               <div>
                 <span className="text-slate-400 block">Source Room</span>
                 <span className="font-mono font-semibold text-slate-900">
@@ -1180,10 +1189,10 @@ export function RestoreSnapshotModal({
                 type="button"
                 onClick={() => setImportMode('replace')}
                 className={cn(
-                  "w-full text-left p-3 rounded-xl border transition-colors flex items-start justify-between gap-3 cursor-pointer",
+                  "w-full text-left p-3 rounded-[3px] border transition-colors flex items-start justify-between gap-3 cursor-pointer",
                   importMode === 'replace'
-                    ? "bg-brand-50/70 border-brand-600"
-                    : "bg-white border-slate-200 hover:border-slate-300"
+                    ? "oh-btn-active"
+                    : "bg-white border-[#CBD5E1] hover:border-slate-400"
                 )}
               >
                 <div>
@@ -1201,10 +1210,10 @@ export function RestoreSnapshotModal({
                 type="button"
                 onClick={() => setImportMode('readonly')}
                 className={cn(
-                  "w-full text-left p-3 rounded-xl border transition-colors flex items-start justify-between gap-3 cursor-pointer",
+                  "w-full text-left p-3 rounded-[3px] border transition-colors flex items-start justify-between gap-3 cursor-pointer",
                   importMode === 'readonly'
-                    ? "bg-brand-50/70 border-brand-600"
-                    : "bg-white border-slate-200 hover:border-slate-300"
+                    ? "oh-btn-active"
+                    : "bg-white border-[#CBD5E1] hover:border-slate-400"
                 )}
               >
                 <div>
@@ -1222,10 +1231,10 @@ export function RestoreSnapshotModal({
                 type="button"
                 onClick={() => setImportMode('merge')}
                 className={cn(
-                  "w-full text-left p-3 rounded-xl border transition-colors flex items-start justify-between gap-3 cursor-pointer",
+                  "w-full text-left p-3 rounded-[3px] border transition-colors flex items-start justify-between gap-3 cursor-pointer",
                   importMode === 'merge'
-                    ? "bg-brand-50/70 border-brand-600"
-                    : "bg-white border-slate-200 hover:border-slate-300"
+                    ? "oh-btn-active"
+                    : "bg-white border-[#CBD5E1] hover:border-slate-400"
                 )}
               >
                 <div>
@@ -1241,12 +1250,13 @@ export function RestoreSnapshotModal({
             </div>
           </>
         )}
+        </div>
 
-        <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
+        <div className="oh-panel-header flex items-center justify-end gap-2 px-5 py-3 border-t border-[#CBD5E1]">
           <button
             type="button"
             onClick={onCancel}
-            className="px-4 py-2 rounded-lg text-xs font-medium text-slate-600 hover:bg-slate-100 transition-colors cursor-pointer"
+            className="px-4 py-1.5 rounded-[2px] border oh-btn text-xs font-medium text-slate-700 transition-colors cursor-pointer"
           >
             Cancel
           </button>
@@ -1255,7 +1265,7 @@ export function RestoreSnapshotModal({
               type="button"
               disabled={isImporting}
               onClick={onConfirmImport}
-              className="px-4 py-2 rounded-lg text-xs font-semibold bg-brand-600 text-white hover:bg-brand-500 disabled:bg-slate-300 transition-colors cursor-pointer"
+              className="px-4 py-1.5 rounded-[2px] border oh-btn-primary text-xs font-semibold text-white disabled:opacity-50 transition-colors cursor-pointer"
             >
               {isImporting ? 'Restoring...' : 'Restore Room Snapshot'}
             </button>
@@ -1402,9 +1412,9 @@ export function PdfPageRangeModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-xs flex items-center justify-center p-4 select-text">
-      <div className="bg-white border border-slate-200 rounded-2xl shadow-xl w-full max-w-3xl p-6 space-y-5">
-        <div className="flex items-start justify-between gap-4">
+    <div className="fixed inset-0 z-50 bg-slate-950/60 flex items-center justify-center p-4 select-text">
+      <div className="bg-white border-2 border-[#CBD5E1] rounded-[3px] w-full max-w-3xl overflow-hidden">
+        <div className="oh-panel-header flex items-start justify-between gap-4 px-5 py-3.5 border-b border-[#CBD5E1]">
           <div>
             <h3 className="font-display text-lg font-bold text-slate-900">
               Choose Pages to Import
@@ -1416,12 +1426,13 @@ export function PdfPageRangeModal({
           <button
             type="button"
             onClick={onCancel}
-            className="p-1 text-slate-400 hover:text-slate-700 rounded-lg cursor-pointer"
+            className="p-1 text-slate-400 hover:text-slate-700 rounded-[2px] border border-transparent hover:border-[#CBD5E1] cursor-pointer"
           >
             <X size={18} />
           </button>
         </div>
 
+        <div className="p-5 space-y-4">
         <div className="space-y-3">
           <div className="grid grid-cols-2 gap-3">
             <div>
@@ -1439,7 +1450,7 @@ export function PdfPageRangeModal({
                 value={firstText}
                 onChange={(e) => setFirstText(e.target.value)}
                 onBlur={handleBlur}
-                className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-sm text-slate-900 focus:bg-white focus:border-brand-600 focus:outline-none"
+                className="w-full px-3 py-2 bg-slate-50 border border-[#CBD5E1] rounded-[2px] text-sm text-slate-900 focus:bg-white focus:border-brand-600 focus:outline-none"
               />
             </div>
             <div>
@@ -1457,7 +1468,7 @@ export function PdfPageRangeModal({
                 value={lastText}
                 onChange={(e) => setLastText(e.target.value)}
                 onBlur={handleBlur}
-                className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-sm text-slate-900 focus:bg-white focus:border-brand-600 focus:outline-none"
+                className="w-full px-3 py-2 bg-slate-50 border border-[#CBD5E1] rounded-[2px] text-sm text-slate-900 focus:bg-white focus:border-brand-600 focus:outline-none"
               />
             </div>
           </div>
@@ -1468,7 +1479,7 @@ export function PdfPageRangeModal({
             </span>
           </div>
 
-          <div className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 rounded-xl bg-slate-50 border border-slate-200/80 text-xs">
+          <div className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 rounded-[3px] bg-slate-50 border border-[#CBD5E1] text-xs">
             <span className="font-semibold text-slate-700">
               Import Size <span className="font-normal text-slate-500">(scales pages relative to pens &amp; text):</span>
             </span>
@@ -1485,10 +1496,10 @@ export function PdfPageRangeModal({
                       onImportScaleChange?.(mult);
                     }}
                     className={cn(
-                      'px-2 py-1 rounded-md font-mono font-semibold text-xs transition-colors cursor-pointer',
+                      'px-2 py-1 rounded-[2px] border font-mono font-semibold text-xs transition-colors cursor-pointer',
                       isActive
-                        ? 'bg-brand-600 text-white shadow-xs'
-                        : 'bg-white text-slate-700 border border-slate-200 hover:bg-slate-100'
+                        ? 'oh-btn-primary text-white'
+                        : 'oh-btn text-slate-700'
                     )}
                   >
                     {mult}&times;
@@ -1501,7 +1512,7 @@ export function PdfPageRangeModal({
           <div
             ref={gridRef}
             data-testid="pdf-thumb-grid"
-            className="max-h-[50vh] overflow-y-auto rounded-xl border border-slate-200 bg-slate-50/60 p-2.5"
+            className="max-h-[50vh] overflow-y-auto rounded-[3px] border border-[#CBD5E1] bg-slate-50/60 p-2.5"
           >
             <div
               className="grid gap-2.5"
@@ -1520,20 +1531,20 @@ export function PdfPageRangeModal({
                     data-in-range={inRange ? 'true' : 'false'}
                     onClick={(e) => handleThumbClick(pageNum, e.shiftKey)}
                     className={cn(
-                      'flex flex-col items-center gap-1.5 p-1.5 rounded-lg border transition-all cursor-pointer select-none',
+                      'flex flex-col items-center gap-1.5 p-1.5 rounded-[2px] border transition-colors cursor-pointer select-none',
                       inRange
                         ? 'border-brand-500 bg-brand-50 ring-1 ring-brand-500/40'
-                        : 'border-slate-200 bg-white opacity-60 hover:opacity-100 hover:border-slate-300'
+                        : 'border-[#CBD5E1] bg-white opacity-60 hover:opacity-100 hover:border-slate-400'
                     )}
                   >
                     {thumbUrl ? (
                       <img
                         src={thumbUrl}
                         alt={`Page ${pageNum}`}
-                        className="w-full h-24 object-contain rounded bg-white"
+                        className="w-full h-24 object-contain rounded-[2px] bg-white"
                       />
                     ) : (
-                      <div className="w-full h-24 rounded bg-slate-100 border border-slate-200/80" />
+                      <div className="w-full h-24 rounded-[2px] bg-slate-100 border border-[#CBD5E1]" />
                     )}
                     <span
                       className={cn(
@@ -1549,12 +1560,13 @@ export function PdfPageRangeModal({
             </div>
           </div>
         </div>
+        </div>
 
-        <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
+        <div className="oh-panel-header flex items-center justify-end gap-2 px-5 py-3 border-t border-[#CBD5E1]">
           <button
             type="button"
             onClick={onCancel}
-            className="px-4 py-2 rounded-lg text-xs font-medium text-slate-600 hover:bg-slate-100 transition-colors cursor-pointer"
+            className="px-4 py-1.5 rounded-[2px] border oh-btn text-xs font-medium text-slate-700 transition-colors cursor-pointer"
           >
             Cancel
           </button>
@@ -1566,7 +1578,7 @@ export function PdfPageRangeModal({
                 selectedScale
               )
             }
-            className="px-4 py-2 rounded-lg text-xs font-semibold bg-brand-600 text-white hover:bg-brand-500 transition-colors cursor-pointer"
+            className="px-4 py-1.5 rounded-[2px] border oh-btn-primary text-xs font-semibold text-white transition-colors cursor-pointer"
           >
             Import pages
           </button>
@@ -1630,12 +1642,12 @@ export function DriveSaveModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-xs flex items-center justify-center p-4 select-text">
+    <div className="fixed inset-0 z-50 bg-slate-950/60 flex items-center justify-center p-4 select-text">
       <form
         onSubmit={submit}
-        className="bg-white border border-slate-200 rounded-2xl shadow-xl w-full max-w-md p-6 space-y-5"
+        className="bg-white border-2 border-[#CBD5E1] rounded-[3px] w-full max-w-md overflow-hidden"
       >
-        <div className="flex items-start justify-between gap-4">
+        <div className="oh-panel-header flex items-start justify-between gap-4 px-5 py-3.5 border-b border-[#CBD5E1]">
           <div>
             <h3 className="font-display text-lg font-bold text-slate-900">Save Room to Google Drive</h3>
             <p className="text-xs text-slate-500 mt-1">
@@ -1646,13 +1658,13 @@ export function DriveSaveModal({
             type="button"
             onClick={onCancel}
             aria-label="Close"
-            className="p-1 text-slate-400 hover:text-slate-700 rounded-lg cursor-pointer"
+            className="p-1 text-slate-400 hover:text-slate-700 rounded-[2px] border border-transparent hover:border-[#CBD5E1] cursor-pointer"
           >
             <X size={18} />
           </button>
         </div>
 
-        <div className="space-y-4">
+        <div className="p-5 space-y-4">
           <div>
             <label htmlFor="drive-save-name" className="block text-xs font-semibold text-slate-700 mb-1.5">
               File name
@@ -1668,14 +1680,14 @@ export function DriveSaveModal({
                 e.target.setSelectionRange(0, dot > 0 ? dot : e.target.value.length);
               }}
               maxLength={200}
-              className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-sm text-slate-900 focus:bg-white focus:border-brand-600 focus:outline-none"
+              className="w-full px-3 py-2 bg-slate-50 border border-[#CBD5E1] rounded-[2px] text-sm text-slate-900 focus:bg-white focus:border-brand-600 focus:outline-none"
             />
           </div>
 
           <div>
             <span className="block text-xs font-semibold text-slate-700 mb-1.5">Folder</span>
             <div className="flex items-center gap-2">
-              <div className="flex-1 min-w-0 flex items-center gap-2 px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-900">
+              <div className="flex-1 min-w-0 flex items-center gap-2 px-3 py-2 bg-slate-50 border border-[#CBD5E1] rounded-[2px] text-sm text-slate-900">
                 <FolderOpen size={15} className="text-slate-400 shrink-0" />
                 <span className="truncate" data-testid="drive-save-folder">{folder.name}</span>
               </div>
@@ -1683,7 +1695,7 @@ export function DriveSaveModal({
                 type="button"
                 onClick={onChangeFolder}
                 disabled={Boolean(busy)}
-                className="px-3 py-2.5 rounded-xl text-xs font-medium border border-slate-300 text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer disabled:opacity-50 shrink-0"
+                className="px-3 py-2 rounded-[2px] border oh-btn text-xs font-medium text-slate-700 transition-colors cursor-pointer disabled:opacity-50 shrink-0"
               >
                 {busy === 'choosing-folder' ? 'Opening...' : 'Change...'}
               </button>
@@ -1694,7 +1706,7 @@ export function DriveSaveModal({
                   setNewFolderOpen((open) => !open);
                 }}
                 disabled={Boolean(busy)}
-                className="px-3 py-2.5 rounded-xl text-xs font-medium border border-slate-300 text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer disabled:opacity-50 shrink-0"
+                className="px-3 py-2 rounded-[2px] border oh-btn text-xs font-medium text-slate-700 transition-colors cursor-pointer disabled:opacity-50 shrink-0"
               >
                 New folder...
               </button>
@@ -1715,7 +1727,7 @@ export function DriveSaveModal({
               </div>
             )}
             {newFolderOpen && (
-              <div className="mt-2 p-2.5 rounded-xl bg-slate-50 border border-slate-200 flex items-center gap-2">
+              <div className="mt-2 p-2.5 rounded-[3px] bg-slate-50 border border-[#CBD5E1] flex items-center gap-2">
                 <input
                   type="text"
                   value={newFolderName}
@@ -1734,13 +1746,13 @@ export function DriveSaveModal({
                   placeholder="AllAboard rooms"
                   disabled={Boolean(busy)}
                   autoFocus
-                  className="flex-1 min-w-0 px-2.5 py-1.5 bg-white border border-slate-300 rounded-lg text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
+                  className="flex-1 min-w-0 px-2.5 py-1.5 bg-white border border-[#CBD5E1] rounded-[2px] text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
                 />
                 <button
                   type="button"
                   onClick={() => void submitNewFolder()}
                   disabled={Boolean(busy) || !newFolderName.trim()}
-                  className="px-2.5 py-1.5 rounded-lg text-xs font-medium bg-emerald-600 text-white hover:bg-emerald-700 transition-colors cursor-pointer disabled:opacity-50 shrink-0"
+                  className="px-2.5 py-1.5 rounded-[2px] border oh-btn-emerald text-xs font-medium text-white transition-colors cursor-pointer disabled:opacity-50 shrink-0"
                 >
                   {busy === 'creating-folder' ? 'Creating...' : 'Create'}
                 </button>
@@ -1748,7 +1760,7 @@ export function DriveSaveModal({
                   type="button"
                   onClick={() => setNewFolderOpen(false)}
                   disabled={Boolean(busy)}
-                  className="px-2.5 py-1.5 rounded-lg text-xs font-medium border border-slate-300 text-slate-600 hover:bg-slate-100 transition-colors cursor-pointer disabled:opacity-50 shrink-0"
+                  className="px-2.5 py-1.5 rounded-[2px] border oh-btn text-xs font-medium text-slate-600 transition-colors cursor-pointer disabled:opacity-50 shrink-0"
                 >
                   Cancel
                 </button>
@@ -1764,18 +1776,18 @@ export function DriveSaveModal({
           {error && <p className="text-xs text-red-600 font-medium">{error}</p>}
         </div>
 
-        <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
+        <div className="oh-panel-header flex items-center justify-end gap-2 px-5 py-3 border-t border-[#CBD5E1]">
           <button
             type="button"
             onClick={onCancel}
-            className="px-4 py-2 rounded-lg text-xs font-medium text-slate-600 hover:bg-slate-100 transition-colors cursor-pointer"
+            className="px-4 py-1.5 rounded-[2px] border oh-btn text-xs font-medium text-slate-700 transition-colors cursor-pointer"
           >
             Cancel
           </button>
           <button
             type="submit"
             disabled={Boolean(busy)}
-            className="px-4 py-2 rounded-lg text-xs font-semibold bg-brand-600 text-white hover:bg-brand-500 transition-colors cursor-pointer disabled:opacity-60"
+            className="px-4 py-1.5 rounded-[2px] border oh-btn-primary text-xs font-semibold text-white transition-colors cursor-pointer disabled:opacity-60"
           >
             {busy === 'saving' ? 'Saving...' : willReplace ? 'Replace' : 'Save'}
           </button>

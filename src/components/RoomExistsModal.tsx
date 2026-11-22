@@ -66,7 +66,7 @@ export default function RoomExistsModal({
 
   return (
     <div
-      className="fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-xs flex items-center justify-center p-4"
+      className="fixed inset-0 z-50 bg-slate-950/60 flex items-center justify-center p-4"
       onClick={() => {
         if (!isBusy) onCancel();
       }}
@@ -76,12 +76,12 @@ export default function RoomExistsModal({
         aria-modal="true"
         aria-labelledby="room-exists-title"
         onClick={(e) => e.stopPropagation()}
-        className="bg-white border border-slate-200 rounded-2xl shadow-2xl w-full max-w-md p-6 space-y-4 text-slate-800 select-text"
+        className="bg-white border-2 border-[#CBD5E1] rounded-[3px] w-full max-w-md overflow-hidden text-slate-800 select-text"
       >
-        <div className="flex items-start justify-between gap-3">
+        <div className="oh-panel-header flex items-start justify-between gap-3 px-5 py-3.5 border-b border-[#CBD5E1]">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-amber-100 text-amber-700 flex items-center justify-center shrink-0">
-              <AlertTriangle size={20} />
+            <div className="w-9 h-9 rounded-[3px] bg-amber-100 border border-amber-200 text-amber-700 flex items-center justify-center shrink-0">
+              <AlertTriangle size={18} />
             </div>
             <div>
               <h2
@@ -100,15 +100,16 @@ export default function RoomExistsModal({
             type="button"
             disabled={isBusy}
             onClick={onCancel}
-            className="p-1 text-slate-400 hover:text-slate-700 rounded-md transition-colors cursor-pointer disabled:opacity-40"
+            className="p-1 text-slate-400 hover:text-slate-700 rounded-[2px] border border-transparent hover:border-[#CBD5E1] transition-colors cursor-pointer disabled:opacity-40"
             aria-label="Cancel room change"
           >
             <X size={16} />
           </button>
         </div>
 
+        <div className="p-5 space-y-4">
         {details.length > 0 && (
-          <ul className="px-3.5 py-2.5 rounded-xl bg-amber-50/80 border border-amber-200/80 space-y-1 text-xs text-amber-950">
+          <ul className="px-3.5 py-2.5 rounded-[3px] bg-amber-50/80 border border-amber-200/80 space-y-1 text-xs text-amber-950">
             {details.map((item) => (
               <li key={item} className="flex items-center gap-2">
                 <span className="w-1.5 h-1.5 rounded-full bg-amber-500 shrink-0" aria-hidden="true" />
@@ -127,7 +128,7 @@ export default function RoomExistsModal({
         {onSwitchToCustomRoom && (
           <form
             onSubmit={handleCustomSubmit}
-            className="p-3 rounded-xl bg-slate-50 border border-slate-200/80 space-y-1.5"
+            className="p-3 rounded-[3px] bg-slate-50 border border-[#CBD5E1] space-y-1.5"
           >
             <label
               htmlFor="modal-custom-room-input"
@@ -147,12 +148,12 @@ export default function RoomExistsModal({
                 }}
                 placeholder="custom-room-code"
                 maxLength={24}
-                className="flex-1 min-w-0 px-2.5 py-1.5 bg-white border border-slate-300 rounded-lg font-mono text-xs text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-brand-500"
+                className="flex-1 min-w-0 px-2.5 py-1.5 bg-white border border-[#CBD5E1] rounded-[2px] font-mono text-xs text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-brand-500"
               />
               <button
                 type="submit"
                 disabled={!canSubmitCustom || isBusy}
-                className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-brand-600 hover:bg-brand-500 text-white transition-colors cursor-pointer disabled:opacity-40 shrink-0"
+                className="flex items-center gap-1 px-2.5 py-1.5 rounded-[2px] border oh-btn-primary text-xs font-semibold text-white transition-colors cursor-pointer disabled:opacity-40 shrink-0"
                 title="Use this custom room code"
               >
                 <Check size={13} />
@@ -162,7 +163,7 @@ export default function RoomExistsModal({
                 type="button"
                 disabled={isBusy}
                 onClick={onCreateFreshRoom}
-                className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium bg-slate-200/80 hover:bg-slate-300 text-slate-800 transition-colors cursor-pointer disabled:opacity-40 shrink-0"
+                className="flex items-center gap-1 px-2.5 py-1.5 rounded-[2px] border oh-btn text-xs font-medium text-slate-800 transition-colors cursor-pointer disabled:opacity-40 shrink-0"
                 title="Generate a random unused room code"
               >
                 <Shuffle size={12} />
@@ -172,12 +173,12 @@ export default function RoomExistsModal({
           </form>
         )}
 
-        <div className="flex flex-wrap items-center justify-end gap-2 pt-2 border-t border-slate-100">
+        <div className="flex flex-wrap items-center justify-end gap-2 pt-3 border-t border-slate-200">
           <button
             type="button"
             disabled={isBusy}
             onClick={onCancel}
-            className="px-3.5 py-2 rounded-lg text-xs font-medium text-slate-600 hover:bg-slate-100 transition-colors cursor-pointer disabled:opacity-40"
+            className="px-3.5 py-1.5 rounded-[2px] border oh-btn text-xs font-medium text-slate-700 transition-colors cursor-pointer disabled:opacity-40"
           >
             Cancel
           </button>
@@ -185,7 +186,7 @@ export default function RoomExistsModal({
             type="button"
             disabled={isBusy}
             onClick={onJoinAnyway}
-            className="flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-xs font-semibold bg-slate-100 hover:bg-slate-200 text-slate-800 transition-colors cursor-pointer disabled:opacity-40"
+            className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-[2px] border oh-btn text-xs font-semibold text-slate-800 transition-colors cursor-pointer disabled:opacity-40"
           >
             <LogIn size={13} />
             <span>Join Anyway</span>
@@ -194,11 +195,12 @@ export default function RoomExistsModal({
             type="button"
             disabled={isBusy}
             onClick={onCreateFreshRoom}
-            className="flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-xs font-semibold bg-brand-600 hover:bg-brand-500 text-white transition-colors cursor-pointer disabled:opacity-40"
+            className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-[2px] border oh-btn-primary text-xs font-semibold text-white transition-colors cursor-pointer disabled:opacity-40"
           >
             <PlusCircle size={13} />
             <span>Create Fresh Room</span>
           </button>
+        </div>
         </div>
       </div>
     </div>
