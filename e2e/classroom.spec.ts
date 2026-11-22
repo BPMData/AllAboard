@@ -120,7 +120,8 @@ test.describe('teacher and students', () => {
     await teacher.page.getByTitle('Assign individual student boards or breakout group rooms').click();
     await teacher.page.getByRole('button', { name: 'Launch Round 1' }).click();
     await expect(teacher.page.getByText(/Live Classroom Boards Overview/)).toBeVisible();
-    await student.page.getByRole('button', { name: 'Need Help', exact: true }).click();
+    await student.page.getByRole('button', { name: /My Status is:/i }).click();
+    await student.page.getByRole('menuitemradio', { name: 'Need Help', exact: true }).click();
     await expect(teacher.page.getByRole('button', { name: "Clear Alex's status" })).toBeVisible();
     await drawStroke(student.page);
     await expect(student.page.getByText('1 drawn')).toBeVisible();
@@ -262,25 +263,60 @@ test.describe('teacher and students', () => {
     await student.context.close();
   });
 
-  test('student status cycles and the teacher can clear it', async ({ browser }) => {
+  test('student status cycles via radial menu and the teacher can clear it', async ({ browser }) => {
     const room = uniqueRoom('status');
     const teacher = await newUser(browser);
     const student = await newUser(browser);
     await joinRoom(teacher.page, room, 'Ms T', PIN);
     await joinRoom(student.page, room, 'Alex');
     await teacher.page.getByRole('button', { name: /^Class/ }).click();
+    const statusTrigger = student.page.getByRole('button', { name: /My Status is:/i });
+    await expect(statusTrigger).toContainText('None');
     for (const label of ['Need Help', 'Got It', 'Done']) {
-      await student.page.getByRole('button', { name: label, exact: true }).click();
-      await expect(student.page.getByRole('button', { name: label, exact: true })).toHaveAttribute('aria-pressed', 'true');
+      await statusTrigger.click();
+      const radio = student.page.getByRole('menuitemradio', { name: label, exact: true });
+      await expect(radio).toBeVisible();
+      await radio.click();
+      await expect(statusTrigger).toContainText(label);
       await expect(teacher.page.getByRole('button', { name: "Clear Alex's status" }).locator('..')).toContainText(label);
     }
     await teacher.page.getByRole('button', { name: "Clear Alex's status" }).click();
-    await expect(student.page.getByRole('button', { name: 'Done', exact: true })).toHaveAttribute('aria-pressed', 'false');
-    await student.page.getByRole('button', { name: 'Need Help', exact: true }).click();
+    await expect(statusTrigger).toContainText('None');
+    await statusTrigger.click();
+    await student.page.getByRole('menuitemradio', { name: 'Need Help', exact: true }).click();
+    await expect(statusTrigger).toContainText('Need Help');
     await teacher.page.getByRole('button', { name: 'Clear all statuses' }).click();
-    await expect(student.page.getByRole('button', { name: 'Need Help', exact: true })).toHaveAttribute('aria-pressed', 'false');
+    await expect(statusTrigger).toContainText('None');
     await teacher.context.close();
     await student.context.close();
+  });
+
+  test('student toolbar fits cleanly on 2 rows at Chromebook width with text popover and bubblegum pink eraser', async ({ browser }) => {
+    const context = await browser.newContext({ viewport: { width: 1366, height: 768 } });
+    const page = await context.newPage();
+    await joinRoom(page, uniqueRoom('compact2row'), 'Alex');
+
+    // Eraser uses OverBoard classic bubblegum pink (#F4A3B7 -> rgb(244, 163, 183)) when selected
+    const eraserBtn = page.getByTitle(/Personal Eraser \[E\]/);
+    await eraserBtn.click();
+    await expect(eraserBtn).toHaveCSS('background-color', 'rgb(244, 163, 183)');
+
+    // Text size button displays active size and opens preset options when clicked
+    const textBtn = page.getByTitle(/Text font size \(click to pick/);
+    await expect(textBtn).toContainText('M (26px)');
+    await textBtn.click();
+    const menu = page.getByRole('menu', { name: 'Text size options' });
+    await expect(menu).toBeVisible();
+    await menu.getByRole('button', { name: 'XL', exact: true }).click();
+    await expect(menu).toBeHidden();
+    await expect(textBtn).toContainText('XL (54px)');
+
+    // Two rows at 1366x768 with sidebar open (Undo bottom vs Pen size bottom should be within ~45px)
+    const toolbarBox = await page.locator('[data-keep-note="true"]').boundingBox();
+    expect(toolbarBox).not.toBeNull();
+    expect(toolbarBox!.height).toBeLessThan(92);
+
+    await context.close();
   });
 
   test('teacher laser gestures do not create ink', async ({ browser }) => {

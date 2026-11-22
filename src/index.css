@@ -112,3 +112,22 @@ body {
   background: linear-gradient(180deg, #fca5a5 0%, #ef4444 49%, #dc2626 50%, #e83232 100%);
 }
 
+/* OverBoard classic bubblegum pink eraser (#F4A3B7) */
+.oh-btn-eraser {
+  background: linear-gradient(180deg, #fce2e9 0%, #f4a3b7 49%, #ee92aa 50%, #f7b8c8 100%);
+  border-color: #d87a94;
+  color: #111827;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.7);
+}
+.oh-btn-eraser:hover:not(:disabled) {
+  background: linear-gradient(180deg, #fdd4df 0%, #f4a3b7 49%, #e8849e 50%, #f4a3b7 100%);
+  border-color: #be185d;
+  color: #000000;
+}
+.oh-btn-eraser-active {
+  background: #f4a3b7;
+  border-color: #9d174d;
+  color: #000000;
+  box-shadow: inset 0 0 0 1.5px #ffffff, 0 0 0 1px #9d174d;
+}
+

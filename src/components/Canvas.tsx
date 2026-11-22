@@ -290,6 +290,24 @@ const HOLLOW_SHAPE_OPTIONS: Array<{
   { kind: 'star', label: 'Star', dx: 62, dy: 26 },
 ];
 
+const STATUS_RADIAL_OPTIONS: Array<{
+  status: StudentStatus;
+  label: string;
+  pillClass: string;
+  dx: number;
+  dy: number;
+}> = [
+  { status: 'need-help', label: 'Need Help', pillClass: 'bg-amber-100 text-amber-900 border-amber-400', dx: 40, dy: 30 },
+  { status: 'got-it', label: 'Got It', pillClass: 'bg-emerald-100 text-emerald-900 border-emerald-400', dx: 100, dy: 64 },
+  { status: 'done', label: 'Done', pillClass: 'bg-purple-100 text-purple-900 border-purple-400', dx: 158, dy: 60 },
+  { status: 'none', label: 'Clear', pillClass: 'bg-slate-800 text-slate-100 border-slate-500', dx: 214, dy: 28 },
+];
+
+const TEXT_SIZE_DROPDOWN_PRESETS = [
+  ...TEXT_SIZE_PRESETS,
+  { label: 'XXL', size: 72, title: 'Extra-extra-large text (72px)' },
+] as const;
+
 function readLocalHollowShape(key: string, fallback: HollowShapeKind): HollowShapeKind {
   try {
     const raw = localStorage.getItem(key);
@@ -703,6 +721,10 @@ export default function Canvas({
   });
   const [showHlMenu, setShowHlMenu] = useState<boolean>(false);
   const hlMenuRef = useRef<HTMLDivElement>(null);
+  const [showStatusMenu, setShowStatusMenu] = useState<boolean>(false);
+  const statusMenuRef = useRef<HTMLDivElement>(null);
+  const [showTextSizeMenu, setShowTextSizeMenu] = useState<boolean>(false);
+  const textSizeMenuRef = useRef<HTMLDivElement>(null);
   const customColorInputRef = useRef<HTMLInputElement>(null);
 
   const [tool, setTool] = useState<ToolType>('solid');
@@ -1182,9 +1204,9 @@ export default function Canvas({
     };
   }, []);
 
-  // Close Highlighter/Cover, Hollow, or Grid radial popout menu when clicking outside or pressing Escape
+  // Close Highlighter/Cover, Hollow, Grid, Status, or Text Size popout menu when clicking outside or pressing Escape
   useEffect(() => {
-    if (!showHlMenu && !showHollowMenu && !showGridMenu) return;
+    if (!showHlMenu && !showHollowMenu && !showGridMenu && !showStatusMenu && !showTextSizeMenu) return;
     const handlePointerDownOutside = (e: PointerEvent) => {
       if (showHlMenu && hlMenuRef.current && !hlMenuRef.current.contains(e.target as Node)) {
         setShowHlMenu(false);
@@ -1195,12 +1217,20 @@ export default function Canvas({
       if (showGridMenu && gridMenuRef.current && !gridMenuRef.current.contains(e.target as Node)) {
         setShowGridMenu(false);
       }
+      if (showStatusMenu && statusMenuRef.current && !statusMenuRef.current.contains(e.target as Node)) {
+        setShowStatusMenu(false);
+      }
+      if (showTextSizeMenu && textSizeMenuRef.current && !textSizeMenuRef.current.contains(e.target as Node)) {
+        setShowTextSizeMenu(false);
+      }
     };
     const handleEsc = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         setShowHlMenu(false);
         setShowHollowMenu(false);
         setShowGridMenu(false);
+        setShowStatusMenu(false);
+        setShowTextSizeMenu(false);
       }
     };
     document.addEventListener('pointerdown', handlePointerDownOutside, true);
@@ -1209,7 +1239,7 @@ export default function Canvas({
       document.removeEventListener('pointerdown', handlePointerDownOutside, true);
       document.removeEventListener('keydown', handleEsc);
     };
-  }, [showHlMenu, showHollowMenu, showGridMenu]);
+  }, [showHlMenu, showHollowMenu, showGridMenu, showStatusMenu, showTextSizeMenu]);
 
   // Auto-focus and auto-size the multiline note textarea (OverBoard `makeTyping.place` + `open`)
   const resizeNoteTextarea = useCallback(() => {
@@ -2603,6 +2633,12 @@ export default function Canvas({
     if (showGridMenu) {
       setShowGridMenu(false);
     }
+    if (showStatusMenu) {
+      setShowStatusMenu(false);
+    }
+    if (showTextSizeMenu) {
+      setShowTextSizeMenu(false);
+    }
 
     const pos = getLocalPosFromEvent(e.clientX, e.clientY);
     const world = screenToWorld(pos.x, pos.y);
@@ -3663,6 +3699,9 @@ export default function Canvas({
 
   const gridSpacing = Math.max(20, Math.round(40 * stageScale));
   const activeSwatches = useMemo(() => getPaletteColors(paletteMode), [paletteMode]);
+  const myStatus: StudentStatus = users.find((user) => user.userId === userId)?.status ?? 'none';
+  const myStatusOption = myStatus !== 'none' ? STATUS_OPTIONS[myStatus] : null;
+  const activeTextPreset = TEXT_SIZE_DROPDOWN_PRESETS.find((preset) => preset.size === activeTextSize);
 
   return (
     <div className="flex flex-col h-full bg-white select-none relative">
@@ -3685,8 +3724,9 @@ export default function Canvas({
       {/* Primary Drawing & Studio Toolbar (`data-keep-note` lets users restyle an open note without closing it) */}
       <div
         data-keep-note="true"
-        className="oh-chrome-bar px-4 py-2 border-b border-[#CBD5E1] flex flex-wrap items-center gap-2.5 z-20"
+        className="oh-chrome-bar px-3 py-1.5 border-b border-[#CBD5E1] flex flex-col gap-1.5 z-20"
       >
+        <div className="flex flex-wrap items-center gap-2">
         {isChatHidden && onShowChat && (
           <div className="flex items-center gap-1.5 shrink-0">
             <img
@@ -3719,15 +3759,6 @@ export default function Canvas({
             >
               Room: <span className="font-mono font-semibold text-slate-900">{roomId}</span>
             </span>
-          </div>
-        )}
-
-        {!isTeacher && (
-          <div className="flex flex-wrap items-center gap-1" aria-label="My status">
-            {(Object.entries(STATUS_OPTIONS) as Array<[Exclude<StudentStatus, 'none'>, typeof STATUS_OPTIONS[keyof typeof STATUS_OPTIONS]]>).map(([value, option]) => {
-              const selected = users.find((user) => user.userId === userId)?.status === value;
-              return <button key={value} type="button" aria-pressed={selected} onClick={() => onSetStatus(selected ? 'none' : value)} className={cn('rounded-[2px] border px-2 py-1 text-xs font-medium cursor-pointer', option.className, selected && 'ring-2 ring-offset-1 ring-slate-500')}>{option.label}</button>;
-            })}
           </div>
         )}
 
@@ -3801,8 +3832,9 @@ export default function Canvas({
             type="button"
             disabled={!canDraw}
             onClick={() => setTool('select')}
+            aria-label="Select"
             className={cn(
-              "px-2 py-1.5 rounded-[2px] border transition-colors cursor-pointer disabled:opacity-40 flex items-center gap-1 text-xs font-semibold",
+              "p-1.5 2xl:px-2 rounded-[2px] border transition-colors cursor-pointer disabled:opacity-40 flex items-center gap-1 text-xs font-semibold",
               effectiveTool === 'select'
                 ? "oh-btn-active text-indigo-700"
                 : "border-transparent text-slate-600 hover:text-slate-900 hover:bg-white/70"
@@ -3810,7 +3842,7 @@ export default function Canvas({
             title="Select & Lasso Tool [V]: Tap or circle annotations and text to move, resize, restyle, copy, duplicate, or delete"
           >
             <Lasso size={16} />
-            <span className="hidden md:inline">Select</span>
+            <span className="hidden 2xl:inline">Select</span>
           </button>
 
           {isTeacher && (
@@ -4108,8 +4140,8 @@ export default function Canvas({
             className={cn(
               "p-1.5 rounded-[2px] border transition-colors cursor-pointer disabled:opacity-40",
               tool === 'eraser' && effectiveTool !== 'pan'
-                ? "oh-btn-active text-brand-700"
-                : "border-transparent text-slate-600 hover:text-slate-900 hover:bg-white/70"
+                ? "oh-btn-eraser-active"
+                : "oh-btn-eraser"
             )}
             title="Personal Eraser [E] (Erases your own ink, highlights, and whole text notes — SMART Board palm always erases)"
           >
@@ -4165,8 +4197,9 @@ export default function Canvas({
             type="button"
             disabled={!canDraw}
             onClick={() => setTool('text')}
+            aria-label="Type"
             className={cn(
-              "px-2 py-1.5 rounded-[2px] border transition-colors cursor-pointer disabled:opacity-40 flex items-center gap-1 text-xs font-semibold",
+              "p-1.5 2xl:px-2 rounded-[2px] border transition-colors cursor-pointer disabled:opacity-40 flex items-center gap-1 text-xs font-semibold",
               tool === 'text' && effectiveTool !== 'pan'
                 ? "oh-btn-active text-brand-700"
                 : "border-transparent text-slate-600 hover:text-slate-900 hover:bg-white/70"
@@ -4174,7 +4207,7 @@ export default function Canvas({
             title="Type Note [T]: Tap canvas to type, drag any note to move it, or tap/double-click a note to re-type it"
           >
             <Type size={16} />
-            <span className="hidden md:inline">Type</span>
+            <span className="hidden 2xl:inline">Type</span>
           </button>
           <button
             type="button"
@@ -4191,6 +4224,192 @@ export default function Canvas({
             <Stamp size={17} />
           </button>
         </div>
+
+        <div className="flex-1" />
+
+        {/* Personal Actions, JSON Room Save & PNG Export */}
+        <div className="flex flex-wrap items-center gap-1.5">
+          <button
+            type="button"
+            disabled={!canDraw}
+            onClick={() => {
+              if (editingNote) commitEditingNote();
+              performUndo();
+            }}
+            className="flex items-center gap-1 px-2 py-1 text-xs font-medium oh-btn border text-slate-700 rounded-[2px] transition-colors whitespace-nowrap shrink-0 cursor-pointer disabled:opacity-40"
+            title={canLocalUndo ? "Undo last action (Ctrl+Z)" : "Undo last stroke (Ctrl+Z)"}
+          >
+            <Undo2 size={15} />
+            <span>Undo</span>
+          </button>
+
+          <button
+            type="button"
+            disabled={!canDraw || !canRedo}
+            onClick={() => {
+              if (editingNote) commitEditingNote();
+              performRedo();
+            }}
+            className="flex items-center gap-1 px-2 py-1 text-xs font-medium oh-btn border text-slate-700 rounded-[2px] transition-colors whitespace-nowrap shrink-0 cursor-pointer disabled:opacity-40"
+            title="Redo (Ctrl+Y / Ctrl+Shift+Z)"
+          >
+            <Redo2 size={15} />
+            <span>Redo</span>
+          </button>
+
+          {confirmClearMine ? (
+            <div className="flex items-center gap-1 bg-red-50 px-2 py-1 rounded-[2px] border border-red-300">
+              <span className="text-xs text-red-800 font-medium whitespace-nowrap">Erase yours?</span>
+              <button
+                type="button"
+                onClick={() => {
+                  if (editingNote) setEditingNote(null);
+                  const myItems = elements.filter(
+                    (el) => el.userId === userId && !allGoneNoteIds.has(el.id)
+                  );
+                  if (myItems.length > 0) {
+                    recordUndo({ kind: 'remove', items: myItems });
+                  }
+                  setSelectedIds([]);
+                  onClearMine();
+                  setConfirmClearMine(false);
+                }}
+                className="px-2 py-0.5 text-xs font-medium oh-btn-danger border text-white rounded-[2px] cursor-pointer whitespace-nowrap"
+              >
+                Yes
+              </button>
+              <button
+                type="button"
+                onClick={() => setConfirmClearMine(false)}
+                className="px-1.5 py-0.5 text-xs text-slate-600 hover:text-slate-900 cursor-pointer"
+              >
+                No
+              </button>
+            </div>
+          ) : (
+            <button
+              type="button"
+              disabled={!canDraw}
+              onClick={() => setConfirmClearMine(true)}
+              className="flex items-center gap-1.5 px-2 py-1 text-xs font-medium oh-btn border text-red-600 rounded-[2px] transition-colors whitespace-nowrap shrink-0 cursor-pointer disabled:opacity-40"
+              title="Erase only your own drawings"
+            >
+              <Eraser size={15} />
+              <span>Clear Mine</span>
+            </button>
+          )}
+
+          <div className="h-4 w-px bg-slate-300 mx-0.5" />
+
+          <button
+            type="button"
+            onClick={handleExportJSON}
+            className="flex items-center gap-1.5 px-2 py-1 text-xs font-medium oh-btn border text-slate-700 rounded-[2px] transition-colors whitespace-nowrap shrink-0 cursor-pointer"
+            title="Save room drawings, breakout boards, worksheet, and chat log as a portable .json snapshot"
+          >
+            <FileJson size={14} />
+            <span>Save .JSON</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={handleExportPNG}
+            className="flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium oh-btn-dark border text-white rounded-[2px] transition-colors whitespace-nowrap shrink-0 cursor-pointer"
+            title="Download current canvas view as PNG"
+          >
+            <Download size={14} />
+            <span>Export PNG</span>
+          </button>
+        </div>
+        </div>
+        </div>
+
+        {/* Row 2: Student Status Radial, Colors, Ink Size, Text Size Dropdown, Smoothing & Smartboard Finger Mode */}
+        <div className={cn("flex flex-wrap items-center gap-2", toolbarCollapsed && "hidden")}>
+        {!isTeacher && (
+          <div ref={statusMenuRef} className="relative flex items-center shrink-0">
+            <button
+              type="button"
+              onClick={() => setShowStatusMenu((prev) => !prev)}
+              aria-haspopup="true"
+              aria-expanded={showStatusMenu}
+              className={cn(
+                "flex items-center gap-1 px-2 py-1 rounded-[2px] border text-xs font-medium transition-colors cursor-pointer whitespace-nowrap",
+                myStatusOption
+                  ? cn(myStatusOption.className, "font-semibold")
+                  : "oh-btn text-slate-700 hover:text-slate-900"
+              )}
+              title="Set your live classroom status for your teacher"
+            >
+              <span className="opacity-80">My Status is:</span>
+              <span className="font-bold">{myStatusOption ? myStatusOption.label : 'None'}</span>
+              <ChevronDown size={12} className="opacity-70" />
+            </button>
+
+            {showStatusMenu && (
+              <div
+                role="menu"
+                aria-label="My status"
+                className="absolute left-0 top-full z-50 pointer-events-none"
+                style={{ width: 0, height: 0 }}
+              >
+                <svg
+                  width="260"
+                  height="96"
+                  viewBox="0 0 260 96"
+                  className="overflow-visible pointer-events-none"
+                  style={{ position: 'absolute', left: 0, top: 0 }}
+                >
+                  <path
+                    d="M 40 30 Q 128 102 214 28"
+                    fill="none"
+                    stroke="#0f172a"
+                    strokeWidth="28"
+                    strokeLinecap="round"
+                    opacity="0.92"
+                  />
+                  <path
+                    d="M 40 30 Q 128 102 214 28"
+                    fill="none"
+                    stroke="#334155"
+                    strokeWidth="1.5"
+                    strokeDasharray="3 3"
+                  />
+                </svg>
+
+                {STATUS_RADIAL_OPTIONS.map((opt) => {
+                  const isSelected = myStatus === opt.status;
+                  return (
+                    <button
+                      key={opt.status}
+                      type="button"
+                      role="menuitemradio"
+                      aria-checked={isSelected}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onSetStatus(opt.status);
+                        setShowStatusMenu(false);
+                      }}
+                      style={{
+                        position: 'absolute',
+                        left: opt.dx,
+                        top: opt.dy,
+                        transform: 'translate(-50%, -50%)',
+                      }}
+                      className={cn(
+                        "pointer-events-auto px-2.5 py-1 rounded-full text-[11px] font-bold border whitespace-nowrap transition-transform hover:scale-105 cursor-pointer shadow-sm",
+                        opt.pillClass,
+                        isSelected && "ring-2 ring-white ring-offset-1 ring-offset-slate-900 scale-105"
+                      )}
+                    >
+                      {opt.label}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Inline Stamp Selector when Stamp Tool is Active */}
         {tool === 'stamp' && canDraw && (
@@ -4269,7 +4488,7 @@ export default function Canvas({
         )}
 
         {/* OverBoard Mode-Aware Color Swatches + Custom Color Picker */}
-        <div className="flex items-center gap-1.5">
+        <div className="flex items-center gap-1">
           {activeSwatches.map((sw) => {
             const activeTargetColor = editingNote ? editingNote.color : color;
             const isSelected =
@@ -4280,7 +4499,7 @@ export default function Canvas({
                 type="button"
                 onClick={() => handleSelectColor(sw.color)}
                 className={cn(
-                  "w-5 h-5 rounded-full border border-slate-300 transition-transform hover:scale-110 cursor-pointer",
+                  "w-[18px] h-[18px] rounded-full border border-slate-300 transition-transform hover:scale-110 cursor-pointer",
                   isSelected && "ring-2 ring-brand-600 ring-offset-2 scale-110"
                 )}
                 style={{ backgroundColor: sw.color }}
@@ -4294,7 +4513,7 @@ export default function Canvas({
             <button
               type="button"
               onClick={() => customColorInputRef.current?.click()}
-              className="w-5 h-5 rounded-full border border-slate-300 flex items-center justify-center transition-transform hover:scale-110 cursor-pointer"
+              className="w-[18px] h-[18px] rounded-full border border-slate-300 flex items-center justify-center transition-transform hover:scale-110 cursor-pointer"
               style={{
                 background:
                   'conic-gradient(#f44336,#ffeb3b,#4caf50,#00bcd4,#3f51b5,#e91e63,#f44336)',
@@ -4318,8 +4537,7 @@ export default function Canvas({
           </div>
         </div>
 
-        {/* Ink size: named for the tool it sizes, boxed like the Text group, with a live dot in the ink color so it
-            can't be mistaken for the text-size control next to it. */}
+        {/* Ink size: named for the tool it sizes, boxed in AllAboard teal with a live dot in the ink color */}
         <div
           className="oh-teal-chrome flex items-center gap-1 px-2 py-0.5 rounded-[2px] border text-white"
           title="How thick your ink is (separate from text size)"
@@ -4363,7 +4581,7 @@ export default function Canvas({
             }
             value={strokeWidth}
             onChange={(e) => handleSelectStrokeWidth(parseInt(e.target.value, 10))}
-            className="w-24 h-1.5 bg-brand-300 rounded-full appearance-none cursor-pointer accent-white"
+            className="w-16 h-1.5 bg-brand-300 rounded-full appearance-none cursor-pointer accent-white"
           />
           <span className="text-xs font-mono tabular-nums text-white w-7 text-right">
             {strokeWidth}
@@ -4395,70 +4613,106 @@ export default function Canvas({
           </div>
         )}
 
-        {/* Line break: text size, smoothing and finger mode always start a new row, so the ink-size control above
-            (on the row with the colors) never sits next to "Text size" and gets mistaken for it. */}
-        <div className="basis-full h-0" aria-hidden="true" />
+        {/* Compact Text Size Selector (shows currently selected size; click to pick S, M, L, XL, XXL or fine-tune) */}
+        <div ref={textSizeMenuRef} className="relative flex items-center shrink-0">
+          <button
+            type="button"
+            disabled={!canDraw}
+            onClick={() => setShowTextSizeMenu((prev) => !prev)}
+            aria-haspopup="true"
+            aria-expanded={showTextSizeMenu}
+            className={cn(
+              "flex items-center gap-1 px-2 py-1 rounded-[2px] border text-xs font-medium transition-colors cursor-pointer whitespace-nowrap disabled:opacity-40",
+              showTextSizeMenu || tool === 'text' || Boolean(editingNote) || selectedTextElements.length > 0
+                ? "oh-btn-active text-brand-800"
+                : "oh-btn text-slate-700 hover:text-slate-900"
+            )}
+            title="Text font size (click to pick S, M, L, XL, XXL or custom pixel size)"
+          >
+            <span className="text-slate-600">Text:</span>
+            <span className="font-semibold font-mono tabular-nums text-slate-900">
+              {activeTextPreset ? `${activeTextPreset.label} (${activeTextSize}px)` : `${activeTextSize}px`}
+            </span>
+            <ChevronDown size={12} className="opacity-70" />
+          </button>
 
-        {/* Dedicated Independent Text Size Controls */}
-        <div
-          className={cn(
-            "flex items-center gap-1 px-2 py-0.5 rounded-[2px] border text-xs transition-colors",
-            tool === 'text' || Boolean(editingNote) || selectedTextElements.length > 0
-              ? "bg-brand-50/90 border-brand-300"
-              : "bg-slate-100 border-[#CBD5E1]"
+          {showTextSizeMenu && (
+            <div
+              role="menu"
+              aria-label="Text size options"
+              className="absolute left-0 top-full mt-1.5 z-50 w-64 p-3 rounded-[3px] bg-slate-900 text-white border-2 border-[#243044] space-y-2.5 shadow-lg"
+            >
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-white">Text Font Size</span>
+                <span className="text-xs font-mono text-brand-300 tabular-nums">
+                  {activeTextPreset ? `${activeTextPreset.label} · ${activeTextSize}px` : `${activeTextSize}px`}
+                </span>
+              </div>
+
+              <div className="grid grid-cols-5 gap-1">
+                {TEXT_SIZE_DROPDOWN_PRESETS.map((preset) => (
+                  <button
+                    key={preset.label}
+                    type="button"
+                    disabled={!canDraw}
+                    onClick={() => {
+                      handleSelectTextFontSize(preset.size);
+                      setShowTextSizeMenu(false);
+                    }}
+                    className={cn(
+                      "px-1.5 py-1.5 rounded-[2px] border text-xs font-bold transition-colors cursor-pointer disabled:opacity-40 text-center",
+                      activeTextSize === preset.size
+                        ? "oh-btn-primary text-white"
+                        : "bg-slate-800 border-[#243044] text-slate-200 hover:bg-slate-700 hover:text-white"
+                    )}
+                    title={preset.title}
+                  >
+                    {preset.label}
+                  </button>
+                ))}
+              </div>
+
+              <div className="flex items-center gap-1.5 pt-1 border-t border-slate-800">
+                <button
+                  type="button"
+                  disabled={!canDraw || activeTextSize <= 12}
+                  onClick={() => handleSelectTextFontSize(activeTextSize - 2)}
+                  className="w-6 h-6 rounded-[2px] bg-slate-800 border border-[#243044] hover:bg-slate-700 text-white font-bold disabled:opacity-35 cursor-pointer"
+                  title="Decrease text size"
+                >
+                  &minus;
+                </button>
+                <input
+                  aria-label="Text size"
+                  type="range"
+                  min={12}
+                  max={96}
+                  value={activeTextSize}
+                  onChange={(e) => handleSelectTextFontSize(parseInt(e.target.value, 10))}
+                  className="flex-1 h-1.5 bg-slate-700 rounded-full appearance-none cursor-pointer accent-brand-400"
+                />
+                <button
+                  type="button"
+                  disabled={!canDraw || activeTextSize >= 96}
+                  onClick={() => handleSelectTextFontSize(activeTextSize + 2)}
+                  className="w-6 h-6 rounded-[2px] bg-slate-800 border border-[#243044] hover:bg-slate-700 text-white font-bold disabled:opacity-35 cursor-pointer"
+                  title="Increase text size"
+                >
+                  +
+                </button>
+              </div>
+
+              <div className="flex items-center justify-between pt-1 border-t border-slate-800 text-slate-300">
+                <span className="text-[11px]">Preview</span>
+                <span
+                  className="font-bold text-white leading-none truncate max-w-[140px]"
+                  style={{ fontSize: Math.max(12, Math.min(30, Math.round(activeTextSize * 0.45))) }}
+                >
+                  Aa
+                </span>
+              </div>
+            </div>
           )}
-          title="Text font size in pixels (independent of brush stroke width)"
-        >
-          <span className="text-[11px] font-semibold text-slate-600 whitespace-nowrap">Text size:</span>
-          <div className="flex items-center gap-0.5">
-            {TEXT_SIZE_PRESETS.map((preset) => (
-              <button
-                key={preset.label}
-                type="button"
-                disabled={!canDraw}
-                onClick={() => handleSelectTextFontSize(preset.size)}
-                className={cn(
-                  "px-1.5 py-0.5 rounded-[2px] border text-[11px] font-bold transition-colors cursor-pointer disabled:opacity-40",
-                  activeTextSize === preset.size
-                    ? "oh-btn-primary text-white"
-                    : "border-transparent text-slate-700 hover:bg-white"
-                )}
-                title={preset.title}
-              >
-                {preset.label}
-              </button>
-            ))}
-          </div>
-          <button
-            type="button"
-            disabled={!canDraw || activeTextSize <= 12}
-            onClick={() => handleSelectTextFontSize(activeTextSize - 2)}
-            className="w-5 h-5 rounded-[2px] hover:bg-white text-slate-700 font-bold disabled:opacity-35 cursor-pointer"
-            title="Decrease text size"
-          >
-            &minus;
-          </button>
-          <input
-            aria-label="Text size"
-            type="range"
-            min={12}
-            max={96}
-            value={activeTextSize}
-            onChange={(e) => handleSelectTextFontSize(parseInt(e.target.value, 10))}
-            className="w-16 h-1.5 bg-slate-200 rounded-full appearance-none cursor-pointer accent-brand-600 hidden sm:block"
-          />
-          <button
-            type="button"
-            disabled={!canDraw || activeTextSize >= 96}
-            onClick={() => handleSelectTextFontSize(activeTextSize + 2)}
-            className="w-5 h-5 rounded-[2px] hover:bg-white text-slate-700 font-bold disabled:opacity-35 cursor-pointer"
-            title="Increase text size"
-          >
-            +
-          </button>
-          <span className="text-[11px] font-mono tabular-nums text-slate-700 w-9 text-right">
-            {activeTextSize}px
-          </span>
         </div>
 
         {/* OverBoard Smoothing Control (0..8) & Smartboard Finger Mode Toggle */}
@@ -4505,7 +4759,7 @@ export default function Canvas({
             saveLocal('allaboard-finger-scrolls', next ? '1' : '0');
           }}
           className={cn(
-            "px-2.5 py-1 rounded-[2px] text-[11px] font-medium border transition-colors cursor-pointer whitespace-nowrap",
+            "px-2 py-1 rounded-[2px] text-[11px] font-medium border transition-colors cursor-pointer whitespace-nowrap",
             fingerScrolls
               ? "bg-amber-50 text-amber-900 border-amber-300"
               : "oh-btn text-slate-700 hover:text-slate-900"
@@ -4514,103 +4768,6 @@ export default function Canvas({
         >
           Finger: {fingerScrolls ? 'pans' : 'draws'}
         </button>
-
-        <div className="flex-1" />
-
-        {/* Personal Actions, JSON Room Save & PNG Export */}
-        <div className="flex flex-wrap items-center gap-1.5">
-          <button
-            type="button"
-            disabled={!canDraw}
-            onClick={() => {
-              if (editingNote) commitEditingNote();
-              performUndo();
-            }}
-            className="flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium oh-btn border text-slate-700 rounded-[2px] transition-colors whitespace-nowrap shrink-0 cursor-pointer disabled:opacity-40"
-            title={canLocalUndo ? "Undo last action (Ctrl+Z)" : "Undo last stroke (Ctrl+Z)"}
-          >
-            <Undo2 size={15} />
-            <span>Undo</span>
-          </button>
-
-          <button
-            type="button"
-            disabled={!canDraw || !canRedo}
-            onClick={() => {
-              if (editingNote) commitEditingNote();
-              performRedo();
-            }}
-            className="flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium oh-btn border text-slate-700 rounded-[2px] transition-colors whitespace-nowrap shrink-0 cursor-pointer disabled:opacity-40"
-            title="Redo (Ctrl+Y / Ctrl+Shift+Z)"
-          >
-            <Redo2 size={15} />
-            <span>Redo</span>
-          </button>
-
-          {confirmClearMine ? (
-            <div className="flex items-center gap-1 bg-red-50 px-2 py-1 rounded-[2px] border border-red-300">
-              <span className="text-xs text-red-800 font-medium whitespace-nowrap">Erase yours?</span>
-              <button
-                type="button"
-                onClick={() => {
-                  if (editingNote) setEditingNote(null);
-                  const myItems = elements.filter(
-                    (el) => el.userId === userId && !allGoneNoteIds.has(el.id)
-                  );
-                  if (myItems.length > 0) {
-                    recordUndo({ kind: 'remove', items: myItems });
-                  }
-                  setSelectedIds([]);
-                  onClearMine();
-                  setConfirmClearMine(false);
-                }}
-                className="px-2 py-0.5 text-xs font-medium oh-btn-danger border text-white rounded-[2px] cursor-pointer whitespace-nowrap"
-              >
-                Yes
-              </button>
-              <button
-                type="button"
-                onClick={() => setConfirmClearMine(false)}
-                className="px-1.5 py-0.5 text-xs text-slate-600 hover:text-slate-900 cursor-pointer"
-              >
-                No
-              </button>
-            </div>
-          ) : (
-            <button
-              type="button"
-              disabled={!canDraw}
-              onClick={() => setConfirmClearMine(true)}
-              className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium oh-btn border text-red-600 rounded-[2px] transition-colors whitespace-nowrap shrink-0 cursor-pointer disabled:opacity-40"
-              title="Erase only your own drawings"
-            >
-              <Eraser size={15} />
-              <span>Clear Mine</span>
-            </button>
-          )}
-
-          <div className="h-4 w-px bg-slate-300 mx-0.5" />
-
-          <button
-            type="button"
-            onClick={handleExportJSON}
-            className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium oh-btn border text-slate-700 rounded-[2px] transition-colors whitespace-nowrap shrink-0 cursor-pointer"
-            title="Save room drawings, breakout boards, worksheet, and chat log as a portable .json snapshot"
-          >
-            <FileJson size={14} />
-            <span>Save .JSON</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={handleExportPNG}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium oh-btn-dark border text-white rounded-[2px] transition-colors whitespace-nowrap shrink-0 cursor-pointer"
-            title="Download current canvas view as PNG"
-          >
-            <Download size={14} />
-            <span>Export PNG</span>
-          </button>
-        </div>
         </div>
       </div>
 
