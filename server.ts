@@ -1554,6 +1554,67 @@ export async function startServer(options: StartServerOptions = {}) {
       callback?.({ ok: true });
     });
 
+    // Teacher-only: one worksheet to many boards at once (Live Grid "Send worksheet…").
+    // The client sends one emit per variant; the image is interned once and each board gets its own copy.
+    socket.on('teacher:set-background-multi', (payload, callback) => {
+      const meta = socketMeta.get(socket.id);
+      if (!meta) {
+        callback?.({ ok: false, error: 'Not in a room.' });
+        return;
+      }
+      const room = rooms.get(meta.roomId);
+      if (!room) {
+        callback?.({ ok: false, error: 'Room not found.' });
+        return;
+      }
+
+      const callerRecord = room.usersByUserId.get(meta.userId);
+      if (!callerRecord?.isTeacher) {
+        callback?.({ ok: false, error: 'Only a verified Teacher can change the background worksheet.' });
+        return;
+      }
+
+      if (!payload || !Array.isArray(payload.boardIds)) {
+        callback?.({ ok: false, error: 'boardIds must be an array.' });
+        return;
+      }
+
+      const ids = uniqueStrings(payload.boardIds).slice(0, 500);
+      const interned = internBackground(store, payload.background ?? null) || null;
+      const copyOf = () => (interned ? JSON.parse(JSON.stringify(interned)) : null);
+      const skipped: string[] = [];
+      let updated = 0;
+
+      for (const boardId of ids) {
+        if (boardId === 'main') {
+          room.background = copyOf();
+          io.to(room.id).emit('background-sync', { boardId: 'main', background: room.background });
+          updated++;
+          continue;
+        }
+        const sb = room.subBoards.get(boardId);
+        if (!sb) {
+          skipped.push(boardId);
+          continue;
+        }
+        sb.background = copyOf();
+        io.to(room.id).emit('background-sync', { boardId, background: sb.background });
+        updated++;
+      }
+
+      const templateRound = payload.roundTemplateFor;
+      if (
+        typeof templateRound === 'string' &&
+        getRounds(room.breakoutConfig).some((r) => r.id === templateRound)
+      ) {
+        room.roundTemplates[templateRound] = cloneBackground(interned);
+      }
+
+      room.lastActiveAt = Date.now();
+      scheduleSaveToDisk(room, true);
+      callback?.({ ok: true, updated, skipped });
+    });
+
     // Teacher-only Background Worksheet transform update (position, scale, layout)
     socket.on('teacher:update-background', ({ boardId = 'main', patch }) => {
       const meta = socketMeta.get(socket.id);

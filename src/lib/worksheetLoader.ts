@@ -534,3 +534,18 @@ async function renderPdfToPages(
 
   return pages;
 }
+
+/** Wraps rendered worksheet pages in a centered `RoomBackground` (same defaults as a normal worksheet upload). */
+export function buildWorksheetBackground(pages: BackgroundPage[], fileName: string): RoomBackground {
+  const firstPage = pages[0];
+  return {
+    id: 'bg_' + Math.random().toString(36).substring(2, 10),
+    fileName,
+    pages,
+    x: firstPage ? Math.round(-firstPage.width / 2) : -400,
+    y: firstPage ? Math.round(-firstPage.height / 2) : -300,
+    scale: 1,
+    layout: pages.length >= 3 ? 'grid' : pages.length === 2 ? 'row' : 'stack',
+    opacity: 1,
+  };
+}

@@ -1606,6 +1606,105 @@ describe('AllAboard server & Socket.IO integration tests', () => {
       assert.equal(init.roomSettings.breakoutConfig.mode, 'individual');
       assert.equal(init.subBoards['r1_ind_s1'].background.pages[0].dataUrl, url);
     });
+
+    describe('teacher:set-background-multi', () => {
+      const named = (fileName: string) => ({ ...worksheet(), id: `bg-${fileName}`, fileName });
+      /** Teacher + 3 students in an individual round; returns board ids sorted by student. */
+      const individualRound = async (roomId: string) => {
+        const teacher = await teacherIn(roomId);
+        const students: Socket[] = [];
+        for (let i = 0; i < 3; i++) students.push((await joinTracked({ roomId, userId: `s${i}`, name: `Student ${i}` })).socket);
+        const sync = waitForEvent<any>(teacher, 'breakout-sync');
+        await emitAck(teacher, 'teacher:configure-breakout', { action: 'new-round', mode: 'individual' });
+        const state = await sync;
+        const boards = Object.values(state.subBoards) as any[];
+        const ids = ['s0', 's1', 's2'].map((uid) => boards.find((b) => b.assignedUserIds[0] === uid).id as string);
+        const roundId = state.breakoutConfig.activeRoundId as string;
+        return { teacher, students, ids, roundId };
+      };
+      const collectBackgroundSyncs = (socket: Socket) => {
+        const got: Record<string, any> = {};
+        const handler = (p: any) => { got[p.boardId] = p.background; };
+        socket.on('background-sync', handler);
+        return { got, stop: () => socket.off('background-sync', handler) };
+      };
+      const teacherBoards = async (roomId: string) => {
+        const { init } = await joinTracked({ roomId, userId: 't', name: 'Teacher', teacherPin: '1234' });
+        return init.subBoards as Record<string, any>;
+      };
+
+      it('M1 – sends to selected boards only, as asset URLs', async () => {
+        const { teacher, ids } = await individualRound('multi-1');
+        const syncs = collectBackgroundSyncs(teacher);
+        const res = await emitAck(teacher, 'teacher:set-background-multi', { boardIds: [ids[0], ids[1]], background: named('X.png') });
+        assert.deepEqual(res, { ok: true, updated: 2, skipped: [] });
+        await delay(100);
+        syncs.stop();
+        assert.deepEqual(Object.keys(syncs.got).sort(), [ids[0], ids[1]].sort());
+        for (const id of [ids[0], ids[1]]) assert.match(syncs.got[id].pages[0].dataUrl, /^\/api\/assets\/[a-f0-9]{64}$/);
+        assert.notEqual(syncs.got[ids[0]], syncs.got[ids[1]]);
+        teacher.disconnect();
+        const boards = await teacherBoards('multi-1');
+        assert.equal(boards[ids[0]].background.fileName, 'X.png');
+        assert.equal(boards[ids[2]].background, null);
+      });
+
+      it('M2 – different variants land on different boards', async () => {
+        const { teacher, ids } = await individualRound('multi-2');
+        assert.equal((await emitAck(teacher, 'teacher:set-background-multi', { boardIds: [ids[0], ids[2]], background: named('A.png') })).ok, true);
+        assert.equal((await emitAck(teacher, 'teacher:set-background-multi', { boardIds: [ids[1]], background: named('B.png') })).ok, true);
+        teacher.disconnect();
+        const boards = await teacherBoards('multi-2');
+        assert.deepEqual(ids.map((id) => boards[id].background.fileName), ['A.png', 'B.png', 'A.png']);
+      });
+
+      it('M3 – students cannot use it', async () => {
+        const { teacher, students, ids } = await individualRound('multi-3');
+        const res = await emitAck(students[0], 'teacher:set-background-multi', { boardIds: ids, background: named('nope.png') });
+        assert.equal(res.ok, false);
+        teacher.disconnect();
+        const boards = await teacherBoards('multi-3');
+        for (const id of ids) assert.equal(boards[id].background, null);
+      });
+
+      it('M4 – unknown ids are skipped and valid ones still update', async () => {
+        const { teacher, ids } = await individualRound('multi-4');
+        const res = await emitAck(teacher, 'teacher:set-background-multi', {
+          boardIds: [ids[0], 'r9_ind_ghost', ids[0], 42],
+          background: named('X.png'),
+        });
+        assert.deepEqual(res, { ok: true, updated: 1, skipped: ['r9_ind_ghost'] });
+        const bad = await emitAck(teacher, 'teacher:set-background-multi', { boardIds: 'nope', background: named('X.png') });
+        assert.equal(bad.ok, false);
+      });
+
+      it('M5 – one worksheet to three boards stores one asset', async () => {
+        const { teacher, ids } = await individualRound('multi-5');
+        const before = srv.store.countAssets();
+        await emitAck(teacher, 'teacher:set-background-multi', { boardIds: ids, background: named('X.png') });
+        assert.equal(srv.store.countAssets(), before + 1);
+      });
+
+      it('M6 – roundTemplateFor gives late joiners the worksheet', async () => {
+        const { teacher, ids, roundId } = await individualRound('multi-6');
+        const res = await emitAck(teacher, 'teacher:set-background-multi', { boardIds: [ids[0]], background: named('A.png'), roundTemplateFor: roundId });
+        assert.equal(res.ok, true);
+        const { init } = await joinTracked({ roomId: 'multi-6', userId: 'late', name: 'Late' });
+        const lateBoard = (Object.values(init.subBoards) as any[]).find((b) => b.assignedUserIds[0] === 'late');
+        assert.ok(lateBoard, 'late joiner gets an individual board');
+        assert.equal(lateBoard.background.fileName, 'A.png');
+      });
+
+      it('M7 – sent worksheets survive a restart', async () => {
+        const { teacher, ids } = await individualRound('multi-7');
+        await emitAck(teacher, 'teacher:set-background-multi', { boardIds: [ids[0]], background: named('A.png') });
+        await emitAck(teacher, 'teacher:set-background-multi', { boardIds: [ids[1], ids[2]], background: named('B.png') });
+        await srv.flushRoomsToDiskAsync();
+        await restart();
+        const boards = await teacherBoards('multi-7');
+        assert.deepEqual(ids.map((id) => boards[id].background.fileName), ['A.png', 'B.png', 'B.png']);
+      });
+    });
   });
 
   describe('element authorship and teacher-only feedback stamps', () => {

@@ -965,6 +965,20 @@ export default function App() {
     [socket]
   );
 
+  // Live Grid "Send worksheet…": one emit per variant; background-sync events update each board.
+  const handleTeacherSendWorksheet = useCallback(
+    (boardIds: string[], bg: RoomBackground | null, roundTemplateFor?: string) =>
+      new Promise<{ ok: boolean; updated?: number; skipped?: string[]; error?: string }>((resolve) => {
+        if (!socket) return resolve({ ok: false, error: 'Not connected to server.' });
+        socket.emit(
+          'teacher:set-background-multi',
+          { boardIds, background: bg, roundTemplateFor },
+          (res: any) => resolve(res || { ok: false, error: 'No response from server.' })
+        );
+      }),
+    [socket]
+  );
+
   const handleTeacherSetBackground = useCallback(
     (bg: RoomBackground | null): Promise<{ ok: boolean; error?: string }> => {
       return new Promise((resolve) => {
@@ -2030,6 +2044,7 @@ export default function App() {
           onTeacherToggleOneNameStamp={handleTeacherToggleOneNameStamp}
           onTeacherClearAll={handleTeacherClearAll}
           onTeacherSetBackground={handleTeacherSetBackground}
+          onTeacherSendWorksheet={handleTeacherSendWorksheet}
           onTeacherUpdateBackground={handleTeacherUpdateBackground}
           onTeacherImportRoom={handleTeacherImportRoom}
           timer={roomSettings.timer}
