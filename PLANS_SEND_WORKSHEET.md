@@ -2,7 +2,7 @@
 
 > **For the agent implementing this:** read `CLAUDE.md` and `docs/ARCHITECTURE.md` first. **Every merge to `main`
 > deploys to production**, so open a PR and do not merge it yourself. The teacher needs this live by **class tomorrow**,
-> so keep the scope to what's below. Bigger related ideas (prepared rounds, lesson packs) are out of scope.
+> so keep the scope to what's below. Bigger related ideas (prepared rounds, lesson packs, auto-forming *groups* from stamps) are out of scope.
 
 ## Goal
 
@@ -19,8 +19,8 @@ e.g. four versions of a bingo card, A/B/C/D. Today the only ways are:
 
 1. Uploads **1–4 worksheet files** (PDF or image), labeled **A, B, C, D**.
 2. Picks the target boards: checkboxes for the boards in the round being viewed, with select all and select none.
-3. Picks a distribution: **"Same worksheet for all"** (A only) or **"Rotate A → B → C → D"** across the selected boards
-   in roster order. A preview table shows `Board (student name) → A/B/C/D`, and each row has a dropdown to override it.
+3. Picks a distribution: **"Same worksheet for all"** (A only), **"Rotate A → B → C → D"** across the selected boards
+   in roster order, or **"By name-stamp corner on the main board"** (§4 below). A preview table shows `Board (student name) → A/B/C/D`, and each row has a dropdown to override it.
 4. Clicks **Send**. Each variant is sent **once** and the server applies it to its boards, so each image is stored once
    because assets are content-addressed.
 
@@ -125,6 +125,52 @@ none of these is the board the teacher is drawing on. Pass the callback down as
   - Disable Send while a variant is still rendering, when no boards are selected, or when a selected board's letter
     has no file.
 
+### 4. Distribution mode 3: "By name-stamp corner on the main board"
+
+This is the first slice of TODO's **"Group by quadrant"**. It sends worksheets by quadrant only. It does **not** form
+groups or prepared rounds. It runs entirely on the client: `LiveGridOverview` already receives `fullMainElements` and
+`fullMainBackground`.
+
+**New pure module `src/lib/stampQuadrants.ts`** (no React, no DOM):
+
+```ts
+export type Quadrant = 'tl' | 'tr' | 'bl' | 'br';
+export function quadrantForPoint(x: number, y: number, bg: RoomBackground): Quadrant | null;
+export function latestNameStamp(elements: CanvasElement[], userId: string): CanvasElement | null;
+export function quadrantsByUser(elements: CanvasElement[], bg: RoomBackground | null, userIds: string[])
+  : Record<string, Quadrant | null>;
+```
+
+- **Name stamp:** `el.type === 'stamp' && el.stamp === 'username' && el.userId === userId`. If a student stamped more
+  than once (one-name-stamp rule off), the **latest** wins: highest `timestamp`, and if timestamps are missing, the last
+  one in the array. `el.x` / `el.y` are the stamp's **center**: `Canvas.tsx` renders it as a `Group` at `(x, y)` with a
+  centered `Circle`.
+- **Quadrant:** get the page rects with `layoutPages(bg)` from `src/lib/worksheetLayout.ts`. Find the page that contains
+  the point and split **that page** at its center: `x < px + pw/2` is left, and `y < py + ph/2` is top. If the point is
+  on no page, or there's no background, the result is `null` ("no stamp / off the worksheet").
+- **Board → student:** an individual board's student is `board.assignedUserIds[0]`. Only individual rounds are in scope.
+  For group boards, disable this mode with a tooltip: "Coming later: individual rounds only".
+
+**UI in `SendWorksheetModal`:** a third distribution radio, "By name-stamp corner on the main board". It's disabled,
+with a reason shown, when the main board has no worksheet or no name stamps. When it's selected:
+- Show a small 2×2 mapping grid of dropdowns: top-left → **A**, top-right → **B**, bottom-left → **C**,
+  bottom-right → **D** by default. Add one more dropdown, **"No stamp →"**, defaulting to **A**.
+- The preview table gets a **Corner** column (`↖ ↗ ↙ ↘` or "none"), and the per-row override dropdown still works.
+- Show a summary line above Send, e.g. "8 → A, 11 → B, 6 → C, 3 → no stamp (A)". This is the "preview before launch"
+  that TODO asks for.
+
+**Tests: `tests/stampQuadrants.test.ts`** (node:test, picked up by `npm test`)
+1. One page at `x: -500, y: -400`, 1000×800, with stamps in each quarter, gives tl / tr / bl / br.
+2. A user with two stamps: the later `timestamp` wins.
+3. A user with no stamp, a stamp off the page, or a `null` background gives `null`.
+4. Other stamp kinds (`'star'`) and other users' name stamps are ignored.
+5. A 2-page `'row'` layout: a stamp on page 2 is split by **page 2's** center.
+6. `scale: 2` is respected, because the rects come from `layoutPages`.
+
+**Manual test for tomorrow's class:** set the Four Corners PDF as the main board's worksheet, have students stamp
+their names, then start an individual round. Open Live Grid → Send worksheet → upload `card_A`–`card_D` and pick
+"By name-stamp corner". Check the preview against the stamps on the main board.
+
 ## Tests
 
 ### `tests/server.test.ts`
@@ -158,7 +204,10 @@ student sees a different worksheet. `e2e/worksheets.spec.ts` shows how to upload
       individual round, send A/B to the two boards, and each student sees their own; a third student who joins late
       gets A.
 - [ ] `docs/ARCHITECTURE.md` §7 lists `teacher:set-background-multi`. In `TODO.md`, under "Send this worksheet to…",
-      mark the live-boards half done.
+      mark the live-boards half done. Under "Group by quadrant", note that the worksheet-by-corner slice is done
+      (auto-forming groups and routing to prepared rounds are still open).
+- [ ] Manual check for corner mode: stamp in all four corners from four student windows, send A–D by corner,
+      and each student gets the right card.
 - [ ] Open a PR into `main` that describes the manual test. **Don't merge it.** The teacher merges it, which deploys it.
 
 ## Don'ts
