@@ -847,6 +847,48 @@ test.describe('room exists confirmation modal', () => {
     await visitor.context.close();
     await invitee.context.close();
   });
+
+  test('lobby New Room makes the typed room (or a random one) and goes in, but warns when it already exists', async ({ browser }) => {
+    const freshRoom = uniqueRoom('newroom');
+    const maker = await newUser(browser);
+    const randomMaker = await newUser(browser);
+    const latecomer = await newUser(browser);
+
+    // No name yet: New Room says so and stays in the lobby.
+    await maker.page.goto('/');
+    await maker.page.getByLabel('Room Code').fill(freshRoom);
+    await maker.page.getByRole('button', { name: 'New Room' }).click();
+    await expect(maker.page.getByText('Type your name first, then press New Room.')).toBeVisible();
+    await expect(maker.page.getByLabel('Room Code')).toHaveValue(freshRoom);
+
+    // With a name: New Room makes that room and goes straight in.
+    await maker.page.getByLabel('Your Display Name').fill('Ms. Maker');
+    await maker.page.getByRole('button', { name: 'New Room' }).click();
+    await expect(maker.page.getByRole('dialog')).toHaveCount(0);
+    await expect(maker.page.locator('.konvajs-content').first()).toBeVisible();
+    await expect(maker.page).toHaveURL(new RegExp(`room=${freshRoom}`));
+
+    // An empty box makes a random room.
+    await randomMaker.page.goto('/');
+    await randomMaker.page.getByLabel('Your Display Name').fill('Mr. Random');
+    await randomMaker.page.getByLabel('Room Code').fill('');
+    await randomMaker.page.getByRole('button', { name: 'New Room' }).click();
+    await expect(randomMaker.page.locator('.konvajs-content').first()).toBeVisible();
+    await expect(randomMaker.page).toHaveURL(/room=class-/);
+
+    // A code that's already in use gets the "already exists" choice instead of a silent join.
+    await latecomer.page.goto('/');
+    await latecomer.page.getByLabel('Your Display Name').fill('Sam');
+    await latecomer.page.getByLabel('Room Code').fill(freshRoom);
+    await latecomer.page.getByRole('button', { name: 'New Room' }).click();
+    const dialog = latecomer.page.getByRole('dialog');
+    await expect(dialog.getByText('Room Already Exists')).toBeVisible();
+    await dialog.getByRole('button', { name: 'Cancel', exact: true }).click();
+    await expect(dialog).toHaveCount(0);
+    await expect(latecomer.page.getByRole('button', { name: 'Join Classroom' })).toBeVisible();
+
+    for (const u of [maker, randomMaker, latecomer]) await u.context.close();
+  });
 });
 
 test.describe('kick or ban contribution purge modal', () => {

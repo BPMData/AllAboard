@@ -1426,6 +1426,43 @@ export default function App() {
     performLobbyJoin(targetRoomId, trimmed, cleanPin);
   };
 
+  /**
+   * Lobby "New Room": make the room typed in the Room Code box (a random unused code when it's empty) and join it.
+   * When a room with that code already exists, the same "room already exists" choice as Join comes up, so a
+   * "new" room never quietly lands you in someone else's.
+   */
+  const handleLobbyNewRoom = async () => {
+    if (!socket || isCheckingRoom) return;
+    const trimmed = userName.trim();
+    if (!trimmed) {
+      setKickNotice('Type your name first, then press New Room.');
+      displayNameInputRef.current?.focus();
+      return;
+    }
+    const cleanPin = initialTeacherPin.trim();
+    if (cleanPin && cleanPin.length < MIN_TEACHER_PIN_LENGTH) {
+      setKickNotice(`Teacher PIN must be at least ${MIN_TEACHER_PIN_LENGTH} characters.`);
+      return;
+    }
+    const typed = roomId.replace(/^-|-$/g, '').trim();
+    setIsCheckingRoom(true);
+    try {
+      if (!typed) {
+        performLobbyJoin(await generateUnusedRoomCode(), trimmed, cleanPin);
+        return;
+      }
+      const target = normalizeRoomCode(typed);
+      const availability = await checkRoomAvailability(target);
+      if (availability?.exists) {
+        setPendingRoomPrompt({ source: 'lobby', availability, userName: trimmed, teacherPin: cleanPin });
+        return;
+      }
+      performLobbyJoin(target, trimmed, cleanPin);
+    } finally {
+      setIsCheckingRoom(false);
+    }
+  };
+
   const handleCancelRoomPrompt = useCallback(() => {
     if (!isCheckingRoom) {
       setPendingRoomPrompt(null);
@@ -2018,14 +2055,9 @@ export default function App() {
                   <button
                     type="button"
                     disabled={isCheckingRoom}
-                    onClick={() => {
-                      setKickNotice(null);
-                      setHasEditedLobbyRoom(true);
-                      setRoomId('');
-                      roomCodeInputRef.current?.focus();
-                    }}
+                    onClick={handleLobbyNewRoom}
                     className="flex items-center gap-1 px-2.5 py-1.5 rounded-[2px] border oh-btn text-brand-700 text-xs font-medium whitespace-nowrap cursor-pointer disabled:opacity-50 transition-colors shrink-0"
-                    title="Type a custom room code"
+                    title="Make a new room with the code you typed (a random one if the box is empty) and go in"
                   >
                     <PlusCircle size={13} />
                     <span>New Room</span>
@@ -2035,7 +2067,7 @@ export default function App() {
                     disabled={isCheckingRoom}
                     onClick={handleCreateNewRoom}
                     className="flex items-center gap-1 px-2.5 py-1.5 rounded-[2px] border oh-btn text-slate-700 text-xs font-medium whitespace-nowrap cursor-pointer disabled:opacity-50 transition-colors shrink-0"
-                    title="Generate a random unused room code"
+                    title="Fill the box with a random unused room code"
                   >
                     <Shuffle size={12} />
                     <span>Random</span>
