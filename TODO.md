@@ -15,6 +15,26 @@ specs are in git history.
     viewed round (same / rotate / by name-stamp corner), via `teacher:set-background-multi`.
   - [ ] **A prepared breakout round** (see below): sets that round's worksheet template, so students who enter
     it later get it.
+  - [ ] **Set up worksheet variants (A–D) before class, on a prepared round.** Today variants can only be sent
+    from Live Grid → **Send worksheet…**, after the round is live and students already have boards.
+    - In the prepared-round form (Breakout manager → **Save for later** / **Edit**), let the teacher upload up to
+      four variants and pick the distribution: same for all / deal out in turn / by name-stamp corner.
+    - On **Launch**, the server gives each new board its variant. Corner mode reads the main board's stamps at
+      launch time. Late joiners get their variant by the same rule, not always A.
+    - Save variants and the distribution rule **on the round**, so they survive a restart.
+    - **Lesson packs must carry all of it.** Anything a teacher sets up ahead of time (prepared rounds, their
+      variants A–D, the distribution rule, the corner mapping, per-student overrides, the late-joiner rule) must
+      go into **Save lesson…** (`.allaboard`) and come back intact with **Load lesson…**. Per-student overrides
+      only make sense in the same class, so on load, match them by student name and drop the ones that don't
+      match. Add a round-trip test: save a pack, load it into a fresh room, and check that every prepared field
+      matches.
+  - [ ] **Make a sent distribution editable.** Reopening **Send worksheet…** starts empty: the uploaded variants
+    and who got which are forgotten, so changing one student's card means uploading everything again.
+    - Remember each round's variants and assignments, and reopen the modal with them filled in.
+    - Allow changing one board's letter, swapping a variant's file, or switching the distribution rule, and send
+      only the boards whose worksheet actually changes.
+    - Keep the existing rule: ink stays and only the worksheet underneath changes. Warn about boards that
+      already have work, as the modal does now.
   - **Server:** a teacher-only path that applies `internBackground` once and then reuses the same asset URL for
     every board. With content-addressed assets, 30 boards cost one stored image.
 
@@ -70,6 +90,69 @@ Plan: [`PLANS_LESSON_PACKS.md`](PLANS_LESSON_PACKS.md) phases 2–3, with the op
       inbox, with copy/download/email fallback. See [`docs/REPORTS.md`](docs/REPORTS.md).
   - [ ] **Owner setup:** turn on AllAboard reports in OverBoard's report script (BPMData/OverBoard PR 56), add the
         `REPORT_RELAY_URL` / `REPORT_RELAY_TOKEN` secrets, send a test report. Until then every report uses the fallback.
+
+### A real eraser (remove objects instead of covering them)
+- [ ] **Make the eraser delete or trim what it touches, instead of adding an "eraser stroke" element.** Today the
+      eraser is a white ink stroke stored like any other ink, and `getVisibleStrokeRuns` / `expandElementVisiblePieces`
+      (`src/lib/inkCore.ts`) work out what still shows at render time. Effects:
+  - Erasing makes a board **heavier**, not lighter. Each swipe is another element (it counts toward the 10,000-per-board
+    cap) and makes every later render, digest and PDF export do more work.
+  - Hidden objects still exist. That was the one-name-stamp bug (fixed Nov 2026 for **stamps only**: erasing a stamp
+    now deletes it, via `stampsHitByEraser`). Erased text notes (`allGoneNoteIds`) and fully erased strokes still sit
+    in the data, still show up in lasso selection, and still count in "N drawn".
+  - **Goal:** on pen-up, an eraser stroke turns into edits.
+    - Fully covered strokes, notes and shapes are **removed**.
+    - Partly erased freehand strokes are **split** into their visible pieces. `expandElementVisiblePieces` already
+      computes them, and lasso-move already uses it.
+    - No eraser element is stored.
+    - Undo stays one step: one `replace` entry with what was removed and what was added.
+  - **Watch out for:**
+    - Live erasing feedback while the pen is down. Keep drawing the white stroke locally and only commit edits on
+      pen-up.
+    - Other users' views. They get remove and add batches, not a stroke.
+    - Shapes and hollow strokes, which can't be split cleanly. Remove them only when fully covered, and otherwise
+      keep a covering stroke for just those.
+    - **Old rooms: no backward compatibility needed** (owner decision, Nov 2026: nobody but the owner has used
+      the app yet). Don't migrate or special-case existing rooms: whatever their old eraser strokes do after the
+      change is fine, and the rooms can just be wiped.
+    - Rate and size caps on large batches (`socketGuards.ts`).
+  - **Tests:** element counts go **down** after erasing, a partial erase leaves the right pieces, undo/redo restores
+    them exactly, and a second browser sees the same result.
+
+### Classroom simulator: fake students for testing alone
+- [ ] **One command that fills a room with fake students** so a teacher can test breakouts, worksheet variants,
+      corner mode, late joiners and lesson-pack reloads from one laptop, without a pile of incognito tabs.
+  - **Build on `scripts/loadtest.ts`.** It already connects fake Socket.IO students, locally or to `--url`, and
+    gets through the HTTPS proxy. Put the new script at `scripts/classroom.ts`, add `"classroom": "tsx scripts/classroom.ts"`
+    to `package.json`, and add a short **"Test with fake students"** section to `README.md`.
+  - **What the fake students do:**
+    - Join with readable names (`Ava (bot)`, `Ben (bot)`, …) and stay connected until you stop the script.
+    - **Stamp their name** on the main board, either in random corners or as you set with
+      `--corners tl:5,tr:5,bl:4,br:6`. The stamp position is worked out from the main board's worksheet bounds, so
+      it lands inside the boxes.
+    - **Follow breakouts.** When moved to their own board or a group board, each one writes its name in a text box
+      there, so the Live Grid shows who is who and which worksheet each got.
+    - Set status (**Need help** / **Done**) at random if `--statuses` is given.
+  - **Controls while it runs** (keys in the terminal, listed when it starts):
+    `l` = one late joiner, `L` = five late joiners, `s` = everyone re-stamps, `r` = everyone disconnects and
+    rejoins, `d` = everyone draws a scribble, `q` = everyone leaves and the script quits.
+  - **Safety:**
+    - Refuse to start unless the room code begins with `test-` (or `--i-know`), so it can never land in a real
+      class.
+    - Cap at 40 students.
+    - Never send the teacher PIN.
+    - On quit, remove the bots' ink and stamps (`clear-user-drawings`) and disconnect cleanly.
+  - **How to launch it**, once built (the README section should say exactly this):
+    1. **Against production (easiest):** open AllAboard yourself as teacher in room `test-whatever`. Then, in a
+       Claude Code session on this repo, say: *"Run `npm run classroom -- --url https://<the AllAboard URL>
+       --room test-whatever --students 20` and leave it running."* Tell Claude when you're done, and it presses `q`.
+    2. **On your own computer** (needs Node 22): `npm ci` once, then
+       `npm run classroom -- --url https://<the AllAboard URL> --room test-whatever --students 20`.
+    3. **Fully local:** run `npm run dev` in one terminal and `npm run classroom -- --room test-whatever` in
+       another. It defaults to `http://localhost:3000`. Then open `http://localhost:3000` as teacher.
+  - **Tests:** a `node:test` that runs the script against `startServer` with 5 bots, `--corners tl:2,br:3` and no
+    keyboard (`--seconds 5`). Check that 5 users joined, the stamps fall in the right quadrants
+    (`src/lib/stampQuadrants.ts`), and the bots' ink is gone after quit.
 
 ### Housekeeping
 - [ ] **Hosting: undecided.** Options, measurements, prices and a Compute Engine VM sketch are archived in

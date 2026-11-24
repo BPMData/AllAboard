@@ -240,7 +240,7 @@ export function SendWorksheetModal({ round, boards, mainElements, mainBackground
             </label>
             <label className="flex gap-2">
               <input type="radio" name="sw-mode" checked={effectiveMode === 'rotate'} onChange={() => setChosenMode('rotate')} />
-              Rotate {letters.join(' → ')} by board name
+              Deal out {letters.join(', ')} in turn (alphabetical by student)
             </label>
             <label className={`flex gap-2 ${cornerDisabledReason ? 'text-slate-400' : ''}`} title={cornerDisabledReason || undefined}>
               <input

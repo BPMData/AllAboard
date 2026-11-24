@@ -112,6 +112,7 @@ import {
   canUserModifyElement,
   expandElementVisiblePieces,
   hasSubsequentOverlappingEraser,
+  stampsHitByEraser,
   hitElementAtPoint,
   lassoSelectElements,
   translateElement,
@@ -3457,7 +3458,14 @@ export default function Canvas({
           strokeTool === 'rect' || strokeTool === 'circle' || strokeTool === 'line'
             ? pending
             : { ...pending, points: [...pts] };
-        recordUndo({ kind: 'add', items: [completed] });
+        // Erasing a stamp deletes it (one undo step brings both back), so one-name-stamp mode frees the name stamp.
+        const erasedStamps = strokeTool === 'eraser' ? stampsHitByEraser(elements, completed) : [];
+        if (erasedStamps.length > 0) {
+          onElementsBatchRemove(erasedStamps.map((el) => el.id));
+          recordUndo({ kind: 'replace', removed: erasedStamps, added: [completed] });
+        } else {
+          recordUndo({ kind: 'add', items: [completed] });
+        }
       }
     }
   };

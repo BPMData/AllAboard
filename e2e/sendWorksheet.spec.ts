@@ -43,7 +43,7 @@ test('Send worksheet rotates A/B across individual boards', async ({ browser }) 
   await expect(dialog.getByText(/card_B\.png · 1 page/)).toBeVisible();
 
   // Two variants default to rotate: boards sorted by title, Alex → A, Bea → B.
-  await expect(dialog.getByLabel(/Rotate/)).toBeChecked();
+  await expect(dialog.getByLabel(/Deal out/)).toBeChecked();
   await expect(dialog.getByLabel("Worksheet for Alex's Board")).toHaveValue('A');
   await expect(dialog.getByLabel("Worksheet for Bea's Board")).toHaveValue('B');
   await dialog.getByRole('button', { name: 'Send', exact: true }).click();

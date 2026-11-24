@@ -263,6 +263,45 @@ test.describe('teacher and students', () => {
     await student.context.close();
   });
 
+  test('one name stamp rule: erasing the stamp with the eraser frees it too', async ({ browser }) => {
+    const room = uniqueRoom('erasestamp');
+    const teacher = await newUser(browser);
+    const student = await newUser(browser);
+    await joinRoom(teacher.page, room, 'Ms T', PIN);
+    await joinRoom(student.page, room, 'Alex');
+    await teacher.page.getByRole('button', { name: 'One Name Stamp: Off' }).click();
+    await expect(teacher.page.getByRole('button', { name: 'One Name Stamp: On' })).toBeVisible();
+
+    await student.page.getByTitle(/Quick Stamp Tool/).click();
+    await student.page.getByTitle('Stamp Your Username Badge').click();
+    await student.page.mouse.click(800, 500);
+    await expect(student.page.getByText('1 drawn')).toBeVisible();
+    await expect(student.page.getByTitle(/already placed your name stamp/)).toBeDisabled();
+
+    // Swipe the eraser across the stamp
+    await student.page.getByTitle(/Personal Eraser/).click();
+    await student.page.mouse.move(700, 500);
+    await student.page.mouse.down();
+    await student.page.mouse.move(800, 500, { steps: 5 });
+    await student.page.mouse.move(900, 500, { steps: 5 });
+    await student.page.mouse.up();
+
+    await student.page.getByTitle(/Quick Stamp Tool/).click();
+    await expect(student.page.getByTitle('Stamp Your Username Badge')).toBeEnabled();
+    await student.page.getByTitle('Stamp Your Username Badge').click();
+    await student.page.mouse.click(600, 400);
+    await expect(student.page.getByTitle(/already placed your name stamp/)).toBeDisabled();
+
+    // One undo brings the erased stamp back (and removes the eraser stroke): undo the new stamp, then the erase
+    await student.page.getByRole('button', { name: 'Undo' }).click();
+    await student.page.getByRole('button', { name: 'Undo' }).click();
+    await student.page.getByTitle(/Quick Stamp Tool/).click();
+    await expect(student.page.getByTitle(/already placed your name stamp/)).toBeDisabled();
+
+    await teacher.context.close();
+    await student.context.close();
+  });
+
   test('student status cycles via radial menu and the teacher can clear it', async ({ browser }) => {
     const room = uniqueRoom('status');
     const teacher = await newUser(browser);
