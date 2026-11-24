@@ -15,6 +15,20 @@ specs are in git history.
     viewed round (same / rotate / by name-stamp corner), via `teacher:set-background-multi`.
   - [ ] **A prepared breakout round** (see below): sets that round's worksheet template, so students who enter
     it later get it.
+  - [ ] **Set up worksheet variants (A–D) before class, on a prepared round.** Today variants can only be sent
+    from Live Grid → **Send worksheet…**, after the round is live and students already have boards.
+    - In the prepared-round form (Breakout manager → **Save for later** / **Edit**), let the teacher upload up to
+      four variants and pick the distribution: same for all / deal out in turn / by name-stamp corner.
+    - On **Launch**, the server gives each new board its variant. Corner mode reads the main board's stamps at
+      launch time. Late joiners get their variant by the same rule, not always A.
+    - Save variants and the distribution rule **on the round**, so they survive a restart and go into lesson packs.
+  - [ ] **Make a sent distribution editable.** Reopening **Send worksheet…** starts empty: the uploaded variants
+    and who got which are forgotten, so changing one student's card means uploading everything again.
+    - Remember each round's variants and assignments, and reopen the modal with them filled in.
+    - Allow changing one board's letter, swapping a variant's file, or switching the distribution rule, and send
+      only the boards whose worksheet actually changes.
+    - Keep the existing rule: ink stays and only the worksheet underneath changes. Warn about boards that
+      already have work, as the modal does now.
   - **Server:** a teacher-only path that applies `internBackground` once and then reuses the same asset URL for
     every board. With content-addressed assets, 30 boards cost one stored image.
 
