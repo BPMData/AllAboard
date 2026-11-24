@@ -42,6 +42,7 @@ import {
   WORKSHEET_IMPORT_SCALE_STORAGE_KEY,
   normalizeWorksheetImportScale,
   BUILT_IN_TEMPLATES,
+  buildWorksheetBackground,
   BuiltInTemplateId,
 } from '../lib/worksheetLoader';
 import type { PageRange } from '../lib/pageRange';
@@ -222,6 +223,11 @@ interface CanvasProps {
   onTeacherToggleOneNameStamp: (enabled: boolean) => void;
   onTeacherClearAll: () => void;
   onTeacherSetBackground: (bg: RoomBackground | null) => Promise<{ ok: boolean; error?: string }>;
+  onTeacherSendWorksheet?: (
+    boardIds: string[],
+    bg: RoomBackground | null,
+    roundTemplateFor?: string
+  ) => Promise<{ ok: boolean; updated?: number; skipped?: string[]; error?: string }>;
   onTeacherUpdateBackground: (patch: Partial<RoomBackground>) => void;
   onTeacherImportRoom: (
     snapshot: {
@@ -678,6 +684,7 @@ export default function Canvas({
   onTeacherToggleOneNameStamp,
   onTeacherClearAll,
   onTeacherSetBackground,
+  onTeacherSendWorksheet,
   onTeacherUpdateBackground,
   onTeacherImportRoom,
   timer,
@@ -2239,20 +2246,10 @@ export default function Canvas({
     try {
       const effectiveScale = normalizeWorksheetImportScale(scaleOverride ?? worksheetImportScale);
       const pages = await processWorksheetFile(file, range, effectiveScale);
-      const firstPage = pages[0];
-      const startX = firstPage ? Math.round(-firstPage.width / 2) : -400;
-      const startY = firstPage ? Math.round(-firstPage.height / 2) : -300;
-
-      const newBg: RoomBackground = {
-        id: 'bg_' + Math.random().toString(36).substring(2, 10),
-        fileName: range ? `${file.name} (pp. ${range.first}–${range.last})` : file.name,
+      const newBg = buildWorksheetBackground(
         pages,
-        x: startX,
-        y: startY,
-        scale: 1,
-        layout: pages.length >= 3 ? 'grid' : pages.length === 2 ? 'row' : 'stack',
-        opacity: 1,
-      };
+        range ? `${file.name} (pp. ${range.first}–${range.last})` : file.name
+      );
 
       const res = await onTeacherSetBackground(newBg);
       if (res.ok) {
@@ -5547,6 +5544,7 @@ export default function Canvas({
           onAssignUserToBoard={onAssignUserToBoard}
           onTeacherClearStatus={onTeacherClearStatus}
           onSpotlightBoard={onSpotlightBoard}
+          onSendWorksheet={onTeacherSendWorksheet}
           users={users}
           fullMainElements={fullMainElements}
           fullMainBackground={fullMainBackground}

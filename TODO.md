@@ -10,8 +10,10 @@ specs are in git history.
 
 ### "Send this worksheet to…" (live boards and prepared rounds)
 - [ ] **Teacher button: "Send this worksheet to…"**
-  - **Everyone's current boards:** replaces only each board's **background**, never the student's ink.
-  - **A prepared breakout round** (see below): sets that round's worksheet template, so students who enter
+  - [x] **Everyone's current boards:** replaces only each board's **background**, never the student's ink.
+    Done (Nov 2026): Live Grid → **Send worksheet…** sends up to four variants (A–D) to selected boards of the
+    viewed round (same / rotate / by name-stamp corner), via `teacher:set-background-multi`.
+  - [ ] **A prepared breakout round** (see below): sets that round's worksheet template, so students who enter
     it later get it.
   - **Server:** a teacher-only path that applies `internBackground` once and then reuses the same asset URL for
     every board. With content-addressed assets, 30 boards cost one stored image.
@@ -24,6 +26,9 @@ specs are in git history.
     **without** setting `mode`/`activeRoundId` (e.g. `prepare: true`), plus UI to list, edit and launch prepared rounds.
 - [ ] **Stretch: "Group by quadrant."** After a Four Corners vote on main, auto-assign students to groups (or to
       one of several prepared rounds) based on which region their name stamp is in.
+  - [x] **First slice done (Nov 2026):** Send worksheet's "By name-stamp corner" mode sends worksheet A–D by the
+        corner of each student's name stamp on the main board (`src/lib/stampQuadrants.ts`). Still open:
+        auto-forming groups and routing students into prepared rounds.
   - **Mapping:** each region maps to a prepared round or group, e.g. top-left → Round A; top-right and
     bottom-right → Round B. Works for any template with labeled regions (number line, agree/disagree spectrum,
     Venn diagram), not just Four Corners.

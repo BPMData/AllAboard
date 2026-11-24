@@ -33,6 +33,7 @@ import {
 import { AlertCircle, Check, Download, FolderOpen, Shuffle, X } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { StudentStatusBadge } from './StudentStatusBadge';
+import { SendWorksheetModal, type SendWorksheetResult } from './SendWorksheetModal';
 
 export type { PendingSnapshotData };
 
@@ -50,6 +51,11 @@ interface LiveGridOverviewProps {
   onAssignUserToBoard: (targetBoardId: string, targetUserId?: string) => void;
   onTeacherClearStatus: (targetUserId?: string) => void;
   onSpotlightBoard: (payload: SpotlightPayload) => Promise<{ ok: boolean; error?: string }>;
+  onSendWorksheet?: (
+    boardIds: string[],
+    bg: RoomBackground | null,
+    roundTemplateFor?: string
+  ) => Promise<SendWorksheetResult>;
   users: User[];
   fullMainElements: CanvasElement[];
   fullMainBackground: RoomBackground | null;
@@ -77,6 +83,7 @@ export function LiveGridOverview({
   onAssignUserToBoard,
   onTeacherClearStatus,
   onSpotlightBoard,
+  onSendWorksheet,
   users,
   fullMainElements,
   fullMainBackground,
@@ -92,6 +99,8 @@ export function LiveGridOverview({
   const [returnToMain, setReturnToMain] = useState(currentMode !== 'main');
   const [sharing, setSharing] = useState(false);
   const [shareError, setShareError] = useState('');
+  const [showSendWorksheet, setShowSendWorksheet] = useState(false);
+  const viewingRoundBoards = viewingRound ? boards.filter((sb) => sb.roundId === viewingRound.id) : [];
 
   const canSendClassToViewingRound = Boolean(
     viewingRound &&
@@ -120,6 +129,16 @@ export function LiveGridOverview({
                 title={`Move the whole class into ${viewingRound.title} with their saved work intact`}
               >
                 Send Class to Round {viewingRound.number}
+              </button>
+            )}
+            {onSendWorksheet && viewingRound && viewingRoundBoards.length > 0 && (
+              <button
+                type="button"
+                onClick={() => setShowSendWorksheet(true)}
+                className="px-3 py-1.5 rounded-[2px] border oh-btn text-xs font-semibold text-slate-800 cursor-pointer"
+                title="Send one or more worksheets (A–D) to the boards in this round"
+              >
+                Send worksheet…
               </button>
             )}
             <button
@@ -270,6 +289,16 @@ export function LiveGridOverview({
             );
           })}
         </div>
+        {showSendWorksheet && viewingRound && onSendWorksheet && (
+          <SendWorksheetModal
+            round={viewingRound}
+            boards={viewingRoundBoards}
+            mainElements={fullMainElements}
+            mainBackground={fullMainBackground}
+            onSend={onSendWorksheet}
+            onClose={() => setShowSendWorksheet(false)}
+          />
+        )}
         {shareBoard && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 p-4" role="dialog" aria-modal="true" aria-labelledby="share-board-title">
             <div className="w-full max-w-md rounded-[3px] border-2 border-[#CBD5E1] bg-white overflow-hidden">
