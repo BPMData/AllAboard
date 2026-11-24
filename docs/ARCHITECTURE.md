@@ -166,7 +166,9 @@ Cloud Run service "allaboard"  ── one container :3000 (node server.ts, Build
 - Breakouts: `breakout:join-board`
 - Chat: `chat-message`
 - Drawing: `element-start`, `element-append-points` (streaming ink), `element-update`, `elements-batch-update`,
-  `elements-batch-add`, `elements-batch-remove`, `element-remove`, `undo`, `clear-user-drawings`
+  `elements-batch-add`, `elements-batch-remove`, `element-remove`, `undo`, `clear-user-drawings`,
+  `elements-replace` (groups that remove ids and insert elements in their place, keeping stacking order: the eraser
+  and its undo, `src/lib/elementGroups.ts`; others get `elements-replaced`)
 
 **Server → client:**
 - Full state: `init` (everything on join), `state-sync`, `room-restored` (after import)

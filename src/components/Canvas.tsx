@@ -185,12 +185,16 @@ import { isPhoneViewport } from '../lib/compactLayout';
 import { STATUS_OPTIONS } from './StudentStatusBadge';
 import { LoadLessonModal, SaveLessonModal, type LessonRequest } from './LessonPackModals';
 import { variantBackgrounds, type RoundVariants } from '../lib/roundVariants';
+import { eraseGroups, eraseWithStroke } from '../lib/eraserEdits';
+import type { ElementGroup } from '../lib/elementGroups';
 
 type HistoryAction =
   | { kind: 'add'; items: CanvasElement[] }
   | { kind: 'remove'; items: CanvasElement[] }
   | { kind: 'update'; before: CanvasElement[]; after: CanvasElement[]; bringToFront?: boolean }
-  | { kind: 'replace'; removed: CanvasElement[]; added: CanvasElement[] };
+  | { kind: 'replace'; removed: CanvasElement[]; added: CanvasElement[] }
+  /** Order-keeping edits (the eraser): `forward` redoes, `backward` undoes. */
+  | { kind: 'groups'; forward: ElementGroup<CanvasElement>[]; backward: ElementGroup<CanvasElement>[] };
 
 interface CanvasProps {
   roomId: string;
@@ -233,6 +237,8 @@ interface CanvasProps {
   onElementsBatchUpdate: (updates: Array<Partial<CanvasElement> & { id: string }>, bringToFront?: boolean) => void;
   onElementsBatchAdd: (elements: CanvasElement[], targetBoardId?: string) => void;
   onElementsBatchRemove: (ids: string[]) => void;
+  /** Edits that keep stacking order (eraser). Missing in old callers: the eraser then stays an eraser stroke. */
+  onElementsReplace?: (groups: ElementGroup<CanvasElement>[]) => void;
   onCursorMove: (cursor: Omit<RemoteCursor, 'updatedAt'>) => void;
   onUndo: () => void;
   onClearMine: () => void;
@@ -727,6 +733,7 @@ export default function Canvas({
   onElementsBatchUpdate,
   onElementsBatchAdd,
   onElementsBatchRemove,
+  onElementsReplace,
   onCursorMove,
   onUndo,
   onClearMine,
@@ -1609,8 +1616,11 @@ export default function Canvas({
       onElementsBatchRemove(addedIds);
       onElementsBatchAdd(action.removed, activeBoardId);
       setSelectedIds(action.removed.map((el) => el.id));
+    } else if (action.kind === 'groups') {
+      onElementsReplace?.(action.backward);
     }
   }, [
+    onElementsReplace,
     canDraw,
     activeBoardId,
     getBoardHistory,
@@ -1643,8 +1653,11 @@ export default function Canvas({
       onElementsBatchRemove(removedIds);
       onElementsBatchAdd(action.added, activeBoardId);
       setSelectedIds(action.added.map((el) => el.id));
+    } else if (action.kind === 'groups') {
+      onElementsReplace?.(action.forward);
     }
   }, [
+    onElementsReplace,
     canDraw,
     activeBoardId,
     getBoardHistory,
@@ -3467,6 +3480,20 @@ export default function Canvas({
           strokeTool === 'rect' || strokeTool === 'circle' || strokeTool === 'line'
             ? pending
             : { ...pending, points: [...pts] };
+        if (strokeTool === 'eraser' && onElementsReplace) {
+          // The real eraser: on pen-up the stroke becomes edits (ink split or removed, notes and stamps removed)
+          // and the eraser stroke itself goes away, except over rectangles/circles it only partly covers.
+          // One undo step puts everything back where it was in the stacking order.
+          const board = elements.map((el) => (el.id === completed.id ? completed : el));
+          if (!board.some((el) => el.id === completed.id)) board.push(completed);
+          const result = eraseWithStroke(board, completed, () => Math.random().toString(36).substring(2, 11));
+          const { forward, backward } = eraseGroups(result, completed.id);
+          onElementsReplace(forward);
+          if (result.edits.length > 0 || result.keptEraser.length > 0) {
+            recordUndo({ kind: 'groups', forward, backward });
+          }
+          return;
+        }
         // Erasing a stamp deletes it (one undo step brings both back), so one-name-stamp mode frees the name stamp.
         const erasedStamps = strokeTool === 'eraser' ? stampsHitByEraser(elements, completed) : [];
         if (erasedStamps.length > 0) {

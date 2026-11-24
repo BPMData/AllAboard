@@ -30,6 +30,7 @@ import { createReportHandler, reportBodyParser } from './problemReportRoute.ts';
 import { RoomStore, internBackground, isValidAssetHash } from './roomStore.ts';
 import { BackupMirror, DirBackend, GcsBackend, sniffMime, type BackupBackend } from './backupMirror.ts';
 import { hasNameStamp, isTeacherStampKind } from './src/lib/stamps.ts';
+import { applyElementGroups } from './src/lib/elementGroups.ts';
 import { isAnonymousAuthorId, makeAnonymousAuthorId } from './src/lib/anonymousInk.ts';
 import { OVERVIEW_SYNC_MS, buildDigest, emptyChanges, type BoardChanges, type BoardDigest } from './src/lib/boardDigest.ts';
 import { CURSOR_EMIT_MS } from './src/lib/drawThrottle.ts';
@@ -3090,6 +3091,65 @@ export async function startServer(options: StartServerOptions = {}) {
         noteChange(room, boardId, { removed: removedIds });
         socket.to(boardAudience(room.id, boardId)).emit('elements-batch-removed', { boardId, ids: removedIds });
       }
+    });
+
+    // Atomic edits that keep stacking order (the eraser's split/remove, and its undo): each group removes its ids
+    // and puts its elements where the first of them was. Same rules as batch add/remove; all or nothing.
+    socket.on('elements-replace', ({ boardId = 'main', groups } = {} as any) => {
+      const meta = socketMeta.get(socket.id);
+      if (!meta || !Array.isArray(groups) || groups.length === 0 || groups.length > MAX_BATCH_ELEMENTS) return;
+      const room = rooms.get(meta.roomId);
+      if (!room) return;
+      const senderRecord = room.usersByUserId.get(meta.userId);
+      const isTeacher = Boolean(senderRecord?.isTeacher);
+      if (room.isCanvasLocked && !isTeacher) return;
+      const targetElements = getBoardElements(room, boardId);
+      if (!targetElements) return;
+
+      let idCount = 0;
+      let elCount = 0;
+      for (const g of groups) {
+        if (!g || !Array.isArray(g.ids) || !Array.isArray(g.elements)) return;
+        if (g.after !== undefined && g.after !== null && typeof g.after !== 'string') return;
+        if (!g.ids.every((id: unknown) => typeof id === 'string')) return;
+        if (!g.elements.every((el: any) => el && typeof el.id === 'string' && typeof el.tool === 'string' && elementFieldsOk(el))) return;
+        idCount += g.ids.length;
+        elCount += g.elements.length;
+      }
+      if (idCount > MAX_BATCH_ELEMENTS || elCount > MAX_BATCH_ELEMENTS) return;
+
+      const byId = new Map(targetElements.map((el) => [el.id, el]));
+      const author = { userId: meta.userId, userName: senderRecord?.name };
+      const clean = groups.map((g: any) => ({
+        // Only the sender's own ink can be removed (teachers: anyone's), as with batch remove.
+        ids: (g.ids as string[]).filter((id) => {
+          const el = byId.get(id);
+          return el && (el.userId === meta.userId || isTeacher);
+        }),
+        elements: (g.elements as any[])
+          .filter((el) => !(el.tool === 'stamp' && isTeacherStampKind(el.stamp) && !isTeacher))
+          .map((el) => ({ ...el, boardId, userId: author.userId, userName: author.userName || el.userName })),
+        ...(g.after !== undefined ? { after: g.after } : {}),
+      }));
+
+      let next = applyElementGroups(targetElements, clean);
+      if (next.length > MAX_BOARD_ELEMENTS && next.length > targetElements.length) return boardFull(boardId, targetElements);
+      let droppedNameStamp = false;
+      if (room.oneNameStamp && !isTeacher) {
+        const isMine = (el: any) => el.tool === 'stamp' && el.stamp === 'username' && el.userId === meta.userId;
+        if (next.filter(isMine).length > 1) {
+          // Never a second name stamp: keep the one already down, drop the sender's optimistic copy below.
+          next = next.filter((el) => !(isMine(el) && !byId.has(el.id)));
+          droppedNameStamp = true;
+        }
+      }
+      targetElements.splice(0, targetElements.length, ...next);
+
+      room.lastActiveAt = Date.now();
+      scheduleSaveToDisk(room);
+      noteChange(room, boardId, { full: true });
+      if (droppedNameStamp) io.to(boardAudience(room.id, boardId)).emit('state-sync', { boardId, elements: targetElements });
+      else socket.to(boardAudience(room.id, boardId)).emit('elements-replaced', { boardId, groups: clean });
     });
 
     socket.on('element-remove', ({ id, boardId = 'main' }) => {
