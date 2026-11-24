@@ -50,10 +50,14 @@ issue and email from the validated fields, so a modified client can't add anythi
 Browser  POST /api/report (JSON, 32 KB max)
   → server.ts / problemReportRoute.ts: validate, rebuild issue + email, rate-limit
       (10 per client per 10 min, 60 per hour overall)
-  → relay (tools/report-relay.gs, Google Apps Script web app), with a shared token
-      → GitHub: create the issue (token lives only in the script)
+  → OverBoard's report relay (tools/report-relay.gs in BPMData/OverBoard, a Google Apps Script web app),
+    posted as { app: 'AllAboard', kind: 'problem-report', token, issue, email }
+      → GitHub: create the issue in this repo (token lives only in the script)
       → MailApp: email the private part to the inbox
 ```
+
+One relay serves both apps: same inbox, same GitHub key, same deployment. It turns AllAboard posts away unless the
+token matches its `ALLABOARD_TOKEN` script property, and its limits (20 an hour, 40 a day) are shared with OverBoard.
 
 The browser never sees a GitHub token. `POST /api/report` answers `{ ok: true, issueUrl?, issueNumber?, emailed }`, or
 `{ ok: false, error }` with `invalid` (400/413), `rate-limited` (429), `not-configured` (503) or `relay-failed` (502).
@@ -61,30 +65,25 @@ Every failure shows the copy/download/email fallback.
 
 ## Setup (one time, by the owner)
 
-Until this is done, the app works and every report uses the fallback (copy, download, email).
+Until this is done, the app works and every report uses the fallback (copy, download, email). The relay is already
+running for OverBoard, so this only switches AllAboard on.
 
-1. **GitHub token.** Create a fine-grained personal access token: repository access *only* `BPMData/AllAboard`,
-   permission **Issues: Read and write**, nothing else. Optionally create a `user-report` label (the relay retries
-   without labels if it can't use it).
-2. **Apps Script.** Signed in as the account that should send the emails (ideally overboard.reporting@gmail.com),
-   create a new project at script.google.com and paste in `tools/report-relay.gs`.
-   - Project Settings → Script properties: `RELAY_TOKEN` (a long random string, e.g. `openssl rand -hex 32`),
-     `GITHUB_TOKEN` (step 1). Optional: `GITHUB_REPO` (default `BPMData/AllAboard`), `REPORT_INBOX`
-     (default overboard.reporting@gmail.com).
-   - Deploy → New deployment → **Web app**, Execute as **Me**, Who has access **Anyone**. Authorize it (it asks to
-     send email and connect to external services; this is the script's own permission on that account, not
-     AllAboard's Google sign-in, so it doesn't touch the OAuth scope rule in CLAUDE.md). Copy the `/exec` URL.
-   - Opening the `/exec` URL in a browser should show `{"ok":true,"service":"report-relay"}`.
-3. **GitHub secrets** on this repo (Settings → Secrets and variables → Actions): `REPORT_RELAY_URL` (the `/exec`
-   URL) and `REPORT_RELAY_TOKEN` (the same value as `RELAY_TOKEN`). `deploy.yml` passes both to Cloud Run as env vars
-   on the next deploy. Without them it leaves the flag out and deploys exactly as before.
-4. **Test it** after the deploy: send a report from the lobby. Check that an issue appears with the `user-report`
-   label, that the email arrives with `[AllAboard]` in the subject, and that the issue has no contact details.
+1. **OverBoard:** merge BPMData/OverBoard PR 56, then follow "AllAboard reports (optional)" in OverBoard's
+   `docs/REPORTS.md`: add AllAboard to the `OverBoard reports` GitHub token, add the `ALLABOARD_TOKEN` script
+   property (a long random string, e.g. `openssl rand -hex 32`), paste in the new script, run **checkSetup**, and
+   **Deploy ▸ Manage deployments ▸ ✏️ ▸ New version** (the URL stays the same).
+2. **Label (optional):** in this repo, Issues ▸ Labels ▸ New label `user-report`. Without it issues are opened unlabeled.
+3. **GitHub secrets** on this repo (Settings → Secrets and variables → Actions): `REPORT_RELAY_URL` (the relay's
+   `/exec` URL, the same one as `RELAY_URL` in OverBoard's `app/report/index.html`) and `REPORT_RELAY_TOKEN` (the
+   same value as `ALLABOARD_TOKEN`). `deploy.yml` passes both to Cloud Run on the next deploy. Without them it leaves
+   the flag out and deploys exactly as before.
+4. **Test it** after the deploy: send a report from the lobby. Check that an issue appears here, that the email
+   arrives with `[AllAboard]` in the subject, and that the issue has no contact details.
 
-If OverBoard's relay already runs under the inbox account, a second deployment of this script (its own project and
-token) is the simplest; the two never share a GitHub token.
+The script's permission to send email and call GitHub belongs to the reports Google account, not to AllAboard's
+Google sign-in, so it doesn't touch the OAuth scope rule in CLAUDE.md.
 
-To turn reports off again, delete the two secrets and redeploy, or remove `REPORT_RELAY_URL` from the service.
+To turn reports off again, delete the two secrets and redeploy, or remove `ALLABOARD_TOKEN` from the script.
 
 ## Not built
 

@@ -341,6 +341,7 @@ export function buildMailtoLink(input: ProblemReportInput, redact: string[] = []
 /** What the server sends the relay. */
 export interface RelayPayload {
   app: string;
+  kind: 'problem-report';
   issue: PublicIssue;
   email: PrivateEmail;
 }

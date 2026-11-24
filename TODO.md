@@ -68,8 +68,8 @@ Plan: [`PLANS_LESSON_PACKS.md`](PLANS_LESSON_PACKS.md) phases 2–3, with the op
 ### Problem reports
 - [x] **"Something not working?"** guided report (issue #57): public GitHub issue plus private email to the shared
       inbox, with copy/download/email fallback. See [`docs/REPORTS.md`](docs/REPORTS.md).
-  - [ ] **Owner setup:** deploy `tools/report-relay.gs`, add the `REPORT_RELAY_URL` / `REPORT_RELAY_TOKEN` secrets,
-        send a test report. Until then every report uses the fallback.
+  - [ ] **Owner setup:** turn on AllAboard reports in OverBoard's report script (BPMData/OverBoard PR 56), add the
+        `REPORT_RELAY_URL` / `REPORT_RELAY_TOKEN` secrets, send a test report. Until then every report uses the fallback.
 
 ### Housekeeping
 - [ ] **Hosting: undecided.** Options, measurements, prices and a Compute Engine VM sketch are archived in

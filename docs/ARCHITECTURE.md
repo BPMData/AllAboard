@@ -48,7 +48,7 @@ Teachers are identified by a per-room **PIN**, not a login.
 | `src/lib/worksheetLoader.ts` | ~390 | PDF/image → `BackgroundPage[]` (browser-side render to JPEG data URLs). Built-in templates (`four-corners`, `frayer-model`, `checkin-columns`). `MAX_PDF_PAGES = 30` (`src/lib/pageRange.ts`). |
 | `src/lib/batchPdfExport.ts` | ~590 | Export boards to PDF (renders background plus ink). |
 | `src/lib/inkCore.ts` | — | Ink smoothing, highlighter/cover, text-note logic (from OverBoard). |
-| `problemReportRoute.ts`, `src/lib/problemReport.ts`, `src/components/ProblemReportModal.tsx`, `tools/report-relay.gs` | — | **"Something not working?"** problem reports: `POST /api/report` → Apps Script relay → public GitHub issue + private email. See [`REPORTS.md`](REPORTS.md). |
+| `problemReportRoute.ts`, `src/lib/problemReport.ts`, `src/components/ProblemReportModal.tsx` | — | **"Something not working?"** problem reports: `POST /api/report` → OverBoard's Apps Script relay → public GitHub issue + private email. See [`REPORTS.md`](REPORTS.md). |
 | `socketGuards.ts` | — | Per-socket rate limits, element size caps, Teacher PIN hashing (scrypt). See §5. |
 | `staticAssets.ts` | — | Production `dist/` serving: hashed `/assets` cached 1 year (`immutable`) and gzipped once in memory; `index.html` `no-cache`. |
 | `src/lib/pointBatcher.ts`, `src/lib/drawThrottle.ts`, `src/lib/boardDigest.ts` | — | Client-side coalescing of streaming ink (send every 50 ms, apply incoming once per frame) and the network pacing constants (ink 500 ms, cursor 250 ms). Teacher overview digests (1.5 s). |

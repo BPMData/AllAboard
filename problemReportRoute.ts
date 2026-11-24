@@ -2,12 +2,13 @@
  * `POST /api/report`: the server side of "Something not working?" (issue #57, docs/REPORTS.md).
  *
  * The browser never sees a GitHub token. It posts the report here; this rebuilds the public issue and the private
- * email from the validated input (so a modified client can't add fields), and forwards both to the reporting relay
- * (`tools/report-relay.gs`, a Google Apps Script web app that holds the GitHub token and sends the email).
+ * email from the validated input (so a modified client can't add fields), and forwards both to the reporting relay:
+ * OverBoard's Google Apps Script (`tools/report-relay.gs` in BPMData/OverBoard), which holds the GitHub token, opens
+ * the issue in this repo and emails the shared inbox.
  *
  * Config, all optional (no relay → 503 'not-configured', and the browser offers Copy / Download / email instead):
  *   REPORT_RELAY_URL   the relay's /exec URL
- *   REPORT_RELAY_TOKEN shared secret the relay checks (Script Property RELAY_TOKEN)
+ *   REPORT_RELAY_TOKEN shared secret the relay checks (its Script Property ALLABOARD_TOKEN)
  * Both are passed by deploy.yml from GitHub secrets of the same names.
  */
 import express, { type NextFunction, type Request, type Response } from 'express';
@@ -111,6 +112,7 @@ export function createReportHandler(options: ReportRouteOptions = {}) {
     const payload: RelayPayload & { token: string } = {
       token: relayToken,
       app: REPORT_APP_NAME,
+      kind: 'problem-report',
       issue: buildPublicIssue(input),
       email: buildPrivateEmail(input),
     };
@@ -138,11 +140,12 @@ export function createReportHandler(options: ReportRouteOptions = {}) {
         send(res, 502, { ok: false, error: 'relay-failed', message: 'The report could not be sent.' });
         return;
       }
+      // OverBoard's relay answers { ok, issue, url, emailed }; { issueNumber, issueUrl } is accepted too.
+      const rawUrl = data.url ?? data.issueUrl;
+      const rawNumber = data.issue ?? data.issueNumber;
       const issueUrl =
-        typeof data.issueUrl === 'string' && /^https:\/\/github\.com\/[\w.-]+\/[\w.-]+\/issues\/\d+$/.test(data.issueUrl)
-          ? data.issueUrl
-          : undefined;
-      const issueNumber = Number.isInteger(data.issueNumber) ? data.issueNumber : undefined;
+        typeof rawUrl === 'string' && /^https:\/\/github\.com\/[\w.-]+\/[\w.-]+\/issues\/\d+$/.test(rawUrl) ? rawUrl : undefined;
+      const issueNumber = Number.isInteger(rawNumber) ? rawNumber : undefined;
       console.log(`[report] sent: ${input.category}${issueUrl ? ` ${issueUrl}` : ''}${data.emailed ? ' (emailed)' : ''}`);
       send(res, 200, { ok: true, issueUrl, issueNumber, emailed: data.emailed === true });
     } catch (err) {

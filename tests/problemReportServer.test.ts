@@ -76,7 +76,8 @@ describe('POST /api/report', () => {
 
   it('forwards a rebuilt public issue and private email to the relay and returns the issue link', async () => {
     const relay = fakeRelay(() => ({
-      body: { ok: true, issueUrl: 'https://github.com/BPMData/AllAboard/issues/99', issueNumber: 99, emailed: true },
+      // the shape OverBoard's relay answers with
+      body: { ok: true, issue: 99, url: 'https://github.com/BPMData/AllAboard/issues/99', emailed: true },
     }));
     const srv = await start({ reportRelayUrl: 'https://relay.test/exec', reportRelayToken: 'tok', reportFetch: relay.fetchImpl });
     const res = await post(srv, report);
@@ -92,6 +93,7 @@ describe('POST /api/report', () => {
     const sent = relay.calls[0];
     assert.equal(sent.token, 'tok');
     assert.equal(sent.app, 'AllAboard');
+    assert.equal(sent.kind, 'problem-report');
     const publicText = `${sent.issue.title}\n${sent.issue.body}`;
     assert.ok(publicText.includes('Ink vanished.'));
     assert.ok(publicText.includes('Chrome 131'));
@@ -110,10 +112,19 @@ describe('POST /api/report', () => {
     assert.equal(res.status, 502);
     assert.equal((await res.json()).error, 'relay-failed');
 
-    const odd = fakeRelay(() => ({ body: { ok: true, issueUrl: 'https://evil.example/phish', emailed: true } }));
+    const odd = fakeRelay(() => ({ body: { ok: true, url: 'https://evil.example/phish', emailed: true } }));
     const srv2 = await start({ reportRelayUrl: 'https://relay.test/exec', reportRelayToken: 'tok', reportFetch: odd.fetchImpl });
     const res2 = await post(srv2, report);
     assert.deepEqual(await res2.json(), { ok: true, emailed: true });
+
+    const older = fakeRelay(() => ({ body: { ok: true, issueUrl: 'https://github.com/BPMData/AllAboard/issues/5', issueNumber: 5 } }));
+    const srv3 = await start({ reportRelayUrl: 'https://relay.test/exec', reportRelayToken: 'tok', reportFetch: older.fetchImpl });
+    assert.deepEqual(await (await post(srv3, report)).json(), {
+      ok: true,
+      issueUrl: 'https://github.com/BPMData/AllAboard/issues/5',
+      issueNumber: 5,
+      emailed: false,
+    });
   });
 
   it('treats a thrown fetch (relay unreachable) as relay-failed', async () => {
