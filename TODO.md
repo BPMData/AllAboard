@@ -112,7 +112,9 @@ Plan: [`PLANS_LESSON_PACKS.md`](PLANS_LESSON_PACKS.md) phases 2–3, with the op
     - Other users' views. They get remove and add batches, not a stroke.
     - Shapes and hollow strokes, which can't be split cleanly. Remove them only when fully covered, and otherwise
       keep a covering stroke for just those.
-    - Old rooms that already contain eraser elements. Keep rendering them, or migrate them on load.
+    - **Old rooms: no backward compatibility needed** (owner decision, Nov 2026: nobody but the owner has used
+      the app yet). Drop eraser-element rendering outright; old eraser strokes can simply disappear or the
+      rooms can be wiped. Don't build a migration.
     - Rate and size caps on large batches (`socketGuards.ts`).
   - **Tests:** element counts go **down** after erasing, a partial erase leaves the right pieces, undo/redo restores
     them exactly, and a second browser sees the same result.
