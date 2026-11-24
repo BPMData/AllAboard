@@ -36,10 +36,10 @@ test('Send worksheet rotates A/B across individual boards', async ({ browser }) 
 
   await teacher.page.getByRole('button', { name: 'Send worksheet…' }).click();
   const dialog = teacher.page.getByRole('dialog');
-  await dialog.getByLabel('Worksheet A').setInputFiles(await labeledPng(teacher.page, 'A'));
+  await dialog.getByLabel('Worksheet A', { exact: true }).setInputFiles(await labeledPng(teacher.page, 'A'));
   await expect(dialog.getByText(/card_A\.png · 1 page/)).toBeVisible();
   await dialog.getByRole('button', { name: 'Add variant' }).click();
-  await dialog.getByLabel('Worksheet B').setInputFiles(await labeledPng(teacher.page, 'B'));
+  await dialog.getByLabel('Worksheet B', { exact: true }).setInputFiles(await labeledPng(teacher.page, 'B'));
   await expect(dialog.getByText(/card_B\.png · 1 page/)).toBeVisible();
 
   // Two variants default to rotate: boards sorted by title, Alex → A, Bea → B.
