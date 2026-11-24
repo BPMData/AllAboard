@@ -20,11 +20,11 @@ specs are in git history.
 
 ### Prepared ("draft") breakout rounds
 Plan: [`PLANS_LESSON_PACKS.md`](PLANS_LESSON_PACKS.md) phase 1.
-- [ ] **Create breakout rounds in advance without moving anyone**, each with its own worksheet, mode
+- [x] **Create breakout rounds in advance without moving anyone**, each with its own worksheet, mode
       (individual/groups) and groups. Launch one later with a click.
-  - **Mostly exists:** rounds are already saved objects (`breakoutConfig.rounds`, `room.roundTemplates`), and
-    `resume` already activates an existing round. What's missing is a `new-round` variant that creates the round
-    **without** setting `mode`/`activeRoundId` (e.g. `prepare: true`), plus UI to list, edit and launch prepared rounds.
+  - Done (Nov 2026, `PLANS_LESSON_PACKS.md` phase 1): Breakout manager → **Save for later**, then a **Prepared
+    rounds** list with Launch / Edit / Delete. Server: `new-round` + `prepare: true`, `edit-prepared`,
+    `delete-prepared`; `resume` launches. Room saves now keep round worksheets.
 - [ ] **Stretch: "Group by quadrant."** After a Four Corners vote on main, auto-assign students to groups (or to
       one of several prepared rounds) based on which region their name stamp is in.
   - [x] **First slice done (Nov 2026):** Send worksheet's "By name-stamp corner" mode sends worksheet A–D by the
@@ -40,7 +40,11 @@ Plan: [`PLANS_LESSON_PACKS.md`](PLANS_LESSON_PACKS.md) phase 1.
 
 ### Lesson packs: a whole lesson in one file, shareable between teachers
 Plan: [`PLANS_LESSON_PACKS.md`](PLANS_LESSON_PACKS.md) phases 2–3, with the open decisions listed there.
-- [ ] **Export/import a "lesson pack"**: one file with everything needed to run a lesson, minus student data:
+- [x] **Export/import a "lesson pack"**: one file with everything needed to run a lesson, minus student data.
+  *Done (PLANS_LESSON_PACKS.md phase 2): **Save lesson…** / **Load lesson…**, `.allaboard` files. Custom stamps aren't
+  in packs yet (they don't exist). Phase 3 is built too: **Also copy my ink from Main** on a round copies the teacher's
+  Main ink onto every board of that round (late joiners included), and packs carry it.*
+  Original notes:
   - the **main board** (background and teacher ink)
   - **prepared rounds** with their worksheets and groups
   - room settings, including "students start on their own boards", the student starting worksheet and the

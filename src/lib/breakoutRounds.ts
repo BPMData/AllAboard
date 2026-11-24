@@ -85,6 +85,21 @@ export function getRoundById(
   return getRounds(config).find((r) => r.id === roundId) || null;
 }
 
+/** A prepared round exists (with its worksheet and, for groups, its boards) but nobody has been sent to it yet. */
+export function isPreparedRound(r: BreakoutRoundMeta | null | undefined): boolean {
+  return Boolean(r && r.prepared === true);
+}
+
+/** Prepared rounds, sorted by number. */
+export function getPreparedRounds(config: BreakoutConfigLike): BreakoutRoundMeta[] {
+  return getRounds(config).filter(isPreparedRound);
+}
+
+/** Rounds that have been launched at least once (every round that isn't prepared), sorted by number. */
+export function getLaunchedRounds(config: BreakoutConfigLike): BreakoutRoundMeta[] {
+  return getRounds(config).filter((r) => !isPreparedRound(r));
+}
+
 export function getActiveRound(config: BreakoutConfigLike): BreakoutRoundMeta | null {
   return getRoundById(config, config.activeRoundId);
 }
@@ -162,21 +177,39 @@ export function findStudentBoardId<B extends BoardLike>(
 
 // ---------- Normalization & migration (server-side use) ----------
 
+/** Coerces the optional prepared-round fields. Returns the same object when nothing needs changing. */
+function normalizeRoundMeta(x: BreakoutRoundMeta): BreakoutRoundMeta {
+  const out: BreakoutRoundMeta = {
+    id: x.id,
+    number: x.number,
+    title: typeof x.title === 'string' ? x.title : buildRoundTitle(x.number, x.mode),
+    mode: x.mode,
+    createdAt: typeof x.createdAt === 'number' ? x.createdAt : 0,
+  };
+  if (x.prepared === true) out.prepared = true;
+  if (typeof x.launchedAt === 'number' && Number.isFinite(x.launchedAt)) out.launchedAt = x.launchedAt;
+  if (x.allowSelfSelect !== undefined) out.allowSelfSelect = Boolean(x.allowSelfSelect);
+  if (x.chatScope !== undefined) out.chatScope = x.chatScope === 'board' ? 'board' : 'unified';
+  return out;
+}
+
 /** Turns any persisted / imported value into a valid config object. Never throws. */
 export function normalizeBreakoutConfig(raw: unknown): BreakoutConfigLike {
   const r = (raw && typeof raw === 'object' ? raw : {}) as Partial<BreakoutConfigLike>;
   const mode: BreakoutMode = r.mode === 'individual' || r.mode === 'groups' ? r.mode : 'main';
   const rounds = Array.isArray(r.rounds)
-    ? r.rounds.filter(
-        (x): x is BreakoutRoundMeta =>
-          !!x &&
-          typeof x.id === 'string' &&
-          typeof x.number === 'number' &&
-          (x.mode === 'individual' || x.mode === 'groups')
-      )
+    ? r.rounds
+        .filter(
+          (x): x is BreakoutRoundMeta =>
+            !!x &&
+            typeof x.id === 'string' &&
+            typeof x.number === 'number' &&
+            (x.mode === 'individual' || x.mode === 'groups')
+        )
+        .map(normalizeRoundMeta)
     : [];
   const activeRoundId =
-    typeof r.activeRoundId === 'string' && rounds.some((x) => x.id === r.activeRoundId)
+    typeof r.activeRoundId === 'string' && rounds.some((x) => x.id === r.activeRoundId && !x.prepared)
       ? r.activeRoundId
       : undefined;
   let userBoardOverrides: Record<string, string> | undefined;

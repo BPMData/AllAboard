@@ -32,6 +32,7 @@ import PurgeContributionsModal from './components/PurgeContributionsModal';
 import RoomHistoryDropdown from './components/RoomHistoryDropdown';
 import { normalizeRoomCode, sanitizeRoomCodeDraft } from './lib/roomCode';
 import { recordRoomHistory } from './lib/roomHistory';
+import type { LessonRequestEvent } from './lib/lessonPack';
 import { motion } from 'motion/react';
 import { LogIn, Users, KeyRound, PlusCircle, Shuffle, Eye, EyeOff } from 'lucide-react';
 import { POINT_FLUSH_MS } from './lib/drawThrottle';
@@ -235,6 +236,10 @@ export default function App() {
   const [elements, setElements] = useState<CanvasElement[]>([]);
   const [background, setBackground] = useState<RoomBackground | null>(null);
   const [subBoards, setSubBoards] = useState<Record<string, SubBoardData>>({});
+  /** Teacher-only: each round's starting worksheet (server `roundTemplates`). Empty for students. */
+  const [roundTemplates, setRoundTemplates] = useState<Record<string, RoomBackground | null>>({});
+  /** Teacher-only: ink each round copies onto its boards (server `roundTemplateInk`). Empty for students. */
+  const [roundTemplateInk, setRoundTemplateInk] = useState<Record<string, CanvasElement[]>>({});
   const [teacherSelectedBoardId, setTeacherSelectedBoardId] = useState<string>('main');
 
   const [users, setUsers] = useState<User[]>([]);
@@ -405,9 +410,13 @@ export default function App() {
         users: initUsers,
         roomSettings: initRoom,
         isTeacher: verifiedTeacher,
+        roundTemplates: initRoundTemplates,
+        roundTemplateInk: initRoundTemplateInk,
         assignedName,
         isNameLocked: initNameLocked,
       }) => {
+        setRoundTemplates(initRoundTemplates && typeof initRoundTemplates === 'object' ? initRoundTemplates : {});
+        setRoundTemplateInk(initRoundTemplateInk && typeof initRoundTemplateInk === 'object' ? initRoundTemplateInk : {});
         const nextSeen = new Set<string>();
         if (Array.isArray(initMsgs)) {
           setMessages(initMsgs);
@@ -450,12 +459,32 @@ export default function App() {
       ({
         breakoutConfig: syncedConfig,
         subBoards: syncedSubBoards,
+        roundTemplates: syncedRoundTemplates,
+        roundTemplateInk: syncedTemplateInk,
       }: {
         breakoutConfig: BreakoutConfig;
         subBoards: Record<string, SubBoardData>;
+        roundTemplates?: Record<string, RoomBackground | null>;
+        roundTemplateInk?: Record<string, CanvasElement[]>;
       }) => {
         setRoomSettings((prev) => ({ ...prev, breakoutConfig: syncedConfig }));
         if (syncedSubBoards) setSubBoards(syncedSubBoards);
+        if (syncedRoundTemplates && typeof syncedRoundTemplates === 'object') setRoundTemplates(syncedRoundTemplates);
+        if (syncedTemplateInk && typeof syncedTemplateInk === 'object') setRoundTemplateInk(syncedTemplateInk);
+      }
+    );
+
+    newSocket.on(
+      'round-templates-sync',
+      ({
+        roundTemplates: synced,
+        roundTemplateInk: syncedInk,
+      }: {
+        roundTemplates?: Record<string, RoomBackground | null>;
+        roundTemplateInk?: Record<string, CanvasElement[]>;
+      }) => {
+        if (synced && typeof synced === 'object') setRoundTemplates(synced);
+        if (syncedInk && typeof syncedInk === 'object') setRoundTemplateInk(syncedInk);
       }
     );
 
@@ -929,13 +958,13 @@ export default function App() {
   }, [socket, roomId]);
 
   const handleConfigureBreakout = useCallback(
-    (payload: ConfigureBreakoutPayload): Promise<{ ok: boolean; error?: string }> => {
+    (payload: ConfigureBreakoutPayload): Promise<{ ok: boolean; error?: string; roundId?: string }> => {
       return new Promise((resolve) => {
         if (!socket) {
           resolve({ ok: false, error: 'Not connected to server.' });
           return;
         }
-        socket.emit('teacher:configure-breakout', payload, (res: { ok: boolean; error?: string }) => {
+        socket.emit('teacher:configure-breakout', payload, (res: { ok: boolean; error?: string; roundId?: string }) => {
           if (res?.ok && (payload.action === 'return-to-main' || payload.mode === 'main')) {
             setTeacherSelectedBoardId('main');
           }
@@ -1037,6 +1066,8 @@ export default function App() {
         subBoards?: Record<string, SubBoardData>;
         breakoutConfig?: BreakoutConfig;
         assets?: Record<string, string>;
+        roundTemplates?: Record<string, RoomBackground | null>;
+        roundTemplateInk?: Record<string, CanvasElement[]>;
       },
       mode: ImportRestoreMode
     ): Promise<{ ok: boolean; error?: string }> => {
@@ -1054,6 +1085,8 @@ export default function App() {
             subBoards: snapshot.subBoards,
             breakoutConfig: snapshot.breakoutConfig,
             assets: snapshot.assets,
+            roundTemplates: snapshot.roundTemplates,
+            roundTemplateInk: snapshot.roundTemplateInk,
             mode,
           },
           (response: { ok: boolean; error?: string }) => {
@@ -1113,6 +1146,26 @@ export default function App() {
     return generateFreshRoomCode();
   }, [checkRoomAvailability]);
 
+  /** Lesson packs: one ack-style wrapper for the four teacher events (export, has-assets, upload-asset, load). */
+  const handleTeacherLessonRequest = useCallback(
+    (event: LessonRequestEvent, payload: unknown, timeoutMs = 60_000): Promise<any> =>
+      new Promise((resolve) => {
+        if (!socket || !socket.connected) {
+          resolve({ ok: false, error: 'Not connected to the server. Check your connection and try again.' });
+          return;
+        }
+        const timer = setTimeout(
+          () => resolve({ ok: false, error: 'The server took too long to answer. Try again.' }),
+          timeoutMs
+        );
+        socket.emit(event, payload, (res: any) => {
+          clearTimeout(timer);
+          resolve(res && typeof res === 'object' ? res : { ok: false, error: 'No answer from the server.' });
+        });
+      }),
+    [socket]
+  );
+
   const performSwitchRoom = useCallback((cleanedRoomId: string) => {
     setRemoteCursors({});
     setIsTeacher(false);
@@ -1130,6 +1183,29 @@ export default function App() {
       // Ignore
     }
   }, []);
+
+  /** This room's Teacher PIN as this browser saved it, to prefill the PIN for a new room. */
+  const getSavedTeacherPin = useCallback((): string => {
+    try {
+      return localStorage.getItem(STORAGE_KEYS.TEACHER_PIN_PREFIX + effectiveRoomId) || '';
+    } catch {
+      return '';
+    }
+  }, [effectiveRoomId]);
+
+  /** After a lesson loads into a new room: remember its PIN (so the join makes us teacher there) and go there. */
+  const handleOpenLoadedLessonRoom = useCallback(
+    (newRoomId: string, pin: string) => {
+      try {
+        localStorage.setItem(STORAGE_KEYS.TEACHER_PIN_PREFIX + newRoomId, pin);
+      } catch {
+        // Ignore storage errors; the teacher can still enter the PIN.
+      }
+      recordRoomHistory(newRoomId);
+      performSwitchRoom(newRoomId);
+    },
+    [performSwitchRoom]
+  );
 
   const handleLeaveRoom = useCallback(() => {
     setIsJoined(false);
@@ -2012,6 +2088,8 @@ export default function App() {
           background={activeBackground}
           subBoards={subBoards}
           breakoutConfig={breakoutConfig}
+          roundTemplates={roundTemplates}
+          roundTemplateInk={roundTemplateInk}
           users={users}
           remoteCursors={remoteCursors}
           laserSocket={socket}
@@ -2047,6 +2125,10 @@ export default function App() {
           onTeacherSendWorksheet={handleTeacherSendWorksheet}
           onTeacherUpdateBackground={handleTeacherUpdateBackground}
           onTeacherImportRoom={handleTeacherImportRoom}
+          onTeacherLessonRequest={handleTeacherLessonRequest}
+          onOpenLoadedLessonRoom={handleOpenLoadedLessonRoom}
+          getSavedTeacherPin={getSavedTeacherPin}
+          generateUnusedRoomCode={generateUnusedRoomCode}
           timer={roomSettings.timer}
           onTeacherTimerControl={handleTeacherTimerControl}
           fullMainElements={elements}

@@ -119,6 +119,12 @@ export interface BreakoutRoundMeta {
   title: string;                    // 'Round 2 · Groups · Frayer Model'
   mode: 'individual' | 'groups';
   createdAt: number;
+  /** True until the teacher launches it. A prepared round moves nobody. Absent on every launched round. */
+  prepared?: boolean;
+  launchedAt?: number;
+  /** Prepared rounds only: applied to breakoutConfig when the round is launched. */
+  allowSelfSelect?: boolean;
+  chatScope?: 'unified' | 'board';
 }
 
 export type BreakoutAction =
@@ -126,7 +132,9 @@ export type BreakoutAction =
   | 'resume'
   | 'update-current'
   | 'return-to-main'
-  | 'set-auto-individual';
+  | 'set-auto-individual'
+  | 'edit-prepared'
+  | 'delete-prepared';
 
 export interface BreakoutGroupDraft {
   id: string;
@@ -143,11 +151,14 @@ export interface ConfigureBreakoutPayload {
   allowSelfSelect?: boolean;
   chatScope?: 'unified' | 'board';
   copyWorksheet?: boolean;                   // 'new-round' / 'set-auto-individual'
+  copyInk?: boolean;                         // 'new-round' / 'edit-prepared', with copyWorksheet: also copy the teacher's Main ink
   customBackground?: RoomBackground | null;  // 'new-round' / 'set-auto-individual'
   groups?: BreakoutGroupDraft[];             // 'new-round': ids ignored. 'resume'/'update-current': ids must be real board ids
   templateLabel?: string;                    // 'new-round' / 'set-auto-individual', used in the round title
   autoIndividual?: boolean;                  // used by 'set-auto-individual'
   autoIndividualBackground?: RoomBackground | null; // used by 'set-auto-individual'
+  prepare?: boolean;                         // 'new-round': create the round without moving anyone
+  title?: string;                            // 'new-round' / 'edit-prepared': teacher's own round name, <= 40 chars
 }
 
 export interface SubBoardData {
@@ -243,6 +254,10 @@ export interface RoomSnapshot {
   background?: RoomBackground | null;
   subBoards?: Record<string, SubBoardData>;
   breakoutConfig?: BreakoutConfig;
+  /** Each round's starting worksheet (server `room.roundTemplates`). Absent in older files. */
+  roundTemplates?: Record<string, RoomBackground | null>;
+  /** Teacher ink copied onto each round's boards (server `room.roundTemplateInk`). Absent in older files. */
+  roundTemplateInk?: Record<string, CanvasElement[]>;
 }
 
 export interface PendingSnapshotData {
@@ -256,4 +271,6 @@ export interface PendingSnapshotData {
   subBoards?: Record<string, SubBoardData>;
   breakoutConfig?: BreakoutConfig;
   assets?: Record<string, string>;
+  roundTemplates?: Record<string, RoomBackground | null>;
+  roundTemplateInk?: Record<string, CanvasElement[]>;
 }

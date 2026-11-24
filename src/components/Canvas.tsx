@@ -31,6 +31,9 @@ import {
   getNextRoundNumber,
   getRoundById,
   getRounds,
+  getLaunchedRounds,
+  getPreparedRounds,
+  isPreparedRound,
 } from '../lib/breakoutRounds';
 import {
   processWorksheetFile,
@@ -54,7 +57,7 @@ import {
   isTeacherStampKind,
 } from '../lib/stamps';
 import { DEFAULT_PAGE_GAP, layoutPages } from '../lib/worksheetLayout';
-import { parseSnapshotText, snapshotFileName } from '../lib/roomSnapshot';
+import { backgroundAssetUrls, embedAssets, parseSnapshotText, snapshotFileName } from '../lib/roomSnapshot';
 import { isGoogleDriveConfigured } from '../lib/googleConfig';
 import {
   GoogleError,
@@ -83,6 +86,7 @@ import {
   RestoreSnapshotModal,
   PdfPageRangeModal,
   DriveSaveModal,
+  type RoundWorksheetChoice,
 } from './CanvasModals';
 import {
   NOTE_FONT,
@@ -170,11 +174,14 @@ import {
   HardDrive,
   Keyboard,
   Crosshair,
+  BookMarked,
+  BookOpen,
 } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { CURSOR_EMIT_MS } from '../lib/drawThrottle';
 import { isPhoneViewport } from '../lib/compactLayout';
 import { STATUS_OPTIONS } from './StudentStatusBadge';
+import { LoadLessonModal, SaveLessonModal, type LessonRequest } from './LessonPackModals';
 
 type HistoryAction =
   | { kind: 'add'; items: CanvasElement[] }
@@ -191,6 +198,10 @@ interface CanvasProps {
   background: RoomBackground | null;
   subBoards: Record<string, SubBoardData>;
   breakoutConfig: BreakoutConfig;
+  /** Teacher-only: each round's starting worksheet. */
+  roundTemplates?: Record<string, RoomBackground | null>;
+  /** Teacher-only: ink each round copies onto its boards. */
+  roundTemplateInk?: Record<string, CanvasElement[]>;
   users: User[];
   remoteCursors: Record<string, RemoteCursor>;
   laserSocket: Socket | null;
@@ -205,7 +216,9 @@ interface CanvasProps {
   userName: string;
   userColor: string;
   onSelectBoard: (boardId: string) => void;
-  onConfigureBreakout: (payload: ConfigureBreakoutPayload) => Promise<{ ok: boolean; error?: string }>;
+  onConfigureBreakout: (
+    payload: ConfigureBreakoutPayload
+  ) => Promise<{ ok: boolean; error?: string; roundId?: string }>;
   onSpotlightBoard: (payload: SpotlightPayload) => Promise<{ ok: boolean; error?: string }>;
   onAssignUserToBoard: (targetBoardId: string, targetUserId?: string) => void;
   onElementStart: (element: CanvasElement) => void;
@@ -237,9 +250,16 @@ interface CanvasProps {
       subBoards?: Record<string, SubBoardData>;
       breakoutConfig?: BreakoutConfig;
       assets?: Record<string, string>;
+      roundTemplates?: Record<string, RoomBackground | null>;
+      roundTemplateInk?: Record<string, CanvasElement[]>;
     },
     mode: ImportRestoreMode
   ) => Promise<{ ok: boolean; error?: string }>;
+  /** Lesson packs: the four teacher-only socket events. */
+  onTeacherLessonRequest?: LessonRequest;
+  onOpenLoadedLessonRoom?: (roomId: string, pin: string) => void;
+  generateUnusedRoomCode?: () => Promise<string>;
+  getSavedTeacherPin?: () => string;
   timer?: ClassroomTimerState;
   onTeacherTimerControl: (payload: TimerControlPayload) => void;
   fullMainElements: CanvasElement[];
@@ -634,14 +654,8 @@ function WorksheetPageNode({
   );
 }
 
-function blobToDataUrl(blob: Blob): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(String(reader.result));
-    reader.onerror = () => reject(reader.error);
-    reader.readAsDataURL(blob);
-  });
-}
+const EMPTY_ROUND_TEMPLATES: Record<string, RoomBackground | null> = {};
+const EMPTY_TEMPLATE_INK: Record<string, CanvasElement[]> = {};
 
 export default function Canvas({
   roomId,
@@ -652,6 +666,8 @@ export default function Canvas({
   background,
   subBoards,
   breakoutConfig,
+  roundTemplates = EMPTY_ROUND_TEMPLATES,
+  roundTemplateInk = EMPTY_TEMPLATE_INK,
   users,
   remoteCursors,
   laserSocket,
@@ -687,6 +703,10 @@ export default function Canvas({
   onTeacherSendWorksheet,
   onTeacherUpdateBackground,
   onTeacherImportRoom,
+  onTeacherLessonRequest,
+  onOpenLoadedLessonRoom,
+  generateUnusedRoomCode,
+  getSavedTeacherPin,
   timer,
   onTeacherTimerControl,
   fullMainElements,
@@ -927,15 +947,24 @@ export default function Canvas({
   const [draftChatScope, setDraftChatScope] = useState<'unified' | 'board'>(
     breakoutConfig.chatScope
   );
-  const [draftWorksheetChoice, setDraftWorksheetChoice] = useState<
-    'current' | 'frayer' | 'checkin' | 'corners' | 'none'
-  >('current');
+  const [draftWorksheetChoice, setDraftWorksheetChoice] = useState<RoundWorksheetChoice>('current');
   const [draftWorksheetTopic, setDraftWorksheetTopic] = useState<string>(
     "Today's Core Concept: Photosynthesis"
   );
   const [showLiveGridOverview, setShowLiveGridOverview] = useState<boolean>(false);
 
-  const rounds = useMemo(() => getRounds(breakoutConfig), [breakoutConfig]);
+  // Launched rounds only. Prepared rounds are listed in the breakout manager until they're launched.
+  const rounds = useMemo(() => getLaunchedRounds(breakoutConfig), [breakoutConfig]);
+  const preparedRounds = useMemo(() => getPreparedRounds(breakoutConfig), [breakoutConfig]);
+  // What "Also copy my ink from Main" would copy: teachers' Main ink, without name stamps (server: mainTemplateInk).
+  const mainTeacherInkCount = useMemo(() => {
+    if (!isTeacher) return 0;
+    const teacherIds = new Set(users.filter((u) => u.isTeacher).map((u) => u.userId));
+    teacherIds.add(userId);
+    return fullMainElements.filter(
+      (el) => teacherIds.has(el.userId) && !(el.tool === 'stamp' && el.stamp === 'username')
+    ).length;
+  }, [isTeacher, users, userId, fullMainElements]);
   const activeRound = useMemo(() => getActiveRound(breakoutConfig), [breakoutConfig]);
 
   // Boards in the live (active) round. Used for students, counts, and broadcast targets.
@@ -961,7 +990,9 @@ export default function Canvas({
   const teacherVisibleBoards = useMemo(
     () =>
       effectiveViewingRoundId === 'all'
-        ? getAllBoardsByRound(subBoards, breakoutConfig)
+        ? getAllBoardsByRound(subBoards, breakoutConfig).filter(
+            (sb) => !isPreparedRound(getRoundById(breakoutConfig, sb.roundId))
+          )
         : getBoardsInRound(subBoards, effectiveViewingRoundId),
     [subBoards, breakoutConfig, effectiveViewingRoundId]
   );
@@ -1076,6 +1107,7 @@ export default function Canvas({
   // JSON Import Modal States (Teacher Only)
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [pendingSnapshot, setPendingSnapshot] = useState<PendingSnapshotData | null>(null);
+  const [lessonModal, setLessonModal] = useState<'save' | 'load' | null>(null);
   const [importMode, setImportMode] = useState<ImportRestoreMode>('replace');
   const [importError, setImportError] = useState<string | null>(null);
   const [isImporting, setIsImporting] = useState(false);
@@ -2369,25 +2401,14 @@ export default function Canvas({
   };
 
   const buildSnapshotJson = async (): Promise<{ json: string; fileName: string }> => {
-    const assetUrls = new Set<string>();
-    const collect = (bg?: RoomBackground | null) => {
-      for (const p of bg?.pages || []) {
-        if (typeof p.dataUrl === 'string' && p.dataUrl.startsWith('/api/assets/')) assetUrls.add(p.dataUrl);
-      }
-    };
-    collect(fullMainBackground);
-    for (const sb of Object.values(subBoards || {})) collect(sb?.background);
-
-    const assets: Record<string, string> = {};
-    for (const url of assetUrls) {
-      try {
-        const res = await fetch(url);
-        if (!res.ok) throw new Error(`Asset request failed: ${res.status}`);
-        assets[url] = await blobToDataUrl(await res.blob());
-      } catch (err) {
-        console.error('Could not embed worksheet asset in export:', url, err);
-      }
-    }
+    const { assets } = await embedAssets(
+      backgroundAssetUrls([
+        fullMainBackground,
+        ...Object.values(subBoards || {}).map((sb) => sb?.background),
+        breakoutConfig.autoIndividualBackground,
+        ...Object.values(roundTemplates),
+      ])
+    );
     const snapshot: RoomSnapshot = {
       version: 2,
       assets,
@@ -2399,6 +2420,8 @@ export default function Canvas({
       background: fullMainBackground,
       subBoards,
       breakoutConfig,
+      ...(Object.keys(roundTemplates).length > 0 ? { roundTemplates } : {}),
+      ...(Object.keys(roundTemplateInk).length > 0 ? { roundTemplateInk } : {}),
     };
 
     return {
@@ -2585,6 +2608,8 @@ export default function Canvas({
         subBoards: pendingSnapshot.subBoards,
         breakoutConfig: pendingSnapshot.breakoutConfig,
         assets: pendingSnapshot.assets,
+        roundTemplates: pendingSnapshot.roundTemplates,
+        roundTemplateInk: pendingSnapshot.roundTemplateInk,
       },
       importMode
     );
@@ -4830,7 +4855,7 @@ export default function Canvas({
             {/* Teacher Board Switcher Dropdown + Live Grid Overview Button */}
             {Object.keys(subBoards).length > 0 && (
               <div className="flex items-center gap-1.5 bg-white px-2 py-0.5 rounded-[2px] border border-[#CBD5E1]">
-                {rounds.length > 1 && (
+                {(rounds.length > 1 || (viewingRound && isPreparedRound(viewingRound))) && (
                   <>
                     <span className="text-[11px] text-slate-500">Round:</span>
                     <select
@@ -4847,6 +4872,9 @@ export default function Canvas({
                           {r.title}{r.id === breakoutConfig.activeRoundId ? ' (live)' : ''}
                         </option>
                       ))}
+                      {viewingRound && isPreparedRound(viewingRound) && (
+                        <option value={viewingRound.id}>{viewingRound.title} (prepared)</option>
+                      )}
                       <option value="all">All Rounds</option>
                     </select>
                     <span className="text-slate-300" aria-hidden="true">|</span>
@@ -5307,6 +5335,30 @@ export default function Canvas({
               <span>Import .JSON</span>
             </button>
 
+            {onTeacherLessonRequest && (
+              <button
+                type="button"
+                onClick={() => setLessonModal('save')}
+                className="flex items-center gap-1.5 px-3 py-1 rounded-[2px] border oh-btn text-xs font-medium text-slate-800 transition-colors whitespace-nowrap shrink-0 cursor-pointer"
+                title="Save this lesson (worksheets, your ink, breakout rounds and settings, no student work) as a .allaboard file"
+              >
+                <BookMarked size={13} />
+                <span>Save lesson…</span>
+              </button>
+            )}
+
+            {onTeacherLessonRequest && (
+              <button
+                type="button"
+                onClick={() => setLessonModal('load')}
+                className="flex items-center gap-1.5 px-3 py-1 rounded-[2px] border oh-btn text-xs font-medium text-slate-800 transition-colors whitespace-nowrap shrink-0 cursor-pointer"
+                title="Set up a saved .allaboard lesson in a new room or this one"
+              >
+                <BookOpen size={13} />
+                <span>Load lesson…</span>
+              </button>
+            )}
+
             {isGoogleDriveConfigured() && (
               <>
                 <button
@@ -5565,6 +5617,16 @@ export default function Canvas({
           autoIndividual={Boolean(breakoutConfig.autoIndividual)}
           autoIndividualTemplateLabel={breakoutConfig.autoIndividualTemplateLabel}
           rounds={rounds}
+          preparedRounds={preparedRounds}
+          roundTemplates={roundTemplates}
+          roundTemplateInk={roundTemplateInk}
+          mainTeacherInkCount={mainTeacherInkCount}
+          subBoards={subBoards}
+          onLoadDraftGroupsForRound={loadDraftGroupsForRound}
+          onViewRoundBoards={(roundId) => {
+            setTeacherViewingRoundId(roundId);
+            setShowLiveGridOverview(true);
+          }}
           activeRound={activeRound}
           draftEditRoundId={draftEditRoundId}
           onSelectDraftEditRound={handleSelectDraftEditRound}
@@ -5651,6 +5713,35 @@ export default function Canvas({
       )}
 
       {/* Teacher JSON Snapshot Restore Modal */}
+      {isTeacher && lessonModal === 'save' && onTeacherLessonRequest && (
+        <SaveLessonModal
+          roomId={roomId}
+          userName={userName}
+          rounds={getRounds(breakoutConfig)}
+          roundTemplates={roundTemplates}
+          mainBackground={fullMainBackground}
+          driveConfigured={isGoogleDriveConfigured()}
+          onRequest={onTeacherLessonRequest}
+          onClose={() => setLessonModal(null)}
+        />
+      )}
+      {isTeacher && lessonModal === 'load' && onTeacherLessonRequest && (
+        <LoadLessonModal
+          roomId={roomId}
+          isRoundLive={breakoutConfig.mode !== 'main'}
+          driveConfigured={isGoogleDriveConfigured()}
+          onRequest={onTeacherLessonRequest}
+          generateUnusedRoomCode={generateUnusedRoomCode ?? (async () => '')}
+          getSavedTeacherPin={getSavedTeacherPin ?? (() => '')}
+          onOpenNewRoom={(newRoomId, pin) => onOpenLoadedLessonRoom?.(newRoomId, pin)}
+          onSaveRoomFirst={() => void handleExportJSON()}
+          onLoadedHere={(lesson) => {
+            setTeacherViewingRoundId(null);
+            setTimeout(() => fitElementsAndBackgroundInView([], lesson.main.background), 120);
+          }}
+          onClose={() => setLessonModal(null)}
+        />
+      )}
       {pendingSnapshot && (
         <RestoreSnapshotModal
           roomId={roomId}

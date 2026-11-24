@@ -12,6 +12,9 @@ import {
   findStudentBoardId,
   resolveBreakoutAction,
   getAllBoardsByRound,
+  isPreparedRound,
+  getPreparedRounds,
+  getLaunchedRounds,
 } from '../src/lib/breakoutRounds';
 
 describe('breakoutRounds helpers', () => {
@@ -231,5 +234,43 @@ describe('breakoutRounds helpers', () => {
     assert.equal(sanitized.autoIndividual, false);
     assert.equal(sanitized.autoIndividualBackground, undefined);
   });
-});
 
+  it('splits prepared and launched rounds', () => {
+    const config = normalizeBreakoutConfig({
+      mode: 'main',
+      rounds: [
+        { id: 'r2', number: 2, title: 'Round 2', mode: 'groups', createdAt: 2, prepared: true },
+        { id: 'r1', number: 1, title: 'Round 1', mode: 'individual', createdAt: 1 },
+        { id: 'r3', number: 3, title: 'Round 3', mode: 'individual', createdAt: 3, prepared: true },
+      ],
+    });
+    assert.equal(isPreparedRound(config.rounds!.find((r) => r.id === 'r1')), false);
+    assert.equal(isPreparedRound(null), false);
+    assert.deepEqual(getPreparedRounds(config).map((r) => r.id), ['r2', 'r3']);
+    assert.deepEqual(getLaunchedRounds(config).map((r) => r.id), ['r1']);
+  });
+
+  it('normalizeBreakoutConfig keeps and coerces the prepared-round fields', () => {
+    const config = normalizeBreakoutConfig({
+      mode: 'groups',
+      activeRoundId: 'r1',
+      rounds: [
+        { id: 'r1', number: 1, title: 'Round 1', mode: 'groups', createdAt: 1, prepared: 'yes', launchedAt: 'soon', allowSelfSelect: 1, chatScope: 'weird' },
+        { id: 'r2', number: 2, title: 'Round 2', mode: 'individual', createdAt: 2, prepared: true, launchedAt: 99, allowSelfSelect: false, chatScope: 'board', junk: 'x' },
+      ],
+    } as any);
+    const [r1, r2] = config.rounds!;
+    assert.equal(r1.prepared, undefined, 'only `true` marks a round prepared');
+    assert.equal(r1.launchedAt, undefined);
+    assert.equal(r1.allowSelfSelect, true);
+    assert.equal(r1.chatScope, 'unified');
+    assert.equal(r2.prepared, true);
+    assert.equal(r2.launchedAt, 99);
+    assert.equal(r2.allowSelfSelect, false);
+    assert.equal(r2.chatScope, 'board');
+    assert.equal((r2 as any).junk, undefined);
+    assert.equal(config.activeRoundId, 'r1');
+    const preparedActive = normalizeBreakoutConfig({ mode: 'individual', activeRoundId: 'r2', rounds: config.rounds });
+    assert.equal(preparedActive.activeRoundId, undefined, 'a prepared round is never the active one');
+  });
+});
