@@ -313,21 +313,30 @@ export default function App() {
   }, [breakoutConfig.chatScope, activeBoardId, subBoards, messages]);
 
   const effectiveRoomId = normalizeRoomCode(roomId);
+  /**
+   * The room the socket, the address bar and the tab title follow: the room you're in. In the lobby it holds still
+   * while the Room Code box is typed in. Following the box made a new server connection, and (with the title) a
+   * browser-history entry, for every letter typed.
+   */
+  const [liveRoomId, setLiveRoomId] = useState<string>(effectiveRoomId);
+  useEffect(() => {
+    if (isJoined) setLiveRoomId(effectiveRoomId);
+  }, [isJoined, effectiveRoomId]);
 
   useEffect(() => {
-    document.title = effectiveRoomId !== 'main' ? `#${effectiveRoomId} · AllAboard` : 'AllAboard';
+    document.title = liveRoomId !== 'main' ? `#${liveRoomId} · AllAboard` : 'AllAboard';
     try {
       const url = new URL(window.location.href);
-      if (effectiveRoomId === 'main') {
+      if (liveRoomId === 'main') {
         url.searchParams.delete('room');
       } else {
-        url.searchParams.set('room', effectiveRoomId);
+        url.searchParams.set('room', liveRoomId);
       }
-      window.history.replaceState({}, '', url.toString());
+      if (url.toString() !== window.location.href) window.history.replaceState({}, '', url.toString());
     } catch {
       // Ignore
     }
-  }, [effectiveRoomId]);
+  }, [liveRoomId]);
 
   useEffect(() => {
     const newSocket = io({
@@ -383,7 +392,7 @@ export default function App() {
 
       try {
         savedName = localStorage.getItem(STORAGE_KEYS.USER_NAME) || savedName;
-        savedPin = localStorage.getItem(STORAGE_KEYS.TEACHER_PIN_PREFIX + effectiveRoomId) || undefined;
+        savedPin = localStorage.getItem(STORAGE_KEYS.TEACHER_PIN_PREFIX + liveRoomId) || undefined;
       } catch {
         // Ignore storage errors
       }
@@ -391,7 +400,7 @@ export default function App() {
       if (savedName && savedName.trim() && savedJoined) {
         const cleanSavedPin = savedPin && savedPin.trim().length >= 3 ? savedPin.trim() : undefined;
         newSocket.emit('join-room', {
-          roomId: effectiveRoomId,
+          roomId: liveRoomId,
           userId,
           userKey,
           name: savedName.trim(),
@@ -456,7 +465,7 @@ export default function App() {
             // Ignore
           }
         }
-        recordRoomHistory(initRoom?.roomId || effectiveRoomId);
+        recordRoomHistory(initRoom?.roomId || liveRoomId);
         setHistoryVersion((v) => v + 1);
         setKickNotice(null);
       }
@@ -924,7 +933,7 @@ export default function App() {
       incomingInk.clear();
       newSocket.close();
     };
-  }, [userId, userColor, effectiveRoomId]);
+  }, [userId, userColor, liveRoomId]);
 
   // Teachers get live traffic only for the board they're looking at; tell the server whenever that changes
   // (and after every reconnect, since the server forgets per-socket state).
@@ -1334,7 +1343,8 @@ export default function App() {
         // Ignore
       }
       setUserName(trimmedName);
-      if (socket && targetRoomId === effectiveRoomId) {
+      // Same room the socket is on: join now. Otherwise the socket reconnects for the new room and joins on connect.
+      if (socket && targetRoomId === liveRoomId) {
         socket.emit('join-room', {
           roomId: targetRoomId,
           userId,
@@ -1353,7 +1363,7 @@ export default function App() {
       setHasEditedLobbyRoom(false);
       setIsJoined(true);
     },
-    [roomId, effectiveRoomId, socket, userId, userKey, userColor]
+    [roomId, liveRoomId, socket, userId, userKey, userColor]
   );
 
   const handleSwitchRoom = useCallback(
