@@ -4400,10 +4400,10 @@ export default function Canvas({
             type="button"
             onClick={handleExportJSON}
             className="flex items-center gap-1.5 px-2 py-1 text-xs font-medium oh-btn border text-slate-700 rounded-[2px] transition-colors whitespace-nowrap shrink-0 cursor-pointer"
-            title="Save room drawings, breakout boards, worksheet, and chat log as a portable .json snapshot"
+            title="Save everything in this room as a .json file: every student's board, the worksheets and the chat log. Open it later with Open class work."
           >
             <FileJson size={14} />
-            <span>Save .JSON</span>
+            <span>Save class work</span>
           </button>
 
           <button
@@ -5402,10 +5402,10 @@ export default function Canvas({
               type="button"
               onClick={() => fileInputRef.current?.click()}
               className="flex items-center gap-1.5 px-3 py-1 rounded-[2px] border oh-btn text-xs font-medium text-slate-800 transition-colors whitespace-nowrap shrink-0 cursor-pointer"
-              title="Restore or merge a previously saved .json room snapshot"
+              title="Open a .json file made with Save class work: every student's board, the worksheets and the chat log"
             >
               <Upload size={13} />
-              <span>Import .JSON</span>
+              <span>Open class work</span>
             </button>
 
             {onTeacherLessonRequest && (

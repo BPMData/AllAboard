@@ -193,7 +193,7 @@ Cloud Run service "allaboard"  ── one container :3000 (node server.ts, Build
   grid and moderation. **If you add a delta event, send it to `boardAudience` *and* call `noteChange`.**
 - **Students only hold their own board's ink.** `init` and `breakout-sync` are built per socket (`subBoardsFor`):
   teachers get every board; students get every board's metadata, background and chat, but `elements: []` except on
-  their own board (`placeSocket` sends the real contents when they move). So a student's Save .JSON contains only their
+  their own board (`placeSocket` sends the real contents when they move). So a student's Save class work contains only their
   own board's ink, and a teacher's copy of boards they aren't viewing is ≤ 1.5 s old. (`room-restored` after an import
   is still full, room-wide.)
 - **Ink pacing (client).** `element-append-points` is queued and sent every 500 ms (`POINT_FLUSH_MS`); any other drawing emit goes through

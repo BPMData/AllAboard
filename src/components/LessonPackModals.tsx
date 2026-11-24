@@ -27,6 +27,7 @@ import {
   pickDriveFile,
   pickDriveFolder,
   saveJsonToDrive,
+  LESSON_MIME,
   type DriveFolder,
 } from '../lib/googleDrive';
 
@@ -218,7 +219,7 @@ export function SaveLessonModal({
     try {
       await getAccessToken(); // first, inside the click, so the sign-in popup isn't blocked
       // Kept apart from this room's own Drive save, so saving a lesson never replaces the room file.
-      const saved = await saveJsonToDrive(`lesson:${roomId}`, build.fileName, folder, build.json);
+      const saved = await saveJsonToDrive(`lesson:${roomId}`, build.fileName, folder, build.json, LESSON_MIME);
       setDriveMessage({ text: `Saved ${saved.fileName} to ${saved.folder.name}.`, isError: false });
     } catch (err) {
       setDriveMessage({ text: driveError(err, 'Could not save to Google Drive.'), isError: true });
@@ -679,7 +680,7 @@ export function LoadLessonModal({
             <div className="pl-6 text-amber-800">
               The main board's ink and worksheet will be replaced. Prepared rounds will be replaced.{' '}
               <button type="button" onClick={onSaveRoomFirst} className="underline font-semibold cursor-pointer">
-                Save .JSON first
+                Save class work first
               </button>
             </div>
           )}

@@ -1705,7 +1705,7 @@ export function RestoreSnapshotModal({
         <div className="oh-panel-header flex items-start justify-between gap-4 px-5 py-3.5 border-b border-[#CBD5E1]">
           <div>
             <h3 className="font-display text-lg font-bold text-slate-900">
-              Restore Room Snapshot (.JSON)
+              Open Class Work (.json)
             </h3>
             <p className="text-xs text-slate-500 mt-0.5">
               File: <span className="font-mono text-slate-700">{pendingSnapshot.fileName}</span>
