@@ -36,7 +36,7 @@ export const REPORT_CATEGORIES: ReportCategory[] = [
   { id: 'breakouts', label: 'Breakout rounds or student boards', hint: 'Wrong board, rounds, groups, Live Grid' },
   { id: 'chat', label: 'Chat', hint: 'Messages missing, late or in the wrong place' },
   { id: 'teacher', label: 'Teacher tools', hint: 'PIN, lock, timer, stamps, moderation' },
-  { id: 'saving', label: 'Saving, loading or exporting', hint: 'Save .JSON, lessons, PDF export, Google Drive' },
+  { id: 'saving', label: 'Saving, loading or exporting', hint: 'Save class work, lessons, PDF export, Google Drive' },
   { id: 'other', label: 'Something else', hint: 'Anything that doesn’t fit above' },
 ];
 

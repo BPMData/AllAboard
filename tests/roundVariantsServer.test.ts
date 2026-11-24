@@ -186,7 +186,7 @@ describe('worksheet variants A–D on rounds', () => {
     assert.equal(init.roundVariants.r1.extra[0].fileName, 'b.png');
     assert.equal(init.roundVariants.r1.rule, 'rotate');
 
-    // Room save (Save .JSON → Import .JSON) into another room keeps them.
+    // Room save (Save class work → Open class work) into another room keeps them.
     const { socket: t3 } = await pool.join(srv, { roomId: 'v-5-copy', userId: 't1', name: 'Teacher' });
     assert.equal((await emitAck(t3, 'teacher:auth', { pin: '1234' })).ok, true);
     const templates = waitForEvent<any>(t3, 'round-templates-sync');

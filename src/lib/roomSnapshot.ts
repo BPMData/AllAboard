@@ -10,7 +10,7 @@ export interface ParsedSnapshot {
   error: string | null;
 }
 
-/** Shared by local "Import .JSON" and "Open from Drive". Never throws. */
+/** Shared by local "Open class work" and "Open Room from Drive". Never throws. */
 export function parseSnapshotText(fileName: string, text: string, fallbackRoomId: string): ParsedSnapshot {
   const empty: PendingSnapshotData = { fileName, roomId: fallbackRoomId, elements: [], messages: [], background: null };
   let parsed: any;

@@ -379,7 +379,7 @@ export function validateLesson(raw: unknown): { lesson: LessonPack | null; error
     if (!isObject(raw)) return { lesson: null, error: "This isn't an AllAboard lesson file." };
     if (raw.kind !== LESSON_KIND) {
       if (raw.kind === undefined && (raw.version === 1 || raw.version === 2) && 'elements' in raw) {
-        return { lesson: null, error: 'This is a room save. Use Import .JSON instead.' };
+        return { lesson: null, error: 'This is a class work save, not a lesson. Use Open class work instead.' };
       }
       return { lesson: null, error: "This isn't an AllAboard lesson file." };
     }

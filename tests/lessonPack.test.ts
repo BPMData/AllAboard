@@ -167,7 +167,7 @@ describe('lesson packs (pure)', () => {
       parseLessonText('x', JSON.stringify({ ...buildLessonPack(input()), version: LESSON_VERSION + 1 })).error ?? '',
       /newer AllAboard/
     );
-    assert.match(parseLessonText('x', JSON.stringify({ version: 2, elements: [] })).error ?? '', /room save/);
+    assert.match(parseLessonText('x', JSON.stringify({ version: 2, elements: [] })).error ?? '', /class work save/);
     const tooMany = { ...buildLessonPack(input()), rounds: Array.from({ length: 51 }, () => ({ mode: 'individual' })) };
     assert.match(parseLessonText('x', JSON.stringify(tooMany)).error ?? '', /at most 50 rounds/);
     const tooManyGroups = {

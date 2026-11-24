@@ -476,7 +476,7 @@ test.describe('teacher and students', () => {
 
     const strokeOf = async (page: Page) => {
       const download = page.waitForEvent('download');
-      await page.getByRole('button', { name: 'Save .JSON' }).click();
+      await page.getByRole('button', { name: 'Save class work' }).click();
       const file = await (await download).path();
       const snapshot = JSON.parse((await import('node:fs')).readFileSync(file!, 'utf8'));
       return snapshot.elements[0].points as number[];

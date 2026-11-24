@@ -7,6 +7,11 @@ export const PPT_MIME = 'application/vnd.ms-powerpoint';
 export const PDF_MIME = 'application/pdf';
 export const OCTET_STREAM_MIME = 'application/octet-stream';
 export const JSON_MIME = 'application/json';
+/**
+ * Lessons saved to Drive get their own type, so the lesson picker can list only lessons: the Picker filters by type,
+ * not by file name, and room saves are application/json too. Lessons saved before this are application/json.
+ */
+export const LESSON_MIME = 'application/vnd.allaboard.lesson+json';
 export const FOLDER_MIME = 'application/vnd.google-apps.folder';
 export const MAX_PPTX_BYTES = 100 * 1024 * 1024;
 
@@ -505,8 +510,9 @@ async function openPicker(
 /**
  * Worksheet picker: Slides | PDFs | Browse Drive tabs.
  * Snapshot picker: My room saves (only my .json files) | Browse Drive (starting in the last save folder).
- * Lesson picker: My saved files | Browse Drive. Browse also allows application/octet-stream, because a `.allaboard`
- * file someone uploaded to Drive by hand may carry that type. Still `drive.file`: the Picker grants per-file access.
+ * Lesson picker: My lessons (only files saved as lessons, LESSON_MIME) | Browse Drive. Browse also lists
+ * application/json (lessons saved before LESSON_MIME existed) and application/octet-stream (a `.allaboard` file someone
+ * uploaded to Drive by hand). Still `drive.file`: the Picker grants per-file access.
  */
 export async function pickDriveFile(kind: 'worksheet' | 'snapshot' | 'lesson'): Promise<PickedDriveDoc | null> {
   const accessToken = await getAccessToken();
@@ -531,13 +537,15 @@ export async function pickDriveFile(kind: 'worksheet' | 'snapshot' | 'lesson'): 
     if (!cachedAccount) await getDriveAccount();
     const lastFolder = getLastDriveFolder();
     views = [
-      makeView(pickerNs, 'DOCS', 'My saved files', (v) => {
-        v.setIncludeFolders(false).setSelectFolderEnabled(false).setMimeTypes(JSON_MIME);
+      makeView(pickerNs, 'DOCS', 'My lessons', (v) => {
+        v.setIncludeFolders(false).setSelectFolderEnabled(false).setMimeTypes(LESSON_MIME);
         tryCall(v, 'setOwnedByMe', true);
         if (listMode) tryCall(v, 'setMode', listMode);
       }),
       makeView(pickerNs, 'DOCS', 'Browse Drive', (v) => {
-        v.setIncludeFolders(true).setSelectFolderEnabled(false).setMimeTypes(`${JSON_MIME},${OCTET_STREAM_MIME}`);
+        v.setIncludeFolders(true)
+          .setSelectFolderEnabled(false)
+          .setMimeTypes(`${LESSON_MIME},${JSON_MIME},${OCTET_STREAM_MIME}`);
         if (lastFolder.id) tryCall(v, 'setParent', lastFolder.id);
         if (listMode) tryCall(v, 'setMode', listMode);
       }),
@@ -814,15 +822,17 @@ export async function downloadDriveFile(
 }
 
 /**
- * Saves a room snapshot to Drive as `fileName` inside `folder`.
+ * Saves a room snapshot (or, with LESSON_MIME, a lesson) to Drive as `fileName` inside `folder`.
  * If that's the same name and folder as this room's last save, the file is updated in place;
  * otherwise a new file is created. Remembers the result for next time.
+ * The type is set on updates too, so re-saving an older lesson makes it show under "My lessons".
  */
 export async function saveJsonToDrive(
   roomId: string,
   fileName: string,
   folder: DriveFolder,
-  json: string
+  json: string,
+  mimeType: string = JSON_MIME
 ): Promise<DriveSaveRecord> {
   if (!cachedAccount) await getDriveAccount();
   const last = getRoomDriveSave(roomId);
@@ -834,13 +844,13 @@ export async function saveJsonToDrive(
       : 'https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable';
     const method = fileId ? 'PATCH' : 'POST';
     const metadata: Record<string, unknown> = fileId
-      ? { name: fileName }
-      : { name: fileName, mimeType: JSON_MIME, ...(folder.id ? { parents: [folder.id] } : {}) };
+      ? { name: fileName, ...(mimeType !== JSON_MIME ? { mimeType } : {}) }
+      : { name: fileName, mimeType, ...(folder.id ? { parents: [folder.id] } : {}) };
     const res = await driveFetch(url, {
       method,
       headers: {
         'Content-Type': 'application/json; charset=UTF-8',
-        'X-Upload-Content-Type': JSON_MIME,
+        'X-Upload-Content-Type': mimeType,
       },
       body: JSON.stringify(metadata),
     });
@@ -866,7 +876,7 @@ export async function saveJsonToDrive(
 
   const putRes = await driveFetch(uploadUrl, {
     method: 'PUT',
-    headers: { 'Content-Type': JSON_MIME },
+    headers: { 'Content-Type': mimeType },
     body: json,
   });
   const saved = await putRes.json();

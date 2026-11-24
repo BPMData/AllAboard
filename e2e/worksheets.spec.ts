@@ -319,7 +319,7 @@ test.describe('worksheet UI', () => {
     await expect(page.getByRole('button', { name: 'Grid', exact: true })).toHaveAttribute('aria-pressed', 'true');
 
     const downloadPromise = page.waitForEvent('download');
-    await page.getByRole('button', { name: 'Save .JSON' }).click();
+    await page.getByRole('button', { name: 'Save class work' }).click();
     const download = await downloadPromise;
     const fs = await import('node:fs/promises');
     const saved = JSON.parse(await fs.readFile((await download.path())!, 'utf8'));
@@ -370,7 +370,7 @@ test.describe('worksheet UI', () => {
     await expect(page.getByTitle('Remove background worksheet from this board')).toBeVisible();
 
     const downloadPromise = page.waitForEvent('download');
-    await page.getByRole('button', { name: 'Save .JSON' }).click();
+    await page.getByRole('button', { name: 'Save class work' }).click();
     const download = await downloadPromise;
     const fs = await import('node:fs/promises');
     const saved = JSON.parse(await fs.readFile((await download.path())!, 'utf8'));

@@ -494,7 +494,7 @@ test.describe('Google Drive integration (stubbed Google)', () => {
     await joinRoom(page, uniqueRoom('gd-open'), 'Ms T', '4829');
     await page.getByRole('button', { name: 'Open Room from Drive' }).click();
 
-    await expect(page.getByText('Restore Room Snapshot (.JSON)')).toBeVisible();
+    await expect(page.getByText('Open Class Work (.json)')).toBeVisible();
     await expect(page.getByText('saved-room.json')).toBeVisible();
     await expect(page.getByText('#prev-room')).toBeVisible();
     await expect(page.getByText('1 items')).toBeVisible();
@@ -590,6 +590,36 @@ test.describe('Google Drive integration (stubbed Google)', () => {
     await expect(page.getByText(`Saved ${todayFileName(room)} to My Drive`)).toBeVisible();
     expect(requests[2].method).toBe('PATCH');
     expect(requests[2].url).toContain('/files/drive-file-42?uploadType=resumable');
+  });
+
+  test('lessons save to Drive as their own type, and the lesson picker lists only those first', async ({ page }) => {
+    await installFakeGoogle(page, { pickerAction: 'cancel' });
+    const requests = await fakeDriveUploads(page);
+    await joinRoom(page, uniqueRoom('gd-lesson'), 'Ms T', '4829');
+
+    await page.getByRole('button', { name: 'Save lesson…' }).click();
+    const save = page.getByTestId('save-lesson-modal');
+    await save.getByLabel('Lesson title').fill('Fractions');
+    await save.getByRole('button', { name: 'Save to Drive' }).click();
+    await expect(save.getByText(/Saved fractions-.*\.allaboard to My Drive/)).toBeVisible();
+    expect(requests[0].method).toBe('POST');
+    expect(requests[0].meta).toEqual({
+      name: expect.stringMatching(/^fractions-\d{4}-\d{2}-\d{2}\.allaboard$/),
+      mimeType: 'application/vnd.allaboard.lesson+json',
+    });
+    await save.getByRole('button', { name: 'Close', exact: true }).click();
+
+    // A room save (application/json) is never in "My lessons"; Browse Drive still finds older lessons saved as JSON.
+    await page.getByRole('button', { name: 'Load lesson…' }).click();
+    await page.getByTestId('load-lesson-modal').getByRole('button', { name: 'Open from Drive' }).click();
+    await expect.poll(async () => (await pickerLog(page)).length).toBe(1);
+    const [log] = await pickerLog(page);
+    expect(log.views.map((v) => v.calls.setLabel?.[0])).toEqual(['My lessons', 'Browse Drive']);
+    expect(log.views[0].calls.setMimeTypes).toEqual(['application/vnd.allaboard.lesson+json']);
+    expect(log.views[0].calls.setOwnedByMe).toEqual([true]);
+    expect(log.views[1].calls.setMimeTypes).toEqual([
+      'application/vnd.allaboard.lesson+json,application/json,application/octet-stream',
+    ]);
   });
 
   test('Save Room to Drive saves a renamed file into a chosen folder, and remembers that folder', async ({ page }) => {
