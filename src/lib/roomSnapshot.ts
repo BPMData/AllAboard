@@ -1,4 +1,5 @@
 import type { CanvasElement, ChatMessage, PendingSnapshotData, RoomBackground } from '../types';
+import { looksLikeLesson } from './lessonPack.ts';
 
 export function snapshotFileName(roomId: string, date: Date = new Date()): string {
   return `allaboard-room-${roomId}-${date.toISOString().slice(0, 10)}.json`;
@@ -17,6 +18,9 @@ export function parseSnapshotText(fileName: string, text: string, fallbackRoomId
     parsed = JSON.parse(text || '{}');
   } catch {
     return { pending: empty, error: 'Could not parse JSON file. Make sure it is a valid .json room snapshot.' };
+  }
+  if (looksLikeLesson(parsed)) {
+    return { pending: empty, error: 'This is a lesson pack. Use Load lesson… instead.' };
   }
   if (
     !parsed ||

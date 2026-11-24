@@ -44,6 +44,7 @@ Teachers are identified by a per-room **PIN**, not a login.
 | `src/components/Chat.tsx` | ~1000 | Chat sidebar (resizable/collapsible), roster, room-code bar. |
 | `src/components/RoomExistsModal.tsx`, `PurgeContributionsModal.tsx` | — | Lobby collision warning; teacher "purge a student's work." |
 | `src/lib/breakoutRounds.ts` | ~290 | **Pure helpers shared by client and server** for rounds/boards. Never parse board-ID strings. Use these. |
+| `src/lib/lessonPack.ts`, `src/components/LessonPackModals.tsx` | — | `.allaboard` lesson packs: pure build / validate / asset helpers (used by client and server) and the **Save lesson…** / **Load lesson…** dialogs. |
 | `src/lib/worksheetLoader.ts` | ~390 | PDF/image → `BackgroundPage[]` (browser-side render to JPEG data URLs). Built-in templates (`four-corners`, `frayer-model`, `checkin-columns`). `MAX_PDF_PAGES = 30` (`src/lib/pageRange.ts`). |
 | `src/lib/batchPdfExport.ts` | ~590 | Export boards to PDF (renders background plus ink). |
 | `src/lib/inkCore.ts` | — | Ink smoothing, highlighter/cover, text-note logic (from OverBoard). |
@@ -152,6 +153,12 @@ Cloud Run service "allaboard"  ── one container :3000 (node server.ts, Build
   `teacher:set-background-multi` (one worksheet to many boards; optional `roundTemplateFor` sets the round template),
   `teacher:update-background`, `teacher:rename-user`, `teacher:delete-message`, `teacher:unban-user`,
   `teacher:purge-user-contributions`, `teacher:set-lock`, `teacher:set-hide-cursors`, `teacher:set-one-name-stamp`, `teacher:clear-status`, `teacher:spotlight-board`, `laser-pulse`, `teacher:clear-all`, `teacher:import-room`
+- Lesson packs (teacher-only, ack; `src/lib/lessonPack.ts`): `teacher:export-lesson` (server builds the skeleton,
+  `assets: {}`; the browser embeds images), `teacher:has-assets` (≤ 1,000 URLs → `missing`), `teacher:upload-asset` (one
+  PNG/JPEG/WebP `data:` URL per emit, checked with `sniffMime`; never SVG), `teacher:load-lesson` (`target: 'new'` makes a
+  room with a PIN; `'current'` only from main). Load order: upload missing images first, then the small lesson, so any
+  pack size fits the 30 MB socket limit. The server re-validates, assigns every round, board and element id, makes every
+  round prepared, never sets `mode`/`activeRoundId`, and broadcasts like `teacher:spotlight-board` (not `room-restored`).
 - Breakouts: `breakout:join-board`
 - Chat: `chat-message`
 - Drawing: `element-start`, `element-append-points` (streaming ink), `element-update`, `elements-batch-update`,
@@ -204,7 +211,7 @@ Cloud Run service "allaboard"  ── one container :3000 (node server.ts, Build
    with `/api/assets/<hash>`. `BackgroundPage.dataUrl` holds either form. This is why a 30-board breakout sync went from
    ~126 MB to ~11 KB per client.
    - **Interning points:** `teacher:set-background`, `teacher:update-background`, `cloneBackground` (round templates and
-     every board copy), `teacher:import-room`, legacy migration, and a **safety net on every flush** (`internRoomAssets`).
+     every board copy), `teacher:import-room`, `teacher:upload-asset`, legacy migration, and a **safety net on every flush** (`internRoomAssets`).
    - `room_assets` and the backup find references by **regex over the room JSON**, so any future element that references
      `/api/assets/…` is tracked automatically.
 4. **Backup (≤ 10 s, immediate on SIGTERM)** to `gs://allaboard-data` over the JSON API. Images are written before rooms.
@@ -254,4 +261,4 @@ Cloud Run service "allaboard"  ── one container :3000 (node server.ts, Build
 | **Asset** | An image stored once by sha256, served at `/api/assets/<hash>` |
 | **Interning** | Converting an inline `data:` image into an asset URL |
 | **Snapshot v1/v2** | Room export format. v2 embeds each asset once in an `assets` map. |
-| **Lesson pack** | *Planned* (TODO): a shareable export of a whole lesson without student data |
+| **Lesson pack** | A `.allaboard` file (JSON, `kind: 'allaboard-lesson'`): main worksheet and teacher ink, rounds as definitions (worksheet, group names, never members), settings, embedded images. No student data. `src/lib/lessonPack.ts` |

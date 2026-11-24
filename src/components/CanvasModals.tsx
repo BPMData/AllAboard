@@ -631,6 +631,7 @@ export function BreakoutManagerModal({
           </div>
           <button
             type="button"
+            aria-label="Close breakout manager"
             onClick={onClose}
             className="p-1 text-slate-400 hover:text-slate-700 rounded-[2px] border border-transparent hover:border-[#CBD5E1] cursor-pointer"
           >

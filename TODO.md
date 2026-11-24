@@ -38,7 +38,10 @@ specs are in git history.
   - If a student stamped more than once (one-name-stamp rule off), use their **most recent** stamp.
 
 ### Lesson packs: a whole lesson in one file, shareable between teachers
-- [ ] **Export/import a "lesson pack"**: one file with everything needed to run a lesson, minus student data:
+- [x] **Export/import a "lesson pack"**: one file with everything needed to run a lesson, minus student data.
+  *Done (PLANS_LESSON_PACKS.md phase 2): **Save lesson…** / **Load lesson…**, `.allaboard` files. Custom stamps aren't
+  in packs yet (they don't exist). Phase 3, template ink copied onto every student's round worksheet, is not built.*
+  Original notes:
   - the **main board** (background and teacher ink)
   - **prepared rounds** with their worksheets and groups
   - room settings, including "students start on their own boards", the student starting worksheet and the

@@ -5,6 +5,7 @@ export const SLIDES_MIME = 'application/vnd.google-apps.presentation';
 export const PPTX_MIME = 'application/vnd.openxmlformats-officedocument.presentationml.presentation';
 export const PPT_MIME = 'application/vnd.ms-powerpoint';
 export const PDF_MIME = 'application/pdf';
+export const OCTET_STREAM_MIME = 'application/octet-stream';
 export const JSON_MIME = 'application/json';
 export const FOLDER_MIME = 'application/vnd.google-apps.folder';
 export const MAX_PPTX_BYTES = 100 * 1024 * 1024;
@@ -504,8 +505,10 @@ async function openPicker(
 /**
  * Worksheet picker: Slides | PDFs | Browse Drive tabs.
  * Snapshot picker: My room saves (only my .json files) | Browse Drive (starting in the last save folder).
+ * Lesson picker: My saved files | Browse Drive. Browse also allows application/octet-stream, because a `.allaboard`
+ * file someone uploaded to Drive by hand may carry that type. Still `drive.file`: the Picker grants per-file access.
  */
-export async function pickDriveFile(kind: 'worksheet' | 'snapshot'): Promise<PickedDriveDoc | null> {
+export async function pickDriveFile(kind: 'worksheet' | 'snapshot' | 'lesson'): Promise<PickedDriveDoc | null> {
   const accessToken = await getAccessToken();
   const pickerNs = await loadPicker();
   const listMode = pickerNs.DocsViewMode?.LIST;
@@ -521,6 +524,22 @@ export async function pickDriveFile(kind: 'worksheet' | 'snapshot'): Promise<Pic
         v.setIncludeFolders(true)
           .setSelectFolderEnabled(false)
           .setMimeTypes(`${SLIDES_MIME},${PDF_MIME},${PPTX_MIME},${PPT_MIME}`);
+      }),
+    ];
+  } else if (kind === 'lesson') {
+    title = 'Open a lesson';
+    if (!cachedAccount) await getDriveAccount();
+    const lastFolder = getLastDriveFolder();
+    views = [
+      makeView(pickerNs, 'DOCS', 'My saved files', (v) => {
+        v.setIncludeFolders(false).setSelectFolderEnabled(false).setMimeTypes(JSON_MIME);
+        tryCall(v, 'setOwnedByMe', true);
+        if (listMode) tryCall(v, 'setMode', listMode);
+      }),
+      makeView(pickerNs, 'DOCS', 'Browse Drive', (v) => {
+        v.setIncludeFolders(true).setSelectFolderEnabled(false).setMimeTypes(`${JSON_MIME},${OCTET_STREAM_MIME}`);
+        if (lastFolder.id) tryCall(v, 'setParent', lastFolder.id);
+        if (listMode) tryCall(v, 'setMode', listMode);
       }),
     ];
   } else {

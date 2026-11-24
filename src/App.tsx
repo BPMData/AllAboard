@@ -32,6 +32,7 @@ import PurgeContributionsModal from './components/PurgeContributionsModal';
 import RoomHistoryDropdown from './components/RoomHistoryDropdown';
 import { normalizeRoomCode, sanitizeRoomCodeDraft } from './lib/roomCode';
 import { recordRoomHistory } from './lib/roomHistory';
+import type { LessonRequestEvent } from './lib/lessonPack';
 import { motion } from 'motion/react';
 import { LogIn, Users, KeyRound, PlusCircle, Shuffle, Eye, EyeOff } from 'lucide-react';
 import { POINT_FLUSH_MS } from './lib/drawThrottle';
@@ -1129,6 +1130,26 @@ export default function App() {
     return generateFreshRoomCode();
   }, [checkRoomAvailability]);
 
+  /** Lesson packs: one ack-style wrapper for the four teacher events (export, has-assets, upload-asset, load). */
+  const handleTeacherLessonRequest = useCallback(
+    (event: LessonRequestEvent, payload: unknown, timeoutMs = 60_000): Promise<any> =>
+      new Promise((resolve) => {
+        if (!socket || !socket.connected) {
+          resolve({ ok: false, error: 'Not connected to the server. Check your connection and try again.' });
+          return;
+        }
+        const timer = setTimeout(
+          () => resolve({ ok: false, error: 'The server took too long to answer. Try again.' }),
+          timeoutMs
+        );
+        socket.emit(event, payload, (res: any) => {
+          clearTimeout(timer);
+          resolve(res && typeof res === 'object' ? res : { ok: false, error: 'No answer from the server.' });
+        });
+      }),
+    [socket]
+  );
+
   const performSwitchRoom = useCallback((cleanedRoomId: string) => {
     setRemoteCursors({});
     setIsTeacher(false);
@@ -1146,6 +1167,29 @@ export default function App() {
       // Ignore
     }
   }, []);
+
+  /** This room's Teacher PIN as this browser saved it, to prefill the PIN for a new room. */
+  const getSavedTeacherPin = useCallback((): string => {
+    try {
+      return localStorage.getItem(STORAGE_KEYS.TEACHER_PIN_PREFIX + effectiveRoomId) || '';
+    } catch {
+      return '';
+    }
+  }, [effectiveRoomId]);
+
+  /** After a lesson loads into a new room: remember its PIN (so the join makes us teacher there) and go there. */
+  const handleOpenLoadedLessonRoom = useCallback(
+    (newRoomId: string, pin: string) => {
+      try {
+        localStorage.setItem(STORAGE_KEYS.TEACHER_PIN_PREFIX + newRoomId, pin);
+      } catch {
+        // Ignore storage errors; the teacher can still enter the PIN.
+      }
+      recordRoomHistory(newRoomId);
+      performSwitchRoom(newRoomId);
+    },
+    [performSwitchRoom]
+  );
 
   const handleLeaveRoom = useCallback(() => {
     setIsJoined(false);
@@ -2064,6 +2108,10 @@ export default function App() {
           onTeacherSendWorksheet={handleTeacherSendWorksheet}
           onTeacherUpdateBackground={handleTeacherUpdateBackground}
           onTeacherImportRoom={handleTeacherImportRoom}
+          onTeacherLessonRequest={handleTeacherLessonRequest}
+          onOpenLoadedLessonRoom={handleOpenLoadedLessonRoom}
+          getSavedTeacherPin={getSavedTeacherPin}
+          generateUnusedRoomCode={generateUnusedRoomCode}
           timer={roomSettings.timer}
           onTeacherTimerControl={handleTeacherTimerControl}
           fullMainElements={elements}

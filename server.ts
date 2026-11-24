@@ -32,6 +32,7 @@ import { hasNameStamp, isTeacherStampKind } from './src/lib/stamps.ts';
 import { isAnonymousAuthorId, makeAnonymousAuthorId } from './src/lib/anonymousInk.ts';
 import { OVERVIEW_SYNC_MS, buildDigest, emptyChanges, type BoardChanges, type BoardDigest } from './src/lib/boardDigest.ts';
 import { CURSOR_EMIT_MS } from './src/lib/drawThrottle.ts';
+import { buildLessonPack, validateLesson, type LessonPack, type MainInkChoice } from './src/lib/lessonPack.ts';
 import { monitorEventLoopDelay } from 'node:perf_hooks';
 import {
   MAX_APPEND_NUMBERS,
@@ -915,6 +916,186 @@ export async function startServer(options: StartServerOptions = {}) {
       else if (bg && typeof bg === 'object' && Array.isArray((bg as any).pages)) out[key] = cloneBackground(bg);
     }
     return out;
+  }
+
+  // ---------- Lesson packs (PLANS_LESSON_PACKS.md, phase 2) ----------
+
+  /** Everyone this room counts as a teacher, for "teacher ink only". */
+  function teacherIdsOf(room: RoomState, callerId: string): Set<string> {
+    const ids = new Set<string>([callerId]);
+    for (const [uid, record] of room.usersByUserId) if (record.isTeacher) ids.add(uid);
+    return ids;
+  }
+
+  function buildLessonForRoom(
+    room: RoomState,
+    caller: { userId: string; name: string },
+    opts: { title?: unknown; exportedBy?: unknown; mainInk?: unknown; includeLaunchedRounds?: unknown; roundIds?: unknown }
+  ): LessonPack {
+    const cfg = room.breakoutConfig;
+    const rounds = getRounds(cfg);
+    const roundTemplates: Record<string, any | null> = {};
+    for (const r of rounds) roundTemplates[r.id] = getRoundTemplate(room, r.id);
+    const mainInk: MainInkChoice = opts.mainInk === 'all' || opts.mainInk === 'none' ? opts.mainInk : 'teacher';
+    return buildLessonPack({
+      title: typeof opts.title === 'string' && opts.title.trim() ? opts.title : room.id,
+      exportedBy: typeof opts.exportedBy === 'string' ? opts.exportedBy : undefined,
+      mainBackground: room.background,
+      mainElements: room.elements,
+      teacherUserIds: teacherIdsOf(room, caller.userId),
+      mainInk,
+      rounds,
+      roundTemplates,
+      boards: Array.from(room.subBoards.values()).map((sb) => ({
+        id: sb.id,
+        roundId: sb.roundId,
+        kind: sb.kind === 'group' ? 'group' : 'individual',
+        title: sb.title,
+        elements: sb.elements,
+      })),
+      roundIds: Array.isArray(opts.roundIds) ? uniqueStrings(opts.roundIds) : undefined,
+      includeLaunchedRounds: opts.includeLaunchedRounds !== false,
+      settings: {
+        oneNameStamp: room.oneNameStamp,
+        hideStudentCursors: room.hideStudentCursors,
+        allowSelfSelect: cfg.allowSelfSelect,
+        chatScope: cfg.chatScope,
+        autoIndividual: Boolean(cfg.autoIndividual),
+        autoIndividualBackground: cfg.autoIndividualBackground ?? null,
+        autoIndividualTemplateLabel: cfg.autoIndividualTemplateLabel,
+        timerDurationMs: room.timer.durationMs,
+        timerAutoLock: room.timer.autoLockOnExpire,
+      },
+    });
+  }
+
+  type LessonCheck = { ok: boolean; lesson: LessonPack | null; error?: string };
+
+  /**
+   * Server-side check of a lesson sent by a client, whatever the client already checked: shape, element sizes, and
+   * every worksheet page interned and present in the asset store.
+   */
+  function checkIncomingLesson(raw: unknown): LessonCheck {
+    const { lesson, error } = validateLesson(raw);
+    if (!lesson) return { ok: false, lesson: null, error: error || 'This lesson file is damaged.' };
+    const lists: any[][] = [lesson.main.elements];
+    for (const r of lesson.rounds) {
+      if (r.groupInk) lists.push(...r.groupInk);
+      if (r.ink) lists.push(r.ink);
+    }
+    for (const list of lists) {
+      if (list.length > MAX_BOARD_ELEMENTS || !list.every((el) => elementFieldsOk(el))) {
+        return { ok: false, lesson: null, error: 'This lesson has ink AllAboard can’t load (too large or damaged).' };
+      }
+    }
+    // Intern any stray data: URL (a hand-edited file), then require every page to be a stored asset.
+    lesson.main.background = cloneBackground(lesson.main.background);
+    for (const r of lesson.rounds) r.worksheet = cloneBackground(r.worksheet);
+    if (lesson.settings.autoIndividualBackground) {
+      lesson.settings.autoIndividualBackground = cloneBackground(lesson.settings.autoIndividualBackground);
+    }
+    const backgrounds = [lesson.main.background, ...lesson.rounds.map((r) => r.worksheet), lesson.settings.autoIndividualBackground];
+    let missing = 0;
+    for (const bg of backgrounds) {
+      for (const page of bg?.pages ?? []) {
+        const m = /^\/api\/assets\/([a-f0-9]{64})$/.exec(String(page.dataUrl));
+        if (!m || !store.getAsset(m[1])) missing++;
+      }
+    }
+    if (missing > 0) {
+      return {
+        ok: false,
+        lesson: null,
+        error: `${missing} worksheet image${missing === 1 ? ' is' : 's are'} missing. Try loading again.`,
+      };
+    }
+    lesson.assets = {};
+    return { ok: true, lesson };
+  }
+
+  /** The lesson's ink as the loading teacher's own: fresh ids, this board, no name stamps. */
+  function lessonInk(elements: any[], boardId: string, author: { userId: string; name: string }): any[] {
+    const now = Date.now();
+    return elements
+      .filter((el) => !(el.tool === 'stamp' && el.stamp === 'username'))
+      .map((el) => ({
+        ...structuredClone(el),
+        id: randomUUID(),
+        boardId,
+        userId: author.userId,
+        userName: author.name,
+        timestamp: now,
+      }));
+  }
+
+  /** Removes a round, its boards and its worksheet template. */
+  function removeRound(room: RoomState, roundId: string) {
+    const cfg = room.breakoutConfig;
+    cfg.rounds = getRounds(cfg).filter((r) => r.id !== roundId);
+    for (const sb of getBoardsInRound(room.subBoards, roundId)) room.subBoards.delete(sb.id);
+    delete room.roundTemplates[roundId];
+  }
+
+  /**
+   * Sets a checked lesson up in a room: main worksheet and ink, every round as a prepared round with server-made ids,
+   * and the settings. Existing prepared rounds are replaced; launched rounds stay. Never moves anyone.
+   */
+  function applyLessonToRoom(room: RoomState, lesson: LessonPack, author: { userId: string; name: string }): string[] {
+    const cfg = room.breakoutConfig;
+    room.background = cloneBackground(lesson.main.background);
+    room.elements = lessonInk(lesson.main.elements, 'main', author);
+
+    for (const r of getRounds(cfg)) if (isPreparedRound(r)) removeRound(room, r.id);
+
+    const s = lesson.settings;
+    const createdIds: string[] = [];
+    for (const lr of lesson.rounds) {
+      const number = getNextRoundNumber(cfg);
+      const roundId = makeRoundId(number);
+      // A stale board from a deleted round could share this id: clear it so the new round starts clean.
+      for (const sb of getBoardsInRound(room.subBoards, roundId)) room.subBoards.delete(sb.id);
+      const worksheet = cloneBackground(lr.worksheet);
+      room.roundTemplates[roundId] = worksheet;
+      const meta: BreakoutRoundMeta = {
+        id: roundId,
+        number,
+        title: buildRoundTitle(number, lr.mode, lr.title),
+        mode: lr.mode,
+        createdAt: Date.now(),
+        prepared: true,
+        allowSelfSelect: lr.allowSelfSelect ?? Boolean(s.allowSelfSelect),
+        chatScope: lr.chatScope ?? (s.chatScope === 'board' ? 'board' : 'unified'),
+      };
+      if (lr.mode === 'groups') {
+        const groups = (lr.groups ?? [{ title: 'Group 1' }]).slice(0, MAX_GROUPS_PER_ROUND);
+        createGroupBoards(room, roundId, groups.map((g) => ({ title: g.title })), worksheet);
+        groups.forEach((_g, i) => {
+          const board = room.subBoards.get(makeGroupBoardId(roundId, i));
+          const ink = lr.groupInk?.[i];
+          if (board && ink) board.elements = lessonInk(ink, board.id, author);
+        });
+      }
+      cfg.rounds = [...getRounds(cfg), meta];
+      createdIds.push(roundId);
+    }
+
+    if (typeof s.oneNameStamp === 'boolean') room.oneNameStamp = s.oneNameStamp;
+    if (typeof s.hideStudentCursors === 'boolean') room.hideStudentCursors = s.hideStudentCursors;
+    if (typeof s.allowSelfSelect === 'boolean') cfg.allowSelfSelect = s.allowSelfSelect;
+    if (s.chatScope === 'board' || s.chatScope === 'unified') cfg.chatScope = s.chatScope;
+    if (!room.timer.isRunning) {
+      if (typeof s.timerDurationMs === 'number') room.timer.durationMs = s.timerDurationMs;
+      if (typeof s.timerAutoLock === 'boolean') room.timer.autoLockOnExpire = s.timerAutoLock;
+    }
+    // Same rule as set-auto-individual: automatic student boards need a Teacher PIN.
+    if (room.teacherPinHash !== null && typeof s.autoIndividual === 'boolean') {
+      cfg.autoIndividual = s.autoIndividual;
+      if (s.autoIndividual) {
+        cfg.autoIndividualBackground = cloneBackground(s.autoIndividualBackground ?? null);
+        if (s.autoIndividualTemplateLabel) cfg.autoIndividualTemplateLabel = s.autoIndividualTemplateLabel;
+      }
+    }
+    return createdIds;
   }
 
   /** Students who should receive breakout boards. */
@@ -1938,6 +2119,102 @@ export async function startServer(options: StartServerOptions = {}) {
         });
       }
     );
+
+    // ---------- Lesson packs (teacher-only) ----------
+
+    /** The caller's room and record, if the caller is a verified teacher there. */
+    const teacherCaller = (): { room: RoomState; record: ServerUserRecord } | null => {
+      const meta = socketMeta.get(socket.id);
+      const room = meta && rooms.get(meta.roomId);
+      const record = meta && room?.usersByUserId.get(meta.userId);
+      return room && record?.isTeacher ? { room, record } : null;
+    };
+    const NOT_TEACHER = 'Only a verified Teacher can do that.';
+
+    socket.on('teacher:export-lesson', (payload, callback) => {
+      const caller = teacherCaller();
+      if (!caller) return callback?.({ ok: false, error: NOT_TEACHER });
+      const opts = payload && typeof payload === 'object' ? payload : {};
+      const lesson = buildLessonForRoom(caller.room, caller.record, opts);
+      const teacherIds = teacherIdsOf(caller.room, caller.record.userId);
+      const notStamp = (el: any) => !(el.tool === 'stamp' && el.stamp === 'username');
+      callback?.({
+        ok: true,
+        lesson,
+        inkCounts: {
+          teacher: caller.room.elements.filter((el) => notStamp(el) && teacherIds.has(el.userId)).length,
+          all: caller.room.elements.filter(notStamp).length,
+        },
+      });
+    });
+
+    socket.on('teacher:has-assets', (payload, callback) => {
+      if (!teacherCaller()) return callback?.({ ok: false, error: NOT_TEACHER });
+      const urls = Array.isArray(payload?.urls) ? payload.urls : null;
+      if (!urls || urls.length > 1000) return callback?.({ ok: false, error: 'Send up to 1,000 image links.' });
+      const missing: string[] = [];
+      for (const url of uniqueStrings(urls)) {
+        const m = /^\/api\/assets\/([a-f0-9]{64})$/.exec(url);
+        if (!m || !isValidAssetHash(m[1]) || !store.getAsset(m[1])) missing.push(url);
+      }
+      callback?.({ ok: true, missing });
+    });
+
+    socket.on('teacher:upload-asset', (payload, callback) => {
+      if (!teacherCaller()) return callback?.({ ok: false, error: NOT_TEACHER });
+      const dataUrl = typeof payload?.dataUrl === 'string' ? payload.dataUrl : '';
+      const m = /^data:(image\/(?:png|jpeg|webp));base64,/.exec(dataUrl);
+      if (!m) return callback?.({ ok: false, error: 'Only PNG, JPEG and WebP images can be uploaded.' });
+      const bytes = Buffer.from(dataUrl.slice(m[0].length), 'base64');
+      if (bytes.length === 0 || sniffMime(bytes) !== m[1]) {
+        return callback?.({ ok: false, error: "That image's contents don't match its type." });
+      }
+      // No room references it yet; gcAssets' grace period covers the gap until load-lesson arrives.
+      callback?.({ ok: true, url: store.internDataUrl(dataUrl) });
+    });
+
+    socket.on('teacher:load-lesson', async (payload, callback) => {
+      const caller = teacherCaller();
+      if (!caller) return callback?.({ ok: false, error: NOT_TEACHER });
+      const checked = checkIncomingLesson(payload?.lesson);
+      if (!checked.ok) return callback?.({ ok: false, error: checked.error });
+      const author = { userId: caller.record.userId, name: caller.record.name };
+
+      if (payload?.target === 'current') {
+        const room = caller.room;
+        if (room.breakoutConfig.mode !== 'main') {
+          return callback?.({ ok: false, error: 'Bring everyone to Main first, then load the lesson.' });
+        }
+        const rounds = applyLessonToRoom(room, checked.lesson, author);
+        room.lastActiveAt = Date.now();
+        scheduleSaveToDisk(room, true);
+        // Like spotlight-board, not room-restored (which would send every board to everyone).
+        io.to(room.id).emit('background-sync', { boardId: 'main', background: room.background });
+        io.to(room.id).emit('board-replaced', { boardId: 'main' });
+        noteChange(room, 'main', { full: true });
+        io.to(boardAudience(room.id, 'main')).emit('state-sync', { boardId: 'main', elements: room.elements });
+        broadcastRoomSettings(room);
+        broadcastBreakoutSync(room);
+        return callback?.({ ok: true, roomId: room.id, rounds: rounds.length });
+      }
+
+      const rawId = typeof payload?.newRoomId === 'string' ? payload.newRoomId.trim() : '';
+      const newRoomId = normalizeRoomId(rawId);
+      if (!rawId || newRoomId.length > 64) return callback?.({ ok: false, error: 'Enter a room code for the new room.' });
+      if (findRoom(newRoomId)) return callback?.({ ok: false, error: 'That room code is taken.' });
+      const pin = typeof payload?.pin === 'string' ? payload.pin.trim() : '';
+      if (pin.length < MIN_PIN_LENGTH || pin.length > MAX_PIN_LENGTH) {
+        return callback?.({ ok: false, error: `The Teacher PIN must be ${MIN_PIN_LENGTH} to ${MAX_PIN_LENGTH} characters.` });
+      }
+      const pinHash = await hashPin(pin);
+      if (findRoom(newRoomId)) return callback?.({ ok: false, error: 'That room code is taken.' });
+      const room = getOrCreateRoom(newRoomId);
+      room.teacherPinHash = pinHash;
+      const rounds = applyLessonToRoom(room, checked.lesson, author);
+      room.lastActiveAt = Date.now();
+      scheduleSaveToDisk(room, true);
+      callback?.({ ok: true, roomId: room.id, rounds: rounds.length });
+    });
 
     socket.on('update-profile', ({ name, color }) => {
       const meta = socketMeta.get(socket.id);

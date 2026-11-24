@@ -30,6 +30,7 @@ import {
   getBoardsInRound,
   getNextRoundNumber,
   getRoundById,
+  getRounds,
   getLaunchedRounds,
   getPreparedRounds,
   isPreparedRound,
@@ -173,11 +174,14 @@ import {
   HardDrive,
   Keyboard,
   Crosshair,
+  BookMarked,
+  BookOpen,
 } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { CURSOR_EMIT_MS } from '../lib/drawThrottle';
 import { isPhoneViewport } from '../lib/compactLayout';
 import { STATUS_OPTIONS } from './StudentStatusBadge';
+import { LoadLessonModal, SaveLessonModal, type LessonRequest } from './LessonPackModals';
 
 type HistoryAction =
   | { kind: 'add'; items: CanvasElement[] }
@@ -248,6 +252,11 @@ interface CanvasProps {
     },
     mode: ImportRestoreMode
   ) => Promise<{ ok: boolean; error?: string }>;
+  /** Lesson packs: the four teacher-only socket events. */
+  onTeacherLessonRequest?: LessonRequest;
+  onOpenLoadedLessonRoom?: (roomId: string, pin: string) => void;
+  generateUnusedRoomCode?: () => Promise<string>;
+  getSavedTeacherPin?: () => string;
   timer?: ClassroomTimerState;
   onTeacherTimerControl: (payload: TimerControlPayload) => void;
   fullMainElements: CanvasElement[];
@@ -689,6 +698,10 @@ export default function Canvas({
   onTeacherSendWorksheet,
   onTeacherUpdateBackground,
   onTeacherImportRoom,
+  onTeacherLessonRequest,
+  onOpenLoadedLessonRoom,
+  generateUnusedRoomCode,
+  getSavedTeacherPin,
   timer,
   onTeacherTimerControl,
   fullMainElements,
@@ -1080,6 +1093,7 @@ export default function Canvas({
   // JSON Import Modal States (Teacher Only)
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [pendingSnapshot, setPendingSnapshot] = useState<PendingSnapshotData | null>(null);
+  const [lessonModal, setLessonModal] = useState<'save' | 'load' | null>(null);
   const [importMode, setImportMode] = useState<ImportRestoreMode>('replace');
   const [importError, setImportError] = useState<string | null>(null);
   const [isImporting, setIsImporting] = useState(false);
@@ -4303,6 +4317,18 @@ export default function Canvas({
             <span>Save .JSON</span>
           </button>
 
+          {isTeacher && onTeacherLessonRequest && (
+            <button
+              type="button"
+              onClick={() => setLessonModal('save')}
+              className="flex items-center gap-1.5 px-2 py-1 text-xs font-medium oh-btn border text-slate-700 rounded-[2px] transition-colors whitespace-nowrap shrink-0 cursor-pointer"
+              title="Save this lesson (worksheets, your ink, breakout rounds and settings, no student work) as a .allaboard file"
+            >
+              <BookMarked size={14} />
+              <span>Save lesson…</span>
+            </button>
+          )}
+
           <button
             type="button"
             onClick={handleExportPNG}
@@ -5305,6 +5331,18 @@ export default function Canvas({
               <span>Import .JSON</span>
             </button>
 
+            {onTeacherLessonRequest && (
+              <button
+                type="button"
+                onClick={() => setLessonModal('load')}
+                className="flex items-center gap-1.5 px-3 py-1 rounded-[2px] border oh-btn text-xs font-medium text-slate-800 transition-colors whitespace-nowrap shrink-0 cursor-pointer"
+                title="Set up a saved .allaboard lesson in a new room or this one"
+              >
+                <BookOpen size={13} />
+                <span>Load lesson…</span>
+              </button>
+            )}
+
             {isGoogleDriveConfigured() && (
               <>
                 <button
@@ -5657,6 +5695,35 @@ export default function Canvas({
       )}
 
       {/* Teacher JSON Snapshot Restore Modal */}
+      {isTeacher && lessonModal === 'save' && onTeacherLessonRequest && (
+        <SaveLessonModal
+          roomId={roomId}
+          userName={userName}
+          rounds={getRounds(breakoutConfig)}
+          roundTemplates={roundTemplates}
+          mainBackground={fullMainBackground}
+          driveConfigured={isGoogleDriveConfigured()}
+          onRequest={onTeacherLessonRequest}
+          onClose={() => setLessonModal(null)}
+        />
+      )}
+      {isTeacher && lessonModal === 'load' && onTeacherLessonRequest && (
+        <LoadLessonModal
+          roomId={roomId}
+          isRoundLive={breakoutConfig.mode !== 'main'}
+          driveConfigured={isGoogleDriveConfigured()}
+          onRequest={onTeacherLessonRequest}
+          generateUnusedRoomCode={generateUnusedRoomCode ?? (async () => '')}
+          getSavedTeacherPin={getSavedTeacherPin ?? (() => '')}
+          onOpenNewRoom={(newRoomId, pin) => onOpenLoadedLessonRoom?.(newRoomId, pin)}
+          onSaveRoomFirst={() => void handleExportJSON()}
+          onLoadedHere={(lesson) => {
+            setTeacherViewingRoundId(null);
+            setTimeout(() => fitElementsAndBackgroundInView([], lesson.main.background), 120);
+          }}
+          onClose={() => setLessonModal(null)}
+        />
+      )}
       {pendingSnapshot && (
         <RestoreSnapshotModal
           roomId={roomId}
