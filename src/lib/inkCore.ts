@@ -225,28 +225,259 @@ export function traceHollowTipShape(
   ctx.arc(cx, cy, rad, 0, Math.PI * 2);
 }
 
-/**
- * Sample evenly spaced points along a polyline so dragged non-circular hollow shapes sweep smoothly.
+/* ---- Hollow shape brush: swept-shape geometry ----
+ *
+ * A dragged square/triangle/diamond/star stroke is the shape swept along the pen path.
+ * It used to be drawn by stamping the shape every ~0.28 radius along the path and filling
+ * all those overlapping copies as ONE canvas path (twice: outer colour, inner white).
+ * A long stroke made thousands of overlapping contours, and browsers rasterize that kind of
+ * path very slowly (100s of ms on a fast laptop). Because the ink layer repaints often, one
+ * big stroke kept the whole board slow until it was cleared.
+ *
+ * Now the path is simplified (within HOLLOW_SWEEP_TOLERANCE world px) and each straight
+ * piece is drawn as the exact sweep of the shape along it: the convex hull of the shape at
+ * both ends (the star is split into 5 convex kites first). That is a few hundred small,
+ * barely-overlapping polygons, built once per stroke and cached.
  */
-function samplePolylinePoints(points: number[], stepDist: number): Array<[number, number]> {
-  const out: Array<[number, number]> = [];
-  if (!points || points.length < 2) return out;
-  out.push([points[0], points[1]]);
-  const step = Math.max(1.5, stepDist);
-  for (let i = 2; i < points.length; i += 2) {
-    const x0 = points[i - 2];
-    const y0 = points[i - 1];
-    const x1 = points[i];
-    const y1 = points[i + 1];
-    const segLen = Math.hypot(x1 - x0, y1 - y0);
-    if (segLen <= 0.01) continue;
-    const count = Math.max(1, Math.ceil(segLen / step));
-    for (let s = 1; s <= count; s++) {
-      const t = s / count;
-      out.push([x0 + (x1 - x0) * t, y0 + (y1 - y0) * t]);
+
+/** Max distance (world px) the simplified pen path may stray from the real one. Invisible on screen. */
+export const HOLLOW_SWEEP_TOLERANCE = 0.35;
+/** Cap on raw points merged into one straight piece, so simplifying stays O(n). */
+const HOLLOW_SWEEP_MAX_RUN = 48;
+/** Polygons per canvas fill call: keeps every path small and cheap to rasterize. */
+export const HOLLOW_SWEEP_POLYS_PER_FILL = 48;
+
+function distToSegmentSq(px: number, py: number, ax: number, ay: number, bx: number, by: number): number {
+  const dx = bx - ax;
+  const dy = by - ay;
+  const len2 = dx * dx + dy * dy;
+  let t = len2 > 0 ? ((px - ax) * dx + (py - ay) * dy) / len2 : 0;
+  if (t < 0) t = 0;
+  else if (t > 1) t = 1;
+  const qx = ax + dx * t - px;
+  const qy = ay + dy * t - py;
+  return qx * qx + qy * qy;
+}
+
+/**
+ * Simplify a flat [x0, y0, x1, y1, ...] pen path so no dropped point is more than `tolerance`
+ * from the kept straight pieces. Streaming and O(n * maxRun); always keeps the first and last point.
+ */
+export function simplifyPathForSweep(
+  points: number[],
+  tolerance = HOLLOW_SWEEP_TOLERANCE,
+  maxRun = HOLLOW_SWEEP_MAX_RUN
+): number[] {
+  const n = Math.floor(points.length / 2);
+  if (n <= 2) return points.slice(0, n * 2);
+  const tol2 = tolerance * tolerance;
+  const out: number[] = [points[0], points[1]];
+  let anchor = 0;
+  let j = 2;
+  while (j < n) {
+    let ok = j - anchor <= maxRun;
+    if (ok) {
+      const ax = points[anchor * 2];
+      const ay = points[anchor * 2 + 1];
+      const bx = points[j * 2];
+      const by = points[j * 2 + 1];
+      for (let k = anchor + 1; k < j; k++) {
+        if (distToSegmentSq(points[k * 2], points[k * 2 + 1], ax, ay, bx, by) > tol2) {
+          ok = false;
+          break;
+        }
+      }
+    }
+    if (ok) {
+      j++;
+    } else {
+      anchor = j - 1;
+      out.push(points[anchor * 2], points[anchor * 2 + 1]);
+      j = anchor + 2;
     }
   }
+  const lx = points[(n - 1) * 2];
+  const ly = points[(n - 1) * 2 + 1];
+  if (out[out.length - 2] !== lx || out[out.length - 1] !== ly || out.length === 2) {
+    out.push(lx, ly);
+  }
   return out;
+}
+
+/**
+ * The tip shape as convex polygons centred on (0, 0), using the same vertices as `traceHollowTipShape`.
+ * Square, triangle and diamond are already convex; the star becomes 5 convex kites (tip, two inner
+ * corners, centre) whose union is the star.
+ */
+export function hollowTipConvexPieces(r: number, shapeKind: HollowShapeKind): number[][] {
+  const rad = Math.max(0.5, r);
+  if (shapeKind === 'square') return [[-rad, -rad, rad, -rad, rad, rad, -rad, rad]];
+  if (shapeKind === 'triangle') return [[0, -rad, rad, rad * 0.85, -rad, rad * 0.85]];
+  if (shapeKind === 'diamond') return [[0, -rad, rad, 0, 0, rad, -rad, 0]];
+  if (shapeKind === 'star') {
+    const inner = rad * 0.44;
+    const vx: number[] = [];
+    const vy: number[] = [];
+    for (let i = 0; i < 10; i++) {
+      const angle = -Math.PI / 2 + (i * Math.PI) / 5;
+      const d = i % 2 === 0 ? rad : inner;
+      vx.push(Math.cos(angle) * d);
+      vy.push(Math.sin(angle) * d);
+    }
+    const kites: number[][] = [];
+    for (let t = 0; t < 5; t++) {
+      const tip = t * 2;
+      const next = (tip + 1) % 10;
+      const prev = (tip + 9) % 10;
+      kites.push([vx[tip], vy[tip], vx[next], vy[next], 0, 0, vx[prev], vy[prev]]);
+    }
+    return kites;
+  }
+  // Circle has its own fast path; a 16-gon keeps this function total.
+  const ring: number[] = [];
+  for (let i = 0; i < 16; i++) {
+    const a = (i * Math.PI) / 8;
+    ring.push(Math.cos(a) * rad, Math.sin(a) * rad);
+  }
+  return [ring];
+}
+
+function cross(ox: number, oy: number, ax: number, ay: number, bx: number, by: number): number {
+  return (ax - ox) * (by - oy) - (ay - oy) * (bx - ox);
+}
+
+/** Convex hull (monotone chain) of a convex piece placed at (ax, ay) and at (bx, by): the exact sweep between them. */
+function sweptPieceHull(piece: number[], ax: number, ay: number, bx: number, by: number): number[] {
+  const m = piece.length / 2;
+  const pts: Array<[number, number]> = [];
+  for (let i = 0; i < m; i++) {
+    pts.push([piece[i * 2] + ax, piece[i * 2 + 1] + ay]);
+    if (ax !== bx || ay !== by) pts.push([piece[i * 2] + bx, piece[i * 2 + 1] + by]);
+  }
+  pts.sort((p, q) => p[0] - q[0] || p[1] - q[1]);
+  const lower: Array<[number, number]> = [];
+  for (const p of pts) {
+    while (lower.length >= 2 && cross(lower[lower.length - 2][0], lower[lower.length - 2][1], lower[lower.length - 1][0], lower[lower.length - 1][1], p[0], p[1]) <= 0) {
+      lower.pop();
+    }
+    lower.push(p);
+  }
+  const upper: Array<[number, number]> = [];
+  for (let i = pts.length - 1; i >= 0; i--) {
+    const p = pts[i];
+    while (upper.length >= 2 && cross(upper[upper.length - 2][0], upper[upper.length - 2][1], upper[upper.length - 1][0], upper[upper.length - 1][1], p[0], p[1]) <= 0) {
+      upper.pop();
+    }
+    upper.push(p);
+  }
+  lower.pop();
+  upper.pop();
+  const out: number[] = [];
+  for (const p of lower.concat(upper)) out.push(p[0], p[1]);
+  return out;
+}
+
+/**
+ * Convex polygons (flat [x0, y0, x1, y1, ...]) whose union is the tip shape of radius `r`
+ * swept along the (already simplified) pen path.
+ */
+export function buildHollowSweepPolygons(path: number[], r: number, shapeKind: HollowShapeKind): number[][] {
+  const pieces = hollowTipConvexPieces(r, shapeKind);
+  const polys: number[][] = [];
+  const n = Math.floor(path.length / 2);
+  if (n === 0) return polys;
+  if (n === 1) {
+    for (const piece of pieces) polys.push(sweptPieceHull(piece, path[0], path[1], path[0], path[1]));
+    return polys;
+  }
+  for (let i = 0; i + 1 < n; i++) {
+    const ax = path[i * 2];
+    const ay = path[i * 2 + 1];
+    const bx = path[i * 2 + 2];
+    const by = path[i * 2 + 3];
+    for (const piece of pieces) polys.push(sweptPieceHull(piece, ax, ay, bx, by));
+  }
+  return polys;
+}
+
+export interface HollowSweepGeometry {
+  outer: number[][];
+  inner: number[][];
+  outerPaths?: unknown[];
+  innerPaths?: unknown[];
+  /** Finished-stroke picture (see `drawHollowElementCached`). */
+  bitmap?: HollowStrokeBitmap;
+  /** Screen scale of the last vector paint, so a picture is only made once zooming has settled. */
+  lastVectorScale?: number;
+}
+
+export interface HollowStrokeBitmap {
+  canvas: { width: number; height: number };
+  /** Screen pixels per world px the picture was drawn at. */
+  scale: number;
+  /** World position of the picture's top-left pixel. */
+  x0: number;
+  y0: number;
+  color: string;
+  px: number;
+}
+
+const hollowSweepCache = new WeakMap<number[], { key: string; geom: HollowSweepGeometry }>();
+
+/**
+ * Swept outer (border colour) and inner (white) polygons for a dragged polygon/star hollow stroke.
+ * Cached per `points` array: board elements are immutable, so a finished stroke is built once and
+ * every later repaint reuses it.
+ */
+export function getHollowSweepGeometry(
+  points: number[],
+  rOuter: number,
+  rInner: number,
+  shapeKind: HollowShapeKind
+): HollowSweepGeometry {
+  const key = `${rOuter}|${rInner}|${shapeKind}`;
+  const hit = hollowSweepCache.get(points);
+  if (hit && hit.key === key) return hit.geom;
+  const path = simplifyPathForSweep(points);
+  const geom: HollowSweepGeometry = {
+    outer: buildHollowSweepPolygons(path, rOuter, shapeKind),
+    inner: buildHollowSweepPolygons(path, rInner, shapeKind),
+  };
+  hollowSweepCache.set(points, { key, geom });
+  return geom;
+}
+
+function tracePolygon(target: { moveTo(x: number, y: number): void; lineTo(x: number, y: number): void; closePath(): void }, poly: number[]): void {
+  target.moveTo(poly[0], poly[1]);
+  for (let i = 2; i < poly.length; i += 2) target.lineTo(poly[i], poly[i + 1]);
+  target.closePath();
+}
+
+function toPath2DChunks(polys: number[][]): unknown[] {
+  const Path2DCtor = (globalThis as { Path2D?: new () => any }).Path2D;
+  if (!Path2DCtor) return [];
+  const chunks: unknown[] = [];
+  for (let i = 0; i < polys.length; i += HOLLOW_SWEEP_POLYS_PER_FILL) {
+    const path = new Path2DCtor();
+    const end = Math.min(polys.length, i + HOLLOW_SWEEP_POLYS_PER_FILL);
+    for (let j = i; j < end; j++) tracePolygon(path, polys[j]);
+    chunks.push(path);
+  }
+  return chunks;
+}
+
+/** Fill a set of polygons in small batches (cached Path2D objects in the browser, plain path calls elsewhere). */
+function fillSweep(ctx: CanvasRenderingContext2D | any, polys: number[][], cachedPaths: unknown[] | undefined): void {
+  if (cachedPaths && cachedPaths.length > 0) {
+    for (const path of cachedPaths) ctx.fill(path);
+    return;
+  }
+  for (let i = 0; i < polys.length; i += HOLLOW_SWEEP_POLYS_PER_FILL) {
+    ctx.beginPath();
+    const end = Math.min(polys.length, i + HOLLOW_SWEEP_POLYS_PER_FILL);
+    for (let j = i; j < end; j++) tracePolygon(ctx, polys[j]);
+    ctx.fill();
+  }
 }
 
 /**
@@ -305,24 +536,152 @@ export function drawHollowElementOnCtx(
     return;
   }
 
-  const samples = samplePolylinePoints(points, Math.max(2, rOuter * 0.28));
+  const geom = getHollowSweepGeometry(points, rOuter, rInner, shapeKind);
+  if (typeof (globalThis as { Path2D?: unknown }).Path2D === 'function' && typeof ctx.fill === 'function') {
+    if (!geom.outerPaths) geom.outerPaths = toPath2DChunks(geom.outer);
+    if (!geom.innerPaths) geom.innerPaths = toPath2DChunks(geom.inner);
+  }
   ctx.save();
-  // Pass 1: Outer colored silhouette along the path
+  // Pass 1: outer coloured sweep; pass 2: inner white cutout sweep
   ctx.fillStyle = color;
-  ctx.beginPath();
-  for (let i = 0; i < samples.length; i++) {
-    traceHollowTipShape(ctx, samples[i][0], samples[i][1], rOuter, shapeKind);
-  }
-  ctx.fill();
-
-  // Pass 2: Inner white cutout along the path
+  fillSweep(ctx, geom.outer, geom.outerPaths);
   ctx.fillStyle = '#ffffff';
-  ctx.beginPath();
-  for (let i = 0; i < samples.length; i++) {
-    traceHollowTipShape(ctx, samples[i][0], samples[i][1], rInner, shapeKind);
-  }
-  ctx.fill();
+  fillSweep(ctx, geom.inner, geom.innerPaths);
   ctx.restore();
+}
+
+/* ---- Hollow shape brush: one picture per finished stroke ----
+ *
+ * On the live board a finished polygon/star stroke is painted once into its own small canvas at the
+ * current zoom, and every later repaint (drawing more ink, panning, other people drawing) is a single
+ * drawImage. The stroke's points stay as they are: erasers still erase part of it (they paint over
+ * the layer), undo, sync and PDF export are unchanged. While zooming, or for a stroke still being
+ * drawn, it is painted as vector shapes (the cached Path2D sweep above) until the zoom settles.
+ */
+
+/** Largest picture for one stroke (screen pixels). Bigger strokes (very zoomed in) stay vector. */
+export const HOLLOW_BITMAP_MAX_PX = 8_000_000;
+/** All stroke pictures together (screen pixels, ~4 bytes each, so ~128 MB). Oldest unused ones are dropped first. */
+export const HOLLOW_BITMAP_BUDGET_PX = 32_000_000;
+/** Strokes with fewer swept pieces than this are already cheap to paint and don't get a picture. */
+export const HOLLOW_BITMAP_MIN_POLYS = 64;
+
+const hollowBitmapLru = new Map<HollowStrokeBitmap, true>();
+let hollowBitmapPx = 0;
+
+function dropHollowBitmap(bmp: HollowStrokeBitmap): void {
+  if (!hollowBitmapLru.delete(bmp)) return;
+  hollowBitmapPx -= bmp.px;
+  // Release the pixels now rather than waiting for garbage collection.
+  bmp.canvas.width = 0;
+  bmp.canvas.height = 0;
+}
+
+/** Total pixels held by stroke pictures (for tests). */
+export function hollowBitmapPixelsInUse(): number {
+  return hollowBitmapPx;
+}
+
+function sweepBounds(polys: number[][]): [number, number, number, number] {
+  let x0 = Infinity;
+  let y0 = Infinity;
+  let x1 = -Infinity;
+  let y1 = -Infinity;
+  for (const poly of polys) {
+    for (let i = 0; i < poly.length; i += 2) {
+      if (poly[i] < x0) x0 = poly[i];
+      if (poly[i] > x1) x1 = poly[i];
+      if (poly[i + 1] < y0) y0 = poly[i + 1];
+      if (poly[i + 1] > y1) y1 = poly[i + 1];
+    }
+  }
+  return [x0, y0, x1, y1];
+}
+
+function defaultMakeCanvas(w: number, h: number): any {
+  if (typeof document === 'undefined') return null;
+  const canvas = document.createElement('canvas');
+  canvas.width = w;
+  canvas.height = h;
+  return canvas;
+}
+
+/**
+ * Live-board version of `drawHollowElementOnCtx`: same picture, but a finished dragged polygon/star
+ * stroke is painted as one cached image. `makeCanvas` is for tests.
+ */
+export function drawHollowElementCached(
+  ctx: CanvasRenderingContext2D | any,
+  points: number[],
+  outerSize: number,
+  lineWeight: number,
+  color: string,
+  shapeKind: HollowShapeKind = 'circle',
+  makeCanvas: (w: number, h: number) => any = defaultMakeCanvas
+): void {
+  const m = points && points.length >= 4 && shapeKind !== 'circle' && typeof ctx.getTransform === 'function'
+    ? ctx.getTransform()
+    : null;
+  // Only plain scale + translate (never rotated or skewed): that is all the ink layers use.
+  if (!m || m.b !== 0 || m.c !== 0 || !(m.a > 0) || Math.abs(m.a - m.d) > 1e-9) {
+    drawHollowElementOnCtx(ctx, points, outerSize, lineWeight, color, shapeKind);
+    return;
+  }
+  const scale = m.a;
+  const outerD = Math.max(4, outerSize || 24);
+  const rOuter = outerD / 2;
+  const weight = Math.max(1, Math.min(rOuter - 0.5, lineWeight || 2));
+  const rInner = Math.max(1, outerD - weight * 2) / 2;
+  const geom = getHollowSweepGeometry(points, rOuter, rInner, shapeKind);
+
+  let bmp = geom.bitmap;
+  if (bmp && (bmp.color !== color || Math.abs(bmp.scale - scale) > scale * 1e-6 || bmp.canvas.width === 0)) {
+    dropHollowBitmap(bmp);
+    bmp = geom.bitmap = undefined;
+  }
+
+  // Make the picture on the second paint at the same zoom, so zoom gestures don't make one per frame.
+  if (!bmp && geom.lastVectorScale === scale && geom.outer.length >= HOLLOW_BITMAP_MIN_POLYS) {
+    const pad = 2;
+    const [bx0, by0, bx1, by1] = sweepBounds(geom.outer);
+    const x0 = bx0 - pad;
+    const y0 = by0 - pad;
+    const w = Math.ceil((bx1 + pad - x0) * scale);
+    const h = Math.ceil((by1 + pad - y0) * scale);
+    const px = w * h;
+    if (w > 0 && h > 0 && w <= 16384 && h <= 16384 && px <= HOLLOW_BITMAP_MAX_PX) {
+      const canvas = makeCanvas(w, h);
+      const octx = canvas?.getContext?.('2d');
+      if (octx) {
+        octx.setTransform(scale, 0, 0, scale, -x0 * scale, -y0 * scale);
+        drawHollowElementOnCtx(octx, points, outerSize, lineWeight, color, shapeKind);
+        bmp = { canvas, scale, x0, y0, color, px };
+        geom.bitmap = bmp;
+        hollowBitmapLru.set(bmp, true);
+        hollowBitmapPx += px;
+        for (const old of hollowBitmapLru.keys()) {
+          if (hollowBitmapPx <= HOLLOW_BITMAP_BUDGET_PX || old === bmp) break;
+          dropHollowBitmap(old);
+        }
+      }
+    }
+  }
+
+  if (bmp) {
+    // Most recently used goes to the back of the eviction queue.
+    hollowBitmapLru.delete(bmp);
+    hollowBitmapLru.set(bmp, true);
+    const dx = Math.round(m.a * bmp.x0 + m.e);
+    const dy = Math.round(m.d * bmp.y0 + m.f);
+    ctx.save();
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.drawImage(bmp.canvas, dx, dy);
+    ctx.restore();
+    return;
+  }
+
+  geom.lastVectorScale = scale;
+  drawHollowElementOnCtx(ctx, points, outerSize, lineWeight, color, shapeKind);
 }
 
 /* ---- Editable Multiline Text Notes (OverBoard v45) ---- */
