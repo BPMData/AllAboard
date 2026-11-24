@@ -21,7 +21,13 @@ specs are in git history.
       four variants and pick the distribution: same for all / deal out in turn / by name-stamp corner.
     - On **Launch**, the server gives each new board its variant. Corner mode reads the main board's stamps at
       launch time. Late joiners get their variant by the same rule, not always A.
-    - Save variants and the distribution rule **on the round**, so they survive a restart and go into lesson packs.
+    - Save variants and the distribution rule **on the round**, so they survive a restart.
+    - **Lesson packs must carry all of it.** Anything a teacher sets up ahead of time (prepared rounds, their
+      variants A–D, the distribution rule, the corner mapping, per-student overrides, the late-joiner rule) must
+      go into **Save lesson…** (`.allaboard`) and come back intact with **Load lesson…**. Per-student overrides
+      only make sense in the same class, so on load, match them by student name and drop the ones that don't
+      match. Add a round-trip test: save a pack, load it into a fresh room, and check that every prepared field
+      matches.
   - [ ] **Make a sent distribution editable.** Reopening **Send worksheet…** starts empty: the uploaded variants
     and who got which are forgotten, so changing one student's card means uploading everything again.
     - Remember each round's variants and assignments, and reopen the modal with them filled in.
