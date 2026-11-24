@@ -32,6 +32,35 @@ test.describe('lobby', () => {
     await expect(page.getByRole('button', { name: 'Lock Board' })).toHaveCount(0);
   });
 
+  test('typing a room code in the lobby changes neither the address, the tab title nor the connection', async ({ page }) => {
+    const room = uniqueRoom('typed');
+    // A socket.io handshake (a new connection) is a polling request with no session id yet.
+    let handshakes = 0;
+    page.on('request', (req) => {
+      const url = req.url();
+      if (url.includes('/socket.io/') && !url.includes('sid=')) handshakes += 1;
+    });
+    await page.goto('/');
+    await expect(page.getByLabel('Room Code')).toBeVisible();
+    await expect.poll(() => handshakes).toBeGreaterThan(0);
+    const before = handshakes;
+
+    await page.getByLabel('Room Code').pressSequentially(room);
+    await expect(page.getByLabel('Room Code')).toHaveValue(room);
+    await page.waitForTimeout(500);
+    expect(new URL(page.url()).searchParams.get('room')).toBeNull();
+    await expect(page).toHaveTitle('AllAboard');
+    expect(handshakes).toBe(before);
+
+    // Joining is what moves the address and the title to the room.
+    await page.getByLabel('Your Display Name').fill('Alex');
+    await page.getByRole('button', { name: 'Join Classroom' }).click();
+    await expect(page.locator('.konvajs-content').first()).toBeVisible();
+    await expect(page).toHaveURL(new RegExp(`room=${room}`));
+    await expect(page).toHaveTitle(`#${room} · AllAboard`);
+    await expect(page.getByPlaceholder('Message the class...')).toBeVisible();
+  });
+
   test('a returning user is rejoined automatically after a reload', async ({ page }) => {
     const room = uniqueRoom('reload');
     await joinRoom(page, room, 'Alex');
