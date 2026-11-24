@@ -101,7 +101,7 @@ import {
   liveLiftPoint,
   traceSmoothStrokePath,
   traceHollowTipShape,
-  drawHollowElementOnCtx,
+  drawHollowElementCached,
   getNoteFontSize,
   noteSize,
   computeNotesGone,
@@ -527,7 +527,7 @@ function HollowStrokeShape({
     (ctx: any) => {
       const rawCtx = (ctx as any)._context as CanvasRenderingContext2D;
       if (!rawCtx || !points || points.length < 2) return;
-      drawHollowElementOnCtx(rawCtx, points, strokeWidth, hollowWeight, color, hollowShape);
+      drawHollowElementCached(rawCtx, points, strokeWidth, hollowWeight, color, hollowShape);
     },
     [points, strokeWidth, hollowWeight, color, hollowShape]
   );

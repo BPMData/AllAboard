@@ -405,6 +405,21 @@ export interface HollowSweepGeometry {
   inner: number[][];
   outerPaths?: unknown[];
   innerPaths?: unknown[];
+  /** Finished-stroke picture (see `drawHollowElementCached`). */
+  bitmap?: HollowStrokeBitmap;
+  /** Screen scale of the last vector paint, so a picture is only made once zooming has settled. */
+  lastVectorScale?: number;
+}
+
+export interface HollowStrokeBitmap {
+  canvas: { width: number; height: number };
+  /** Screen pixels per world px the picture was drawn at. */
+  scale: number;
+  /** World position of the picture's top-left pixel. */
+  x0: number;
+  y0: number;
+  color: string;
+  px: number;
 }
 
 const hollowSweepCache = new WeakMap<number[], { key: string; geom: HollowSweepGeometry }>();
@@ -533,6 +548,140 @@ export function drawHollowElementOnCtx(
   ctx.fillStyle = '#ffffff';
   fillSweep(ctx, geom.inner, geom.innerPaths);
   ctx.restore();
+}
+
+/* ---- Hollow shape brush: one picture per finished stroke ----
+ *
+ * On the live board a finished polygon/star stroke is painted once into its own small canvas at the
+ * current zoom, and every later repaint (drawing more ink, panning, other people drawing) is a single
+ * drawImage. The stroke's points stay as they are: erasers still erase part of it (they paint over
+ * the layer), undo, sync and PDF export are unchanged. While zooming, or for a stroke still being
+ * drawn, it is painted as vector shapes (the cached Path2D sweep above) until the zoom settles.
+ */
+
+/** Largest picture for one stroke (screen pixels). Bigger strokes (very zoomed in) stay vector. */
+export const HOLLOW_BITMAP_MAX_PX = 8_000_000;
+/** All stroke pictures together (screen pixels, ~4 bytes each, so ~128 MB). Oldest unused ones are dropped first. */
+export const HOLLOW_BITMAP_BUDGET_PX = 32_000_000;
+/** Strokes with fewer swept pieces than this are already cheap to paint and don't get a picture. */
+export const HOLLOW_BITMAP_MIN_POLYS = 64;
+
+const hollowBitmapLru = new Map<HollowStrokeBitmap, true>();
+let hollowBitmapPx = 0;
+
+function dropHollowBitmap(bmp: HollowStrokeBitmap): void {
+  if (!hollowBitmapLru.delete(bmp)) return;
+  hollowBitmapPx -= bmp.px;
+  // Release the pixels now rather than waiting for garbage collection.
+  bmp.canvas.width = 0;
+  bmp.canvas.height = 0;
+}
+
+/** Total pixels held by stroke pictures (for tests). */
+export function hollowBitmapPixelsInUse(): number {
+  return hollowBitmapPx;
+}
+
+function sweepBounds(polys: number[][]): [number, number, number, number] {
+  let x0 = Infinity;
+  let y0 = Infinity;
+  let x1 = -Infinity;
+  let y1 = -Infinity;
+  for (const poly of polys) {
+    for (let i = 0; i < poly.length; i += 2) {
+      if (poly[i] < x0) x0 = poly[i];
+      if (poly[i] > x1) x1 = poly[i];
+      if (poly[i + 1] < y0) y0 = poly[i + 1];
+      if (poly[i + 1] > y1) y1 = poly[i + 1];
+    }
+  }
+  return [x0, y0, x1, y1];
+}
+
+function defaultMakeCanvas(w: number, h: number): any {
+  if (typeof document === 'undefined') return null;
+  const canvas = document.createElement('canvas');
+  canvas.width = w;
+  canvas.height = h;
+  return canvas;
+}
+
+/**
+ * Live-board version of `drawHollowElementOnCtx`: same picture, but a finished dragged polygon/star
+ * stroke is painted as one cached image. `makeCanvas` is for tests.
+ */
+export function drawHollowElementCached(
+  ctx: CanvasRenderingContext2D | any,
+  points: number[],
+  outerSize: number,
+  lineWeight: number,
+  color: string,
+  shapeKind: HollowShapeKind = 'circle',
+  makeCanvas: (w: number, h: number) => any = defaultMakeCanvas
+): void {
+  const m = points && points.length >= 4 && shapeKind !== 'circle' && typeof ctx.getTransform === 'function'
+    ? ctx.getTransform()
+    : null;
+  // Only plain scale + translate (never rotated or skewed): that is all the ink layers use.
+  if (!m || m.b !== 0 || m.c !== 0 || !(m.a > 0) || Math.abs(m.a - m.d) > 1e-9) {
+    drawHollowElementOnCtx(ctx, points, outerSize, lineWeight, color, shapeKind);
+    return;
+  }
+  const scale = m.a;
+  const outerD = Math.max(4, outerSize || 24);
+  const rOuter = outerD / 2;
+  const weight = Math.max(1, Math.min(rOuter - 0.5, lineWeight || 2));
+  const rInner = Math.max(1, outerD - weight * 2) / 2;
+  const geom = getHollowSweepGeometry(points, rOuter, rInner, shapeKind);
+
+  let bmp = geom.bitmap;
+  if (bmp && (bmp.color !== color || Math.abs(bmp.scale - scale) > scale * 1e-6 || bmp.canvas.width === 0)) {
+    dropHollowBitmap(bmp);
+    bmp = geom.bitmap = undefined;
+  }
+
+  // Make the picture on the second paint at the same zoom, so zoom gestures don't make one per frame.
+  if (!bmp && geom.lastVectorScale === scale && geom.outer.length >= HOLLOW_BITMAP_MIN_POLYS) {
+    const pad = 2;
+    const [bx0, by0, bx1, by1] = sweepBounds(geom.outer);
+    const x0 = bx0 - pad;
+    const y0 = by0 - pad;
+    const w = Math.ceil((bx1 + pad - x0) * scale);
+    const h = Math.ceil((by1 + pad - y0) * scale);
+    const px = w * h;
+    if (w > 0 && h > 0 && w <= 16384 && h <= 16384 && px <= HOLLOW_BITMAP_MAX_PX) {
+      const canvas = makeCanvas(w, h);
+      const octx = canvas?.getContext?.('2d');
+      if (octx) {
+        octx.setTransform(scale, 0, 0, scale, -x0 * scale, -y0 * scale);
+        drawHollowElementOnCtx(octx, points, outerSize, lineWeight, color, shapeKind);
+        bmp = { canvas, scale, x0, y0, color, px };
+        geom.bitmap = bmp;
+        hollowBitmapLru.set(bmp, true);
+        hollowBitmapPx += px;
+        for (const old of hollowBitmapLru.keys()) {
+          if (hollowBitmapPx <= HOLLOW_BITMAP_BUDGET_PX || old === bmp) break;
+          dropHollowBitmap(old);
+        }
+      }
+    }
+  }
+
+  if (bmp) {
+    // Most recently used goes to the back of the eviction queue.
+    hollowBitmapLru.delete(bmp);
+    hollowBitmapLru.set(bmp, true);
+    const dx = Math.round(m.a * bmp.x0 + m.e);
+    const dy = Math.round(m.d * bmp.y0 + m.f);
+    ctx.save();
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.drawImage(bmp.canvas, dx, dy);
+    ctx.restore();
+    return;
+  }
+
+  geom.lastVectorScale = scale;
+  drawHollowElementOnCtx(ctx, points, outerSize, lineWeight, color, shapeKind);
 }
 
 /* ---- Editable Multiline Text Notes (OverBoard v45) ---- */

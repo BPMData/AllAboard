@@ -19,6 +19,9 @@ import {
   hollowTipConvexPieces,
   buildHollowSweepPolygons,
   getHollowSweepGeometry,
+  drawHollowElementCached,
+  hollowBitmapPixelsInUse,
+  HOLLOW_BITMAP_BUDGET_PX,
   HOLLOW_SWEEP_TOLERANCE,
   HOLLOW_SWEEP_POLYS_PER_FILL,
   getNoteFontSize,
@@ -559,5 +562,132 @@ describe('hollow shape brush: swept strokes stay cheap to paint (shape-tool FPS 
     assert.notEqual(c, a, 'different shape rebuilds');
     const d = getHollowSweepGeometry(pts.slice(), 18, 15, 'square');
     assert.notEqual(d, c, 'a new points array (stroke still growing) rebuilds');
+  });
+});
+
+describe('hollow shape brush: a finished stroke becomes one picture', () => {
+  function makeLog() {
+    const log = { fills: 0, images: 0, canvases: 0 };
+    const pathCtx = () => ({
+      fillStyle: '',
+      save() {},
+      restore() {},
+      beginPath() {},
+      moveTo() {},
+      lineTo() {},
+      closePath() {},
+      quadraticCurveTo() {},
+      arc() {},
+      stroke() {},
+      setTransform() {},
+      fill() {
+        log.fills += 1;
+      },
+    });
+    let m = { a: 2, b: 0, c: 0, d: 2, e: 10, f: 20 };
+    const ctx = {
+      ...pathCtx(),
+      getTransform: () => m,
+      drawImage() {
+        log.images += 1;
+      },
+    };
+    const makeCanvas = (w: number, h: number) => {
+      log.canvases += 1;
+      return { width: w, height: h, getContext: () => pathCtx() };
+    };
+    return { log, ctx, makeCanvas, setTransform: (next: typeof m) => (m = next) };
+  }
+
+  const stroke = () => {
+    const pts: number[] = [];
+    for (let i = 0; i <= 600; i++) pts.push(100 + i * 1.5, 200 + 60 * Math.sin(i / 8));
+    return pts;
+  };
+
+  it('paints shapes once, then repaints as a single image', () => {
+    const { log, ctx, makeCanvas } = makeLog();
+    const pts = stroke();
+    drawHollowElementCached(ctx, pts, 36, 3, '#cc0000', 'star', makeCanvas);
+    assert.ok(log.fills > 0, 'first paint draws the shapes');
+    assert.equal(log.images, 0);
+
+    log.fills = 0;
+    drawHollowElementCached(ctx, pts, 36, 3, '#cc0000', 'star', makeCanvas);
+    assert.equal(log.canvases, 1, 'second paint at the same zoom makes the picture');
+    assert.equal(log.images, 1);
+
+    log.fills = 0;
+    log.images = 0;
+    for (let i = 0; i < 20; i++) drawHollowElementCached(ctx, pts, 36, 3, '#cc0000', 'star', makeCanvas);
+    assert.equal(log.fills, 0, 'later repaints fill nothing');
+    assert.equal(log.images, 20, 'one image per repaint');
+    assert.equal(log.canvases, 1, 'picture reused');
+  });
+
+  it('goes back to shapes while zooming and remakes the picture once the zoom settles', () => {
+    const { log, ctx, makeCanvas, setTransform } = makeLog();
+    const pts = stroke();
+    drawHollowElementCached(ctx, pts, 36, 3, '#0000cc', 'square', makeCanvas);
+    drawHollowElementCached(ctx, pts, 36, 3, '#0000cc', 'square', makeCanvas);
+    assert.equal(log.canvases, 1);
+
+    setTransform({ a: 3, b: 0, c: 0, d: 3, e: 0, f: 0 });
+    log.fills = 0;
+    log.images = 0;
+    drawHollowElementCached(ctx, pts, 36, 3, '#0000cc', 'square', makeCanvas);
+    assert.ok(log.fills > 0, 'new zoom: crisp shapes, not a stretched picture');
+    assert.equal(log.images, 0);
+    drawHollowElementCached(ctx, pts, 36, 3, '#0000cc', 'square', makeCanvas);
+    assert.equal(log.canvases, 2, 'picture remade at the settled zoom');
+    assert.equal(log.images, 1);
+
+    // Panning (translation only) keeps the picture.
+    setTransform({ a: 3, b: 0, c: 0, d: 3, e: 250, f: -40 });
+    drawHollowElementCached(ctx, pts, 36, 3, '#0000cc', 'square', makeCanvas);
+    assert.equal(log.canvases, 2);
+    assert.equal(log.images, 2);
+  });
+
+  it('stays vector for a stroke still being drawn, round strokes, and rotated contexts', () => {
+    const { log, ctx, makeCanvas, setTransform } = makeLog();
+    let pts = stroke();
+    for (let i = 0; i < 5; i++) {
+      pts = [...pts, pts[pts.length - 2] + 1.5, pts[pts.length - 1]]; // each move is a new points array
+      drawHollowElementCached(ctx, pts, 36, 3, '#00aa00', 'triangle', makeCanvas);
+    }
+    assert.equal(log.canvases, 0, 'no picture while the pen is down');
+
+    const done = stroke();
+    drawHollowElementCached(ctx, done, 36, 3, '#00aa00', 'circle', makeCanvas);
+    drawHollowElementCached(ctx, done, 36, 3, '#00aa00', 'circle', makeCanvas);
+    assert.equal(log.canvases, 0, 'round brush strokes are already cheap and stay as they were');
+
+    const short = [0, 0, 40, 10, 80, 0];
+    drawHollowElementCached(ctx, short, 36, 3, '#00aa00', 'star', makeCanvas);
+    drawHollowElementCached(ctx, short, 36, 3, '#00aa00', 'star', makeCanvas);
+    assert.equal(log.canvases, 0, 'small strokes are cheap already and use no picture memory');
+
+    setTransform({ a: 1, b: 0.5, c: -0.5, d: 1, e: 0, f: 0 });
+    drawHollowElementCached(ctx, done, 36, 3, '#00aa00', 'diamond', makeCanvas);
+    drawHollowElementCached(ctx, done, 36, 3, '#00aa00', 'diamond', makeCanvas);
+    assert.equal(log.canvases, 0);
+  });
+
+  it('keeps total picture memory under the budget by dropping the oldest', () => {
+    const { ctx, makeCanvas } = makeLog();
+    // ~1,300 x 600 world px at 2x: about 3M screen px per stroke picture.
+    const strokes: number[][] = [];
+    for (let k = 0; k < 30; k++) {
+      const pts: number[] = [];
+      for (let i = 0; i <= 300; i++) pts.push(i * 4.3 + k * 0.01, 300 * Math.sin(i / 20));
+      strokes.push(pts);
+    }
+    for (const pts of strokes) {
+      drawHollowElementCached(ctx, pts, 36, 3, '#333333', 'star', makeCanvas);
+      drawHollowElementCached(ctx, pts, 36, 3, '#333333', 'star', makeCanvas);
+      assert.ok(hollowBitmapPixelsInUse() <= HOLLOW_BITMAP_BUDGET_PX, `${hollowBitmapPixelsInUse()} px in use`);
+    }
+    assert.ok(hollowBitmapPixelsInUse() > 0);
   });
 });
