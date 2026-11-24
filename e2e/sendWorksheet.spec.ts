@@ -53,7 +53,25 @@ test('Send worksheet rotates A/B across individual boards', async ({ browser }) 
   const beaImg = teacher.page.getByAltText("Bea's Board");
   await expect(alexImg).toHaveAttribute('src', /^\/api\/assets\//);
   await expect(beaImg).toHaveAttribute('src', /^\/api\/assets\//);
-  expect(await alexImg.getAttribute('src')).not.toEqual(await beaImg.getAttribute('src'));
+  const aSrc = await alexImg.getAttribute('src');
+  expect(aSrc).not.toEqual(await beaImg.getAttribute('src'));
 
-  for (const u of [teacher, alex, bea]) await u.context.close();
+  // Reopening starts from what was sent: both files, and each board keeps its letter.
+  await teacher.page.getByRole('button', { name: 'Send worksheet…' }).click();
+  await expect(dialog.getByText(/card_A\.png · 1 page/)).toBeVisible();
+  await expect(dialog.getByText(/card_B\.png · 1 page/)).toBeVisible();
+  await expect(dialog.getByLabel("Worksheet for Alex's Board")).toHaveValue('A');
+  await expect(dialog.getByLabel("Worksheet for Bea's Board")).toHaveValue('B');
+  // Change one board by hand and send again: only Bea's board changes.
+  await dialog.getByLabel("Worksheet for Bea's Board").selectOption('A');
+  await dialog.getByRole('button', { name: 'Send', exact: true }).click();
+  await expect(dialog).toHaveCount(0);
+  await expect(beaImg).toHaveAttribute('src', aSrc!);
+
+  // A late joiner gets the next letter in turn: Alex A, Bea A (picked), so Cal gets A (2 handed out, 2 letters).
+  const cal = await newUser(browser);
+  await joinRoom(cal.page, room, 'Cal');
+  await expect(teacher.page.getByAltText("Cal's Board")).toHaveAttribute('src', /^\/api\/assets\//);
+
+  for (const u of [teacher, alex, bea, cal]) await u.context.close();
 });

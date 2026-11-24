@@ -6,6 +6,7 @@
  * embeds the images, and both sides check a file with `validateLesson`.
  */
 import type { BreakoutRoundMeta, CanvasElement, RoomBackground } from '../types.ts';
+import { normalizeRoundVariants, type RoundVariants } from './roundVariants.ts';
 
 export const LESSON_KIND = 'allaboard-lesson';
 /** Bump only on a breaking change; loaders refuse newer versions. */
@@ -28,7 +29,8 @@ export type LessonRequestEvent =
   | 'teacher:export-lesson'
   | 'teacher:has-assets'
   | 'teacher:upload-asset'
-  | 'teacher:load-lesson';
+  | 'teacher:load-lesson'
+  | 'teacher:set-round-variants';
 
 export type MainInkChoice = 'teacher' | 'all' | 'none';
 export type ChatScope = 'unified' | 'board';
@@ -48,7 +50,14 @@ export interface LessonRound {
   ink?: CanvasElement[];
   allowSelfSelect?: boolean;
   chatScope?: ChatScope;
+  /**
+   * Individual rounds only: worksheets B–D, the rule for who gets which, and (only when the teacher chose to save
+   * them) per-student picks by name. Never who got which in class.
+   */
+  variants?: LessonVariants;
 }
+
+export type LessonVariants = Omit<RoundVariants, 'assigned'>;
 
 export interface LessonSettings {
   oneNameStamp?: boolean;
@@ -97,6 +106,10 @@ export interface LessonBuildInput {
   roundTemplates: Record<string, RoomBackground | null | undefined>;
   /** Template ink per round id (phase 3): teacher ink copied onto each of the round's boards. */
   roundTemplateInk?: Record<string, CanvasElement[] | undefined>;
+  /** Worksheet variants per round id (server `roundVariants`). */
+  roundVariants?: Record<string, RoundVariants | undefined>;
+  /** Keep per-student worksheet picks (student names). Off unless the teacher ticks it. */
+  includeStudentPicks?: boolean;
   boards: LessonBoardInput[];
   /** Which rounds to include. Omitted: every prepared round, plus launched rounds when `includeLaunchedRounds`. */
   roundIds?: string[];
@@ -187,6 +200,11 @@ export function buildLessonPack(input: LessonBuildInput): LessonPack {
         if (ink.some((list) => list.length > 0)) round.groupInk = ink;
       }
     }
+    const v = round.mode === 'individual' ? input.roundVariants?.[r.id] : undefined;
+    if (v) {
+      const lv = lessonVariants(v, input.includeStudentPicks === true);
+      if (lv) round.variants = lv;
+    }
     if (r.prepared === true) {
       if (typeof r.allowSelfSelect === 'boolean') round.allowSelfSelect = r.allowSelfSelect;
       if (r.chatScope === 'board' || r.chatScope === 'unified') round.chatScope = r.chatScope;
@@ -230,12 +248,26 @@ export function buildLessonPack(input: LessonBuildInput): LessonPack {
   return pack;
 }
 
+/** A round's variants as a pack keeps them: no "who got which", picks by name only when asked. null if empty. */
+export function lessonVariants(v: RoundVariants, includeStudentPicks: boolean): LessonVariants | null {
+  const extra = v.extra.map((bg) => cloneBg(bg));
+  const overrides = includeStudentPicks ? { ...v.overrides } : {};
+  if (!extra.some(Boolean) && Object.keys(overrides).length === 0) return null;
+  return { extra, rule: v.rule, cornerMap: { ...v.cornerMap }, lateJoiners: v.lateJoiners, overrides };
+}
+
+/** True when any round has per-student picks (for the Save lesson checkbox). */
+export function hasStudentPicks(roundVariants: Record<string, RoundVariants | undefined> | undefined): boolean {
+  return Object.values(roundVariants ?? {}).some((v) => v && Object.keys(v.overrides).length > 0);
+}
+
 // ---------- Assets ----------
 
 function allBackgrounds(lesson: LessonPack): RoomBackground[] {
   const list: Array<RoomBackground | null | undefined> = [
     lesson.main.background,
     ...lesson.rounds.map((r) => r.worksheet),
+    ...lesson.rounds.flatMap((r) => r.variants?.extra ?? []),
     lesson.settings.autoIndividualBackground,
   ];
   return list.filter((bg): bg is RoomBackground => Boolean(bg));
@@ -412,6 +444,21 @@ export function validateLesson(raw: unknown): { lesson: LessonPack | null; error
       }
       if (typeof r.allowSelfSelect === 'boolean') round.allowSelfSelect = r.allowSelfSelect;
       if (r.chatScope === 'board' || r.chatScope === 'unified') round.chatScope = r.chatScope;
+      if (r.variants !== undefined && mode === 'individual') {
+        if (!isObject(r.variants)) return { lesson: null, error: `${where}: the worksheet variants are damaged.` };
+        const rawExtra = Array.isArray(r.variants.extra) ? r.variants.extra.slice(0, 3) : [];
+        const extra: (RoomBackground | null)[] = [];
+        for (let vi = 0; vi < 3; vi++) {
+          const bg = checkBackground(rawExtra[vi], `${where}, worksheet ${'BCD'[vi]}`);
+          if (!bg.ok) return { lesson: null, error: bg.error };
+          extra.push(bg.value);
+        }
+        const v = normalizeRoundVariants({ ...r.variants, extra, assigned: {} });
+        if (v) {
+          const lv = lessonVariants(v, true);
+          if (lv) round.variants = lv;
+        }
+      }
       rounds.push(round);
     }
 

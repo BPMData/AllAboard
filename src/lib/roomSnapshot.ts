@@ -51,6 +51,8 @@ export function parseSnapshotText(fileName: string, text: string, fallbackRoomId
         parsed.roundTemplates && typeof parsed.roundTemplates === 'object' ? parsed.roundTemplates : undefined,
       roundTemplateInk:
         parsed.roundTemplateInk && typeof parsed.roundTemplateInk === 'object' ? parsed.roundTemplateInk : undefined,
+      roundVariants:
+        parsed.roundVariants && typeof parsed.roundVariants === 'object' ? parsed.roundVariants : undefined,
     },
   };
 }

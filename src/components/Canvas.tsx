@@ -184,6 +184,7 @@ import { CURSOR_EMIT_MS } from '../lib/drawThrottle';
 import { isPhoneViewport } from '../lib/compactLayout';
 import { STATUS_OPTIONS } from './StudentStatusBadge';
 import { LoadLessonModal, SaveLessonModal, type LessonRequest } from './LessonPackModals';
+import { variantBackgrounds, type RoundVariants } from '../lib/roundVariants';
 
 type HistoryAction =
   | { kind: 'add'; items: CanvasElement[] }
@@ -204,6 +205,8 @@ interface CanvasProps {
   roundTemplates?: Record<string, RoomBackground | null>;
   /** Teacher-only: ink each round copies onto its boards. */
   roundTemplateInk?: Record<string, CanvasElement[]>;
+  /** Teacher-only: worksheet variants B–D per individual round. */
+  roundVariants?: Record<string, RoundVariants>;
   users: User[];
   remoteCursors: Record<string, RemoteCursor>;
   laserSocket: Socket | null;
@@ -254,6 +257,7 @@ interface CanvasProps {
       assets?: Record<string, string>;
       roundTemplates?: Record<string, RoomBackground | null>;
       roundTemplateInk?: Record<string, CanvasElement[]>;
+      roundVariants?: Record<string, RoundVariants>;
     },
     mode: ImportRestoreMode
   ) => Promise<{ ok: boolean; error?: string }>;
@@ -685,6 +689,7 @@ function WorksheetPageNode({
 
 const EMPTY_ROUND_TEMPLATES: Record<string, RoomBackground | null> = {};
 const EMPTY_TEMPLATE_INK: Record<string, CanvasElement[]> = {};
+const EMPTY_ROUND_VARIANTS: Record<string, RoundVariants> = {};
 
 export default function Canvas({
   roomId,
@@ -697,6 +702,7 @@ export default function Canvas({
   breakoutConfig,
   roundTemplates = EMPTY_ROUND_TEMPLATES,
   roundTemplateInk = EMPTY_TEMPLATE_INK,
+  roundVariants = EMPTY_ROUND_VARIANTS,
   users,
   remoteCursors,
   laserSocket,
@@ -2437,6 +2443,7 @@ export default function Canvas({
         ...Object.values(subBoards || {}).map((sb) => sb?.background),
         breakoutConfig.autoIndividualBackground,
         ...Object.values(roundTemplates),
+        ...Object.values(roundVariants).flatMap((v) => variantBackgrounds(v)),
       ])
     );
     const snapshot: RoomSnapshot = {
@@ -2452,6 +2459,7 @@ export default function Canvas({
       breakoutConfig,
       ...(Object.keys(roundTemplates).length > 0 ? { roundTemplates } : {}),
       ...(Object.keys(roundTemplateInk).length > 0 ? { roundTemplateInk } : {}),
+      ...(Object.keys(roundVariants).length > 0 ? { roundVariants } : {}),
     };
 
     return {
@@ -2640,6 +2648,7 @@ export default function Canvas({
         assets: pendingSnapshot.assets,
         roundTemplates: pendingSnapshot.roundTemplates,
         roundTemplateInk: pendingSnapshot.roundTemplateInk,
+        roundVariants: pendingSnapshot.roundVariants,
       },
       importMode
     );
@@ -5634,6 +5643,9 @@ export default function Canvas({
           onTeacherClearStatus={onTeacherClearStatus}
           onSpotlightBoard={onSpotlightBoard}
           onSendWorksheet={onTeacherSendWorksheet}
+          roundTemplates={roundTemplates}
+          roundVariants={roundVariants}
+          onTeacherRequest={onTeacherLessonRequest}
           users={users}
           fullMainElements={fullMainElements}
           fullMainBackground={fullMainBackground}
@@ -5657,6 +5669,8 @@ export default function Canvas({
           preparedRounds={preparedRounds}
           roundTemplates={roundTemplates}
           roundTemplateInk={roundTemplateInk}
+          roundVariants={roundVariants}
+          onTeacherRequest={onTeacherLessonRequest}
           mainTeacherInkCount={mainTeacherInkCount}
           subBoards={subBoards}
           onLoadDraftGroupsForRound={loadDraftGroupsForRound}
@@ -5756,6 +5770,7 @@ export default function Canvas({
           userName={userName}
           rounds={getRounds(breakoutConfig)}
           roundTemplates={roundTemplates}
+          roundVariants={roundVariants}
           mainBackground={fullMainBackground}
           driveConfigured={isGoogleDriveConfigured()}
           onRequest={onTeacherLessonRequest}

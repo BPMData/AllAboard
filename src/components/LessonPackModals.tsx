@@ -8,12 +8,14 @@ import {
   lessonFileName,
   parseLessonText,
   rewriteAssetUrls,
+  hasStudentPicks,
   roundNameFromTitle,
   type LessonPack,
   type LessonRequestEvent,
   type MainInkChoice,
 } from '../lib/lessonPack';
 import { embedAssets } from '../lib/roomSnapshot';
+import { variantsNote, type RoundVariants } from '../lib/roundVariants';
 import { normalizeRoomCode, sanitizeRoomCodeDraft } from '../lib/roomCode';
 import { MIN_TEACHER_PIN_LENGTH } from '../lib/teacherPin';
 import {
@@ -108,6 +110,8 @@ interface SaveLessonModalProps {
   userName: string;
   rounds: BreakoutRoundMeta[];
   roundTemplates: Record<string, RoomBackground | null>;
+  /** Worksheet variants B–D per round, to list them and to offer saving per-student picks. */
+  roundVariants?: Record<string, RoundVariants>;
   mainBackground: RoomBackground | null;
   driveConfigured: boolean;
   onRequest: LessonRequest;
@@ -124,11 +128,14 @@ export function SaveLessonModal({
   userName,
   rounds,
   roundTemplates,
+  roundVariants = {},
   mainBackground,
   driveConfigured,
   onRequest,
   onClose,
 }: SaveLessonModalProps) {
+  const [includeStudentPicks, setIncludeStudentPicks] = useState(false);
+  const anyStudentPicks = hasStudentPicks(roundVariants);
   const [title, setTitle] = useState(roomId);
   const [includeAuthor, setIncludeAuthor] = useState(true);
   const [mainInk, setMainInk] = useState<MainInkChoice>('teacher');
@@ -153,6 +160,7 @@ export function SaveLessonModal({
         exportedBy: includeAuthor ? userName : undefined,
         mainInk,
         roundIds: selectedKey ? selectedKey.split(',') : [],
+        includeStudentPicks,
       });
       if (cancelled) return;
       if (!res?.ok) {
@@ -181,7 +189,7 @@ export function SaveLessonModal({
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [title, includeAuthor, userName, mainInk, selectedKey, onRequest, retry]);
+  }, [title, includeAuthor, userName, mainInk, selectedKey, includeStudentPicks, onRequest, retry]);
 
   const toggleRound = (id: string) =>
     setSelected((prev) => {
@@ -309,6 +317,7 @@ export function SaveLessonModal({
               <span>
                 {roundNameFromTitle(r.title) || `Round ${r.number}`} · {r.mode === 'groups' ? 'Groups' : 'Individual'} ·{' '}
                 {roundTemplates[r.id]?.fileName || 'blank'}
+                {variantsNote(roundVariants[r.id])}
                 {r.prepared ? ' (prepared)' : ' (already run; saved without student work)'}
               </span>
             </label>
@@ -316,8 +325,22 @@ export function SaveLessonModal({
         )}
       </div>
 
+      {anyStudentPicks && (
+        <label className="flex items-start gap-2 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={includeStudentPicks}
+            onChange={(e) => setIncludeStudentPicks(e.target.checked)}
+            className="mt-0.5"
+          />
+          <span>
+            Also save the worksheets you picked for specific students (saves those students' names). They apply when a
+            student with the same name joins.
+          </span>
+        </label>
+      )}
       <p className="p-2.5 rounded-[3px] bg-slate-50 border border-[#CBD5E1]">
-        Never saved: student boards, chat, student names, groups' members, your PIN.
+        Never saved: student boards, chat, {includeStudentPicks ? 'other ' : ''}student names, groups' members, your PIN.
       </p>
 
       <div aria-live="polite" className="space-y-1">
@@ -582,6 +605,7 @@ export function LoadLessonModal({
                   {r.title || (r.mode === 'groups' ? 'Groups' : 'Individual')} ·{' '}
                   {r.mode === 'groups' ? `${r.groups?.length ?? 0} groups` : 'Individual'} · {r.worksheet?.fileName || 'blank'}
                   {r.ink?.length ? ` + teacher ink (${r.ink.length})` : ''}
+                  {variantsNote(r.variants)}
                 </li>
               ))}
             </ol>

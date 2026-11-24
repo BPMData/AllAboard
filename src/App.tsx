@@ -35,6 +35,7 @@ import RoomHistoryDropdown from './components/RoomHistoryDropdown';
 import { normalizeRoomCode, sanitizeRoomCodeDraft } from './lib/roomCode';
 import { recordRoomHistory } from './lib/roomHistory';
 import type { LessonRequestEvent } from './lib/lessonPack';
+import type { RoundVariants } from './lib/roundVariants';
 import { motion } from 'motion/react';
 import { LogIn, Users, KeyRound, PlusCircle, Shuffle, Eye, EyeOff, LifeBuoy } from 'lucide-react';
 import { POINT_FLUSH_MS } from './lib/drawThrottle';
@@ -242,6 +243,8 @@ export default function App() {
   const [roundTemplates, setRoundTemplates] = useState<Record<string, RoomBackground | null>>({});
   /** Teacher-only: ink each round copies onto its boards (server `roundTemplateInk`). Empty for students. */
   const [roundTemplateInk, setRoundTemplateInk] = useState<Record<string, CanvasElement[]>>({});
+  /** Teacher-only: worksheet variants B–D and who gets which, per individual round (server `roundVariants`). */
+  const [roundVariants, setRoundVariants] = useState<Record<string, RoundVariants>>({});
   const [teacherSelectedBoardId, setTeacherSelectedBoardId] = useState<string>('main');
 
   const [users, setUsers] = useState<User[]>([]);
@@ -414,11 +417,13 @@ export default function App() {
         isTeacher: verifiedTeacher,
         roundTemplates: initRoundTemplates,
         roundTemplateInk: initRoundTemplateInk,
+        roundVariants: initRoundVariants,
         assignedName,
         isNameLocked: initNameLocked,
       }) => {
         setRoundTemplates(initRoundTemplates && typeof initRoundTemplates === 'object' ? initRoundTemplates : {});
         setRoundTemplateInk(initRoundTemplateInk && typeof initRoundTemplateInk === 'object' ? initRoundTemplateInk : {});
+        setRoundVariants(initRoundVariants && typeof initRoundVariants === 'object' ? initRoundVariants : {});
         const nextSeen = new Set<string>();
         if (Array.isArray(initMsgs)) {
           setMessages(initMsgs);
@@ -463,16 +468,19 @@ export default function App() {
         subBoards: syncedSubBoards,
         roundTemplates: syncedRoundTemplates,
         roundTemplateInk: syncedTemplateInk,
+        roundVariants: syncedVariants,
       }: {
         breakoutConfig: BreakoutConfig;
         subBoards: Record<string, SubBoardData>;
         roundTemplates?: Record<string, RoomBackground | null>;
         roundTemplateInk?: Record<string, CanvasElement[]>;
+        roundVariants?: Record<string, RoundVariants>;
       }) => {
         setRoomSettings((prev) => ({ ...prev, breakoutConfig: syncedConfig }));
         if (syncedSubBoards) setSubBoards(syncedSubBoards);
         if (syncedRoundTemplates && typeof syncedRoundTemplates === 'object') setRoundTemplates(syncedRoundTemplates);
         if (syncedTemplateInk && typeof syncedTemplateInk === 'object') setRoundTemplateInk(syncedTemplateInk);
+        if (syncedVariants && typeof syncedVariants === 'object') setRoundVariants(syncedVariants);
       }
     );
 
@@ -481,12 +489,15 @@ export default function App() {
       ({
         roundTemplates: synced,
         roundTemplateInk: syncedInk,
+        roundVariants: syncedVariants,
       }: {
         roundTemplates?: Record<string, RoomBackground | null>;
         roundTemplateInk?: Record<string, CanvasElement[]>;
+        roundVariants?: Record<string, RoundVariants>;
       }) => {
         if (synced && typeof synced === 'object') setRoundTemplates(synced);
         if (syncedInk && typeof syncedInk === 'object') setRoundTemplateInk(syncedInk);
+        if (syncedVariants && typeof syncedVariants === 'object') setRoundVariants(syncedVariants);
       }
     );
 
@@ -1070,6 +1081,7 @@ export default function App() {
         assets?: Record<string, string>;
         roundTemplates?: Record<string, RoomBackground | null>;
         roundTemplateInk?: Record<string, CanvasElement[]>;
+        roundVariants?: Record<string, RoundVariants>;
       },
       mode: ImportRestoreMode
     ): Promise<{ ok: boolean; error?: string }> => {
@@ -1089,6 +1101,7 @@ export default function App() {
             assets: snapshot.assets,
             roundTemplates: snapshot.roundTemplates,
             roundTemplateInk: snapshot.roundTemplateInk,
+            roundVariants: snapshot.roundVariants,
             mode,
           },
           (response: { ok: boolean; error?: string }) => {
@@ -2178,6 +2191,7 @@ export default function App() {
           breakoutConfig={breakoutConfig}
           roundTemplates={roundTemplates}
           roundTemplateInk={roundTemplateInk}
+          roundVariants={roundVariants}
           users={users}
           remoteCursors={remoteCursors}
           laserSocket={socket}

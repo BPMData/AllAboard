@@ -1,3 +1,4 @@
+import type { RoundVariants } from './lib/roundVariants';
 export type StudentStampKind = 'check' | 'question' | 'star' | 'thumbsup' | 'heart' | 'username';
 
 export type TeacherStampKind =
@@ -159,6 +160,8 @@ export interface ConfigureBreakoutPayload {
   autoIndividualBackground?: RoomBackground | null; // used by 'set-auto-individual'
   prepare?: boolean;                         // 'new-round': create the round without moving anyone
   title?: string;                            // 'new-round' / 'edit-prepared': teacher's own round name, <= 40 chars
+  /** 'new-round' / 'edit-prepared', individual rounds: worksheets B–D and who gets which. null clears them. */
+  variants?: RoundVariants | null;
 }
 
 export interface SubBoardData {
@@ -258,6 +261,8 @@ export interface RoomSnapshot {
   roundTemplates?: Record<string, RoomBackground | null>;
   /** Teacher ink copied onto each round's boards (server `room.roundTemplateInk`). Absent in older files. */
   roundTemplateInk?: Record<string, CanvasElement[]>;
+  /** Worksheet variants B–D per individual round (server `room.roundVariants`). Absent in older files. */
+  roundVariants?: Record<string, RoundVariants>;
 }
 
 export interface PendingSnapshotData {
@@ -273,4 +278,5 @@ export interface PendingSnapshotData {
   assets?: Record<string, string>;
   roundTemplates?: Record<string, RoomBackground | null>;
   roundTemplateInk?: Record<string, CanvasElement[]>;
+  roundVariants?: Record<string, RoundVariants>;
 }
