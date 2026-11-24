@@ -113,8 +113,8 @@ Plan: [`PLANS_LESSON_PACKS.md`](PLANS_LESSON_PACKS.md) phases 2–3, with the op
     - Shapes and hollow strokes, which can't be split cleanly. Remove them only when fully covered, and otherwise
       keep a covering stroke for just those.
     - **Old rooms: no backward compatibility needed** (owner decision, Nov 2026: nobody but the owner has used
-      the app yet). Drop eraser-element rendering outright; old eraser strokes can simply disappear or the
-      rooms can be wiped. Don't build a migration.
+      the app yet). Don't migrate or special-case existing rooms: whatever their old eraser strokes do after the
+      change is fine, and the rooms can just be wiped.
     - Rate and size caps on large batches (`socketGuards.ts`).
   - **Tests:** element counts go **down** after erasing, a partial erase leaves the right pieces, undo/redo restores
     them exactly, and a second browser sees the same result.
