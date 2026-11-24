@@ -549,3 +549,25 @@ export function buildWorksheetBackground(pages: BackgroundPage[], fileName: stri
     opacity: 1,
   };
 }
+
+/** File types the worksheet pickers accept. */
+export const WORKSHEET_FILE_ACCEPT =
+  '.png,.jpg,.jpeg,.webp,.pdf,image/png,image/jpeg,image/webp,application/pdf';
+
+/**
+ * One file → one worksheet background, keeping the first MAX_PDF_PAGES pages of a long PDF.
+ * `note` is set when pages were dropped. Throws with a readable message on a bad file.
+ */
+export async function loadWorksheetFromFile(file: File): Promise<{ background: RoomBackground; note?: string }> {
+  let range: PageRange | undefined;
+  if (isPdfFile(file)) {
+    const total = await getPdfPageCount(file);
+    if (total > MAX_PDF_PAGES) range = { first: 1, last: MAX_PDF_PAGES };
+  }
+  const pages = await processWorksheetFile(file, range);
+  const background = buildWorksheetBackground(
+    pages,
+    range ? `${file.name} (pp. ${range.first}–${range.last})` : file.name
+  );
+  return { background, note: range ? `using pages 1–${MAX_PDF_PAGES}` : undefined };
+}

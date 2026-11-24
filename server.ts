@@ -15,6 +15,7 @@ import {
   getNextRoundNumber,
   getRoundById,
   getRounds,
+  isPreparedRound,
   makeGroupBoardId,
   makeIndividualBoardId,
   makeRoundId,
@@ -61,6 +62,8 @@ const PIN_FAILURE_WINDOW_MS = 5 * 60 * 1000;
 const IDLE_UNLOAD_MS = 15 * 60 * 1000;
 const HOUSEKEEPING_INTERVAL_MS = 5 * 60 * 1000;
 const USER_KEY_PATTERN = /^[0-9a-f]{64}$/;
+/** Group boards per breakout round (the UI offers up to 8; lesson packs allow up to 30). */
+const MAX_GROUPS_PER_ROUND = 30;
 
 type UserKeyCheck = 'matched' | 'claimed' | 'keyless' | 'rejected';
 
@@ -815,6 +818,7 @@ export async function startServer(options: StartServerOptions = {}) {
       socket.emit('breakout-sync', {
         breakoutConfig: room.breakoutConfig,
         subBoards: serializeSubBoards(room.subBoards),
+        roundTemplates: room.roundTemplates,
       });
     } else if (prev !== next) {
       const elements = boardElementsOf(room, boardId);
@@ -881,13 +885,36 @@ export async function startServer(options: StartServerOptions = {}) {
     const full = serializeSubBoards(room.subBoards);
     for (const id of ids) {
       const meta = socketMeta.get(id);
-      const subBoards = !meta || meta.inTeachers ? full : subBoardsFor(room, meta.userId);
-      io.to(id).emit('breakout-sync', { breakoutConfig: room.breakoutConfig, subBoards });
+      if (!meta || meta.inTeachers) {
+        io.to(id).emit('breakout-sync', {
+          breakoutConfig: room.breakoutConfig,
+          subBoards: full,
+          roundTemplates: room.roundTemplates,
+        });
+      } else {
+        io.to(id).emit('breakout-sync', {
+          breakoutConfig: room.breakoutConfig,
+          subBoards: subBoardsFor(room, meta.userId),
+        });
+      }
     }
   }
 
   function cloneBackground(bg: any | null | undefined): any | null {
     return bg ? internBackground(store, bg) : null;
+  }
+
+  /** Imported `roundTemplates`: only keys naming a round in `cfg`, each value a background (interned) or null. */
+  function cleanImportedRoundTemplates(raw: unknown, cfg: BreakoutConfigLike): Record<string, any | null> {
+    const out: Record<string, any | null> = {};
+    if (!raw || typeof raw !== 'object') return out;
+    const ids = new Set(getRounds(cfg).map((r) => r.id));
+    for (const [key, bg] of Object.entries(raw as Record<string, unknown>)) {
+      if (!ids.has(key)) continue;
+      if (bg === null) out[key] = null;
+      else if (bg && typeof bg === 'object' && Array.isArray((bg as any).pages)) out[key] = cloneBackground(bg);
+    }
+    return out;
   }
 
   /** Students who should receive breakout boards. */
@@ -948,6 +975,166 @@ export async function startServer(options: StartServerOptions = {}) {
         board.assignedUserIds.forEach((uid) => seen.add(uid));
       }
     }
+  }
+
+  type RoundResult = { ok: true; roundId: string } | { ok: false; error: string };
+
+  /** The worksheet a 'new-round' / 'edit-prepared' payload asks for. `undefined` means "not specified". */
+  function payloadWorksheet(room: RoomState, payload: ConfigureBreakoutPayload): any | null | undefined {
+    if (payload.customBackground !== undefined) return payload.customBackground;
+    if (payload.copyWorksheet) return room.background;
+    return undefined;
+  }
+
+  function cleanRoundTitle(raw: unknown): string | undefined {
+    return typeof raw === 'string' && raw.trim() ? raw.trim().slice(0, 40) : undefined;
+  }
+
+  /** Creates group boards `first..last` (0-based) for a round, each with its own copy of the worksheet. */
+  function createGroupBoards(
+    room: RoomState,
+    roundId: string,
+    groups: { title?: unknown; assignedUserIds?: unknown }[],
+    templateBg: any | null,
+    firstIndex = 0
+  ) {
+    const seen = new Set<string>();
+    for (const sb of getBoardsInRound(room.subBoards, roundId)) sb.assignedUserIds.forEach((uid) => seen.add(uid));
+    groups.forEach((g, offset) => {
+      const i = firstIndex + offset;
+      const id = makeGroupBoardId(roundId, i);
+      const assigned = uniqueStrings(g.assignedUserIds).filter((uid) => !seen.has(uid));
+      assigned.forEach((uid) => seen.add(uid));
+      room.subBoards.set(id, {
+        id,
+        roundId,
+        kind: 'group',
+        title: cleanRoundTitle(g.title) || `Group ${i + 1}`,
+        assignedUserIds: assigned,
+        elements: [],
+        background: cloneBackground(templateBg),
+        messages: [],
+      });
+    });
+  }
+
+  /**
+   * 'new-round'. When `prepared` is false this launches the round at once (moves every student), exactly as before.
+   * When true it only saves the round: no individual boards, and mode / activeRoundId / room settings are untouched.
+   */
+  function createRound(room: RoomState, payload: ConfigureBreakoutPayload, prepared: boolean): RoundResult {
+    const cfg = room.breakoutConfig;
+    const mode: 'individual' | 'groups' = payload.mode === 'groups' ? 'groups' : 'individual';
+    const groups = Array.isArray(payload.groups) ? payload.groups.filter(Boolean) : [];
+    if (mode === 'groups' && groups.length === 0) {
+      return { ok: false, error: 'Add at least one group before launching a group round.' };
+    }
+    if (groups.length > MAX_GROUPS_PER_ROUND) {
+      return { ok: false, error: `A round can have at most ${MAX_GROUPS_PER_ROUND} groups.` };
+    }
+
+    const roundNumber = getNextRoundNumber(cfg);
+    const roundId = makeRoundId(roundNumber);
+    const templateBg = payloadWorksheet(room, payload) ?? null;
+    room.roundTemplates[roundId] = cloneBackground(templateBg);
+
+    const chatScope: 'unified' | 'board' = payload.chatScope === 'board' ? 'board' : 'unified';
+    const allowSelfSelect = Boolean(payload.allowSelfSelect);
+    const roundMeta: BreakoutRoundMeta = {
+      id: roundId,
+      number: roundNumber,
+      title: buildRoundTitle(roundNumber, mode, cleanRoundTitle(payload.title) ?? payload.templateLabel),
+      mode,
+      createdAt: Date.now(),
+      ...(prepared ? { prepared: true, allowSelfSelect, chatScope } : {}),
+    };
+
+    if (mode === 'individual') {
+      if (!prepared) for (const u of getBreakoutStudents(room)) provisionIndividualBoard(room, roundId, u);
+    } else {
+      createGroupBoards(room, roundId, groups, templateBg);
+    }
+
+    if (prepared) {
+      cfg.rounds = [...getRounds(cfg), roundMeta];
+      return { ok: true, roundId };
+    }
+
+    room.breakoutConfig = {
+      mode,
+      activeRoundId: roundId,
+      rounds: [...getRounds(cfg), roundMeta],
+      allowSelfSelect,
+      ...(cfg.autoIndividual !== undefined ? { autoIndividual: cfg.autoIndividual } : {}),
+      ...(cfg.autoIndividualBackground !== undefined
+        ? { autoIndividualBackground: cfg.autoIndividualBackground }
+        : {}),
+      ...(cfg.autoIndividualTemplateLabel ? { autoIndividualTemplateLabel: cfg.autoIndividualTemplateLabel } : {}),
+      chatScope,
+    };
+    return { ok: true, roundId };
+  }
+
+  /** Turns a prepared round into a launched one and applies its stored settings. The caller then activates it. */
+  function launchPreparedRound(room: RoomState, round: BreakoutRoundMeta) {
+    const cfg = room.breakoutConfig;
+    const launched: BreakoutRoundMeta = { ...round, launchedAt: Date.now() };
+    delete launched.prepared;
+    delete launched.allowSelfSelect;
+    delete launched.chatScope;
+    cfg.rounds = getRounds(cfg).map((r) => (r.id === round.id ? launched : r));
+    if (typeof round.allowSelfSelect === 'boolean') cfg.allowSelfSelect = round.allowSelfSelect;
+    if (round.chatScope === 'board' || round.chatScope === 'unified') cfg.chatScope = round.chatScope;
+  }
+
+  /** 'edit-prepared': title, worksheet, stored settings, and (group rounds) group titles, members and count. */
+  function editPreparedRound(room: RoomState, payload: ConfigureBreakoutPayload): RoundResult {
+    const cfg = room.breakoutConfig;
+    const round = getRoundById(cfg, payload.roundId);
+    if (!round || !isPreparedRound(round)) {
+      return { ok: false, error: 'Only a prepared round that has not been launched can be edited here.' };
+    }
+    if (payload.mode && payload.mode !== round.mode) {
+      return { ok: false, error: "A prepared round's mode can't change. Delete it and make a new one." };
+    }
+    const next: BreakoutRoundMeta = { ...round };
+    const title = cleanRoundTitle(payload.title);
+    if (title !== undefined || typeof payload.templateLabel === 'string') {
+      next.title = buildRoundTitle(round.number, round.mode, title ?? payload.templateLabel);
+    }
+    if (typeof payload.allowSelfSelect === 'boolean') next.allowSelfSelect = payload.allowSelfSelect;
+    if (payload.chatScope === 'board' || payload.chatScope === 'unified') next.chatScope = payload.chatScope;
+
+    const worksheet = payloadWorksheet(room, payload);
+    if (worksheet !== undefined) {
+      room.roundTemplates[round.id] = cloneBackground(worksheet);
+      for (const sb of getBoardsInRound(room.subBoards, round.id)) {
+        sb.background = cloneBackground(room.roundTemplates[round.id]);
+        io.to(room.id).emit('background-sync', { boardId: sb.id, background: sb.background });
+      }
+    }
+
+    if (round.mode === 'groups' && Array.isArray(payload.groups)) {
+      const wanted = payload.groups.filter(Boolean).slice(0, MAX_GROUPS_PER_ROUND);
+      if (wanted.length === 0) return { ok: false, error: 'A group round needs at least one group.' };
+      const existing = getBoardsInRound(room.subBoards, round.id).filter((sb) => sb.kind === 'group');
+      // Keep boards 1..min(old,new) with their ink; delete the rest; create new ones after them.
+      existing.slice(wanted.length).forEach((sb) => room.subBoards.delete(sb.id));
+      const kept = existing.slice(0, wanted.length);
+      const seen = new Set<string>();
+      kept.forEach((board, i) => {
+        const g = wanted[i];
+        board.title = cleanRoundTitle(g.title) || board.title;
+        board.assignedUserIds = uniqueStrings(g.assignedUserIds).filter((uid) => !seen.has(uid));
+        board.assignedUserIds.forEach((uid) => seen.add(uid));
+      });
+      if (wanted.length > kept.length) {
+        createGroupBoards(room, round.id, wanted.slice(kept.length), getRoundTemplate(room, round.id), kept.length);
+      }
+    }
+
+    cfg.rounds = getRounds(cfg).map((r) => (r.id === round.id ? next : r));
+    return { ok: true, roundId: round.id };
   }
 
   // If the room is in 'individual' mode and a student joins, make sure they have a board in the ACTIVE round.
@@ -1164,6 +1351,7 @@ export async function startServer(options: StartServerOptions = {}) {
         users: getRosterPayload(room),
         roomSettings: getRoomSettingsPayload(room),
         isTeacher: isVerifiedTeacher,
+        ...(isVerifiedTeacher ? { roundTemplates: room.roundTemplates } : {}),
         assignedName: effectiveName || undefined,
         isNameLocked,
       });
@@ -1301,6 +1489,7 @@ export async function startServer(options: StartServerOptions = {}) {
       const safePayload: ConfigureBreakoutPayload = payload && typeof payload === 'object' ? payload : {};
       const cfg = room.breakoutConfig;
       const action = resolveBreakoutAction(safePayload, cfg);
+      let createdRoundId: string | undefined;
 
       if (action === 'set-auto-individual') {
         if (room.teacherPinHash === null) {
@@ -1337,6 +1526,13 @@ export async function startServer(options: StartServerOptions = {}) {
           callback?.({ ok: false, error: 'There is no breakout round to resume or edit yet.' });
           return;
         }
+        if (isPreparedRound(round)) {
+          if (action !== 'resume') {
+            callback?.({ ok: false, error: 'Launch this prepared round first, or edit it with Edit.' });
+            return;
+          }
+          launchPreparedRound(room, round);
+        }
         applyRoundEdits(room, round, safePayload);
         if (action === 'resume' || targetId) {
           cfg.activeRoundId = round.id;
@@ -1346,68 +1542,30 @@ export async function startServer(options: StartServerOptions = {}) {
         if (round.mode === 'individual' && cfg.mode === 'individual' && cfg.activeRoundId === round.id) {
           for (const u of getBreakoutStudents(room)) provisionIndividualBoard(room, round.id, u);
         }
-      } else {
-        // 'new-round'
-        const mode: 'individual' | 'groups' = safePayload.mode === 'groups' ? 'groups' : 'individual';
-        const groups = Array.isArray(safePayload.groups) ? safePayload.groups.filter(Boolean) : [];
-        if (mode === 'groups' && groups.length === 0) {
-          callback?.({ ok: false, error: 'Add at least one group before launching a group round.' });
+      } else if (action === 'edit-prepared') {
+        const result = editPreparedRound(room, safePayload);
+        if (!result.ok) {
+          callback?.(result);
           return;
         }
-
-        const roundNumber = getNextRoundNumber(cfg);
-        const roundId = makeRoundId(roundNumber);
-        const templateBg =
-          safePayload.customBackground !== undefined
-            ? safePayload.customBackground
-            : safePayload.copyWorksheet
-            ? room.background
-            : null;
-        room.roundTemplates[roundId] = cloneBackground(templateBg);
-
-        const roundMeta: BreakoutRoundMeta = {
-          id: roundId,
-          number: roundNumber,
-          title: buildRoundTitle(roundNumber, mode, safePayload.templateLabel),
-          mode,
-          createdAt: Date.now(),
-        };
-
-        if (mode === 'individual') {
-          for (const u of getBreakoutStudents(room)) provisionIndividualBoard(room, roundId, u);
-        } else {
-          const seen = new Set<string>();
-          groups.forEach((g, i) => {
-            const id = makeGroupBoardId(roundId, i);
-            const assigned = uniqueStrings(g.assignedUserIds).filter((uid) => !seen.has(uid));
-            assigned.forEach((uid) => seen.add(uid));
-            room.subBoards.set(id, {
-              id,
-              roundId,
-              kind: 'group',
-              title: (typeof g.title === 'string' && g.title.trim()) ? g.title.trim().slice(0, 40) : `Group ${i + 1}`,
-              assignedUserIds: assigned,
-              elements: [],
-              background: cloneBackground(templateBg),
-              messages: [],
-            });
-          });
+        createdRoundId = result.roundId;
+      } else if (action === 'delete-prepared') {
+        const round = getRoundById(cfg, safePayload.roundId);
+        if (!round || !isPreparedRound(round)) {
+          callback?.({ ok: false, error: 'Only a prepared round that has not been launched can be deleted.' });
+          return;
         }
-
-        room.breakoutConfig = {
-          mode,
-          activeRoundId: roundId,
-          rounds: [...getRounds(cfg), roundMeta],
-          allowSelfSelect: Boolean(safePayload.allowSelfSelect),
-          ...(cfg.autoIndividual !== undefined ? { autoIndividual: cfg.autoIndividual } : {}),
-          ...(cfg.autoIndividualBackground !== undefined
-            ? { autoIndividualBackground: cfg.autoIndividualBackground }
-            : {}),
-          ...(cfg.autoIndividualTemplateLabel
-            ? { autoIndividualTemplateLabel: cfg.autoIndividualTemplateLabel }
-            : {}),
-          chatScope: safePayload.chatScope === 'board' ? 'board' : 'unified',
-        };
+        cfg.rounds = getRounds(cfg).filter((r) => r.id !== round.id);
+        for (const sb of getBoardsInRound(room.subBoards, round.id)) room.subBoards.delete(sb.id);
+        delete room.roundTemplates[round.id];
+      } else {
+        // 'new-round' (prepare: true creates it without moving anyone)
+        const result = createRound(room, safePayload, safePayload.prepare === true);
+        if (!result.ok) {
+          callback?.(result);
+          return;
+        }
+        createdRoundId = result.roundId;
       }
 
       room.lastActiveAt = Date.now();
@@ -1419,6 +1577,7 @@ export async function startServer(options: StartServerOptions = {}) {
         action,
         activeRoundId: room.breakoutConfig.activeRoundId,
         mode: room.breakoutConfig.mode,
+        ...(createdRoundId ? { roundId: createdRoundId } : {}),
       });
     });
 
@@ -1608,6 +1767,7 @@ export async function startServer(options: StartServerOptions = {}) {
         getRounds(room.breakoutConfig).some((r) => r.id === templateRound)
       ) {
         room.roundTemplates[templateRound] = cloneBackground(interned);
+        io.to(teacherChannel(room.id)).emit('round-templates-sync', { roundTemplates: room.roundTemplates });
       }
 
       room.lastActiveAt = Date.now();
@@ -1652,6 +1812,7 @@ export async function startServer(options: StartServerOptions = {}) {
           breakoutConfig: importedBreakoutConfig,
           mode,
           assets: importedAssets,
+          roundTemplates: importedRoundTemplates,
         },
         callback
       ) => {
@@ -1712,8 +1873,13 @@ export async function startServer(options: StartServerOptions = {}) {
             }
             const knownRoundIds = new Set(getRounds(room.breakoutConfig).map((r) => r.id));
             const mergedRounds = getRounds(room.breakoutConfig);
+            const importedTemplates = cleanImportedRoundTemplates(importedRoundTemplates, importedCfg);
             for (const r of getRounds(importedCfg)) {
-              if (!knownRoundIds.has(r.id)) mergedRounds.push(r);
+              if (knownRoundIds.has(r.id)) continue;
+              mergedRounds.push(r);
+              if (Object.prototype.hasOwnProperty.call(importedTemplates, r.id)) {
+                room.roundTemplates[r.id] = importedTemplates[r.id];
+              }
             }
             room.breakoutConfig.rounds = mergedRounds;
           }
@@ -1728,6 +1894,9 @@ export async function startServer(options: StartServerOptions = {}) {
           if (importedBreakoutConfig) {
             room.breakoutConfig = normalizeBreakoutConfig(importedBreakoutConfig);
           }
+          if (importedRoundTemplates && typeof importedRoundTemplates === 'object') {
+            room.roundTemplates = cleanImportedRoundTemplates(importedRoundTemplates, room.breakoutConfig);
+          }
           room.isCanvasLocked = true;
         } else {
           room.elements = validElements;
@@ -1739,6 +1908,9 @@ export async function startServer(options: StartServerOptions = {}) {
           }
           if (importedBreakoutConfig) {
             room.breakoutConfig = normalizeBreakoutConfig(importedBreakoutConfig);
+          }
+          if (importedRoundTemplates && typeof importedRoundTemplates === 'object') {
+            room.roundTemplates = cleanImportedRoundTemplates(importedRoundTemplates, room.breakoutConfig);
           }
           room.isCanvasLocked = false;
         }
@@ -1757,6 +1929,7 @@ export async function startServer(options: StartServerOptions = {}) {
           roomSettings: getRoomSettingsPayload(room),
         });
         syncBoardChannels(room, false); // room-restored carried everything
+        io.to(teacherChannel(room.id)).emit('round-templates-sync', { roundTemplates: room.roundTemplates });
 
         callback?.({
           ok: true,

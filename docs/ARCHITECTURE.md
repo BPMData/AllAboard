@@ -44,7 +44,7 @@ Teachers are identified by a per-room **PIN**, not a login.
 | `src/components/Chat.tsx` | ~1000 | Chat sidebar (resizable/collapsible), roster, room-code bar. |
 | `src/components/RoomExistsModal.tsx`, `PurgeContributionsModal.tsx` | — | Lobby collision warning; teacher "purge a student's work." |
 | `src/lib/breakoutRounds.ts` | ~290 | **Pure helpers shared by client and server** for rounds/boards. Never parse board-ID strings. Use these. |
-| `src/lib/worksheetLoader.ts` | ~390 | PDF/image → `BackgroundPage[]` (browser-side render to JPEG data URLs). Built-in templates (`four-corners`, `frayer-model`, `checkin-columns`). `MAX_PDF_PAGES = 10`. |
+| `src/lib/worksheetLoader.ts` | ~390 | PDF/image → `BackgroundPage[]` (browser-side render to JPEG data URLs). Built-in templates (`four-corners`, `frayer-model`, `checkin-columns`). `MAX_PDF_PAGES = 30` (`src/lib/pageRange.ts`). |
 | `src/lib/batchPdfExport.ts` | ~590 | Export boards to PDF (renders background plus ink). |
 | `src/lib/inkCore.ts` | — | Ink smoothing, highlighter/cover, text-note logic (from OverBoard). |
 | `socketGuards.ts` | — | Per-socket rate limits, element size caps, Teacher PIN hashing (scrypt). See §5. |
@@ -119,16 +119,25 @@ Cloud Run service "allaboard"  ── one container :3000 (node server.ts, Build
 | `elements`, `messages`, `background` | The **main board**: ink and objects, chat (capped at 500), worksheet |
 | `subBoards: Map<boardId, SubBoardState>` | Breakout boards. Each has `elements`, `messages`, `background`, `assignedUserIds`, `roundId`, `kind` (`individual`/`group`) |
 | `breakoutConfig` | `mode` (`main`/`individual`/`groups`, i.e. where students are **now**), `activeRoundId`, `rounds[]`, `allowSelfSelect`, `chatScope`, `userBoardOverrides` |
-| `roundTemplates[roundId]` | The worksheet each round's boards start with (copied to late joiners) |
+| `roundTemplates[roundId]` | The worksheet each round's boards start with (copied to late joiners). Sent to **teachers only** (`init`, `breakout-sync`, `round-templates-sync`) and saved in room exports. |
 | `timer`, `lockedNames`, `bannedUsers`, `isCanvasLocked`, `hideStudentCursors`, `teacherPin`, `lastActiveAt` | As named |
 | `usersByUserId` | **Runtime only** (not persisted): roster, `sockets` set, `isTeacher`, student status |
 
 **Breakout rounds** (`teacher:configure-breakout` with `action`):
 - `new-round` creates round N+1 with fresh boards (ids like `r2_ind_<userId>`, `r2_grp_1`). Its worksheet is either
-  `copyWorksheet` (copies main) or `customBackground`.
-- `resume` re-activates a round.
+  `copyWorksheet` (copies main) or `customBackground`. An optional `title` becomes the label in the round title.
+- `new-round` with `prepare: true` makes a **prepared round**: `prepared: true` on its meta, its worksheet in
+  `roundTemplates`, its own `allowSelfSelect` / `chatScope`, group boards for a group round, **no** individual boards,
+  and it leaves `mode`, `activeRoundId` and the room's settings alone. Nobody moves.
+- `resume` re-activates a round. On a prepared round it **launches** it: `prepared` is dropped, `launchedAt` set, and
+  the round's stored settings applied (the payload's own values win).
+- `edit-prepared` changes a prepared round's title, worksheet, settings and groups (titles, members, count: boards
+  `1..min(old,new)` keep their ink). Its mode can't change.
+- `delete-prepared` removes a prepared round, its boards and its worksheet. Launched rounds can't be deleted.
 - `update-current` edits groups and settings.
 - `return-to-main` sets `mode='main'` only.
+- The client lists launched rounds with `getLaunchedRounds` and prepared ones with `getPreparedRounds`. A prepared
+  round is never the active round.
 
 **Rules:**
 - `resume` / `update-current` / `return-to-main` **never touch board contents**.
@@ -139,7 +148,7 @@ Cloud Run service "allaboard"  ── one container :3000 (node server.ts, Build
 
 **Client → server:**
 - Room and identity: `check-room` (ack, no side effects), `join-room`, `update-profile`, `user:set-status`, `cursor-move`, `disconnect`
-- Teacher actions: `teacher:auth`, `teacher:step-down`, `teacher:configure-breakout`, `teacher:set-background`,
+- Teacher actions: `teacher:auth`, `teacher:step-down`, `teacher:configure-breakout` (actions above), `teacher:set-background`,
   `teacher:set-background-multi` (one worksheet to many boards; optional `roundTemplateFor` sets the round template),
   `teacher:update-background`, `teacher:rename-user`, `teacher:delete-message`, `teacher:unban-user`,
   `teacher:purge-user-contributions`, `teacher:set-lock`, `teacher:set-hide-cursors`, `teacher:set-one-name-stamp`, `teacher:clear-status`, `teacher:spotlight-board`, `laser-pulse`, `teacher:clear-all`, `teacher:import-room`
@@ -150,7 +159,8 @@ Cloud Run service "allaboard"  ── one container :3000 (node server.ts, Build
 
 **Server → client:**
 - Full state: `init` (everything on join), `state-sync`, `room-restored` (after import)
-- Room-level updates: `roster-sync`, `room-settings`, `breakout-sync`, `background-sync`, `board-replaced`
+- Room-level updates: `roster-sync`, `room-settings`, `breakout-sync`, `background-sync`, `board-replaced`,
+  `round-templates-sync` (teachers only)
 - Drawing deltas: `element-*` / `elements-batch-*` deltas, `cursor-move` / `cursor-leave`, ephemeral teacher `laser-pulse`
 - Chat and moderation: `chat-message`, `message-deleted`, `user-renamed`, `user-contributions-purged`, `room-kicked`
 

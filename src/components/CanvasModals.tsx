@@ -19,7 +19,10 @@ import {
   BuiltInTemplateId,
   DEFAULT_WORKSHEET_IMPORT_SCALE,
   WORKSHEET_SCALE_OPTIONS,
+  MAX_PDF_PAGES,
+  WORKSHEET_FILE_ACCEPT,
   generateTemplateBackground,
+  loadWorksheetFromFile,
   openPdfForThumbnails,
   type PdfThumbnailHandle,
 } from '../lib/worksheetLoader';
@@ -332,6 +335,120 @@ export function LiveGridOverview({
   );
 }
 
+/** The teacher's own label inside a round title ("Round 2 · Groups · Debate" → "Debate"). Display only. */
+function preparedRoundName(round: BreakoutRoundMeta): string {
+  const parts = round.title.split(' · ');
+  return parts.length > 2 ? parts.slice(2).join(' · ') : '';
+}
+
+function templateName(bg: RoomBackground | null | undefined): string {
+  return bg?.fileName ? bg.fileName : 'none (blank board)';
+}
+
+/** Deals the online students into the given groups at random, keeping each group's id and title. */
+function shuffleStudentsIntoGroups(groups: BreakoutGroupDraft[], users: User[]): BreakoutGroupDraft[] {
+  if (groups.length === 0) return groups;
+  const students = users.filter((u) => !u.isTeacher).map((u) => u.userId).sort(() => Math.random() - 0.5);
+  const next = groups.map((g) => ({ ...g, assignedUserIds: [] as string[] }));
+  students.forEach((uid, i) => next[i % next.length].assignedUserIds.push(uid));
+  return next;
+}
+
+interface PreparedRoundsListProps {
+  rounds: BreakoutRoundMeta[];
+  roundTemplates: Record<string, RoomBackground | null>;
+  subBoards: Record<string, SubBoardData>;
+  busy: boolean;
+  confirmDeleteId: string | null;
+  notice: string;
+  onLaunch: (round: BreakoutRoundMeta) => void;
+  onEdit: (round: BreakoutRoundMeta) => void;
+  onDelete: (round: BreakoutRoundMeta) => void;
+  onViewBoards?: (round: BreakoutRoundMeta) => void;
+}
+
+/** Saved rounds that haven't been launched: one row each with Launch, Edit and Delete. */
+function PreparedRoundsList({
+  rounds,
+  roundTemplates,
+  subBoards,
+  busy,
+  confirmDeleteId,
+  notice,
+  onLaunch,
+  onEdit,
+  onDelete,
+  onViewBoards,
+}: PreparedRoundsListProps) {
+  return (
+    <div className="p-3 rounded-[3px] bg-slate-50 border border-[#CBD5E1] space-y-2" data-testid="prepared-rounds">
+      <div className="flex items-baseline justify-between gap-2">
+        <span className="font-display text-xs font-semibold text-slate-900">Prepared rounds</span>
+        <span className="text-[11px] text-slate-500">Saved for later. Nobody moves until you launch one.</span>
+      </div>
+      {notice && <p className="text-[11px] text-emerald-800">{notice}</p>}
+      {rounds.map((r) => {
+        const groupCount = Object.values(subBoards).filter((sb) => sb.roundId === r.id && sb.kind === 'group').length;
+        return (
+          <div
+            key={r.id}
+            className="flex flex-wrap items-center justify-between gap-2 bg-white px-3 py-2 rounded-[2px] border border-[#CBD5E1]"
+          >
+            <div className="min-w-0">
+              <div className="text-xs font-semibold text-slate-900 truncate">{r.title}</div>
+              <div className="text-[11px] text-slate-500 truncate">
+                {r.mode === 'groups' ? `${groupCount} group${groupCount === 1 ? '' : 's'}` : 'Individual boards'}
+                {' · Worksheet: '}
+                {templateName(roundTemplates[r.id])}
+              </div>
+            </div>
+            <div className="flex items-center gap-1.5 shrink-0">
+              {r.mode === 'groups' && onViewBoards && (
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => onViewBoards(r)}
+                  className="px-2.5 py-1 rounded-[2px] border oh-btn text-[11px] font-medium text-slate-700 cursor-pointer disabled:opacity-50"
+                  title="Open this round's group boards to write on them before launch"
+                >
+                  Boards
+                </button>
+              )}
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => onEdit(r)}
+                className="px-2.5 py-1 rounded-[2px] border oh-btn text-[11px] font-medium text-slate-700 cursor-pointer disabled:opacity-50"
+              >
+                Edit
+              </button>
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => onDelete(r)}
+                className={cn(
+                  "px-2.5 py-1 rounded-[2px] border text-[11px] font-medium cursor-pointer disabled:opacity-50",
+                  confirmDeleteId === r.id ? "bg-red-600 border-red-700 text-white" : "oh-btn text-slate-700"
+                )}
+              >
+                {confirmDeleteId === r.id ? 'Tap again to delete' : 'Delete'}
+              </button>
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => onLaunch(r)}
+                className="px-2.5 py-1 rounded-[2px] border oh-btn-primary text-[11px] font-semibold text-white cursor-pointer disabled:opacity-50"
+              >
+                Launch
+              </button>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 interface BreakoutManagerModalProps {
   users: User[];
   fullMainBackground: RoomBackground | null;
@@ -357,17 +474,29 @@ interface BreakoutManagerModalProps {
   setDraftAllowSelfSelect: (allow: boolean) => void;
   draftChatScope: 'unified' | 'board';
   setDraftChatScope: (scope: 'unified' | 'board') => void;
-  draftWorksheetChoice: 'current' | 'frayer' | 'checkin' | 'corners' | 'none';
-  setDraftWorksheetChoice: (
-    choice: 'current' | 'frayer' | 'checkin' | 'corners' | 'none'
-  ) => void;
+  draftWorksheetChoice: RoundWorksheetChoice;
+  setDraftWorksheetChoice: (choice: RoundWorksheetChoice) => void;
   draftWorksheetTopic: string;
   setDraftWorksheetTopic: (topic: string) => void;
   initializeDraftGroups: (count: number, randomize?: boolean) => void;
-  onConfigureBreakout: (payload: ConfigureBreakoutPayload) => Promise<{ ok: boolean; error?: string }>;
+  onConfigureBreakout: (
+    payload: ConfigureBreakoutPayload
+  ) => Promise<{ ok: boolean; error?: string; roundId?: string }>;
   onClose: () => void;
   onShowLiveGridOverview: (show: boolean) => void;
+  /** Prepared (saved, not launched) rounds, shown in their own list. */
+  preparedRounds?: BreakoutRoundMeta[];
+  /** Teacher-only round worksheets, to show each prepared round's worksheet name. */
+  roundTemplates?: Record<string, RoomBackground | null>;
+  subBoards?: Record<string, SubBoardData>;
+  /** Loads a round's real group boards into the draft groups. Returns false if it has none. */
+  onLoadDraftGroupsForRound?: (roundId: string) => boolean;
+  /** Opens the live grid on one round's boards (used to draw on a prepared group round's boards). */
+  onViewRoundBoards?: (roundId: string) => void;
 }
+
+/** Worksheet choices in the round form. 'upload' uses a file the teacher picked in the form. */
+export type RoundWorksheetChoice = 'current' | 'frayer' | 'checkin' | 'corners' | 'none' | 'upload';
 
 /**
  * Teacher modal for configuring individual student boards or breakout group rooms.
@@ -405,7 +534,40 @@ export function BreakoutManagerModal({
   onConfigureBreakout,
   onClose,
   onShowLiveGridOverview,
+  preparedRounds = [],
+  roundTemplates = {},
+  subBoards = {},
+  onLoadDraftGroupsForRound,
+  onViewRoundBoards,
 }: BreakoutManagerModalProps) {
+  // 'edit-prepared' reuses the new-round form for a saved round; 'launch-prepared' is the group editor before launch.
+  const [preparedView, setPreparedView] = useState<
+    { kind: 'edit-prepared' | 'launch-prepared'; round: BreakoutRoundMeta } | null
+  >(null);
+  const [roundName, setRoundName] = useState('');
+  const [worksheetTouched, setWorksheetTouched] = useState(false);
+  const [uploadedBg, setUploadedBg] = useState<RoomBackground | null>(null);
+  const [uploadState, setUploadState] = useState<{ busy: boolean; note?: string; error?: string }>({ busy: false });
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  const [preparedBusy, setPreparedBusy] = useState(false);
+  const [preparedNotice, setPreparedNotice] = useState('');
+
+  const chooseWorksheet = (choice: RoundWorksheetChoice) => {
+    setWorksheetTouched(true);
+    setDraftWorksheetChoice(choice);
+  };
+
+  const pickWorksheetFile = async (file: File) => {
+    setUploadState({ busy: true });
+    try {
+      const { background, note } = await loadWorksheetFromFile(file);
+      setUploadedBg(background);
+      setUploadState({ busy: false, note });
+      chooseWorksheet('upload');
+    } catch (err: any) {
+      setUploadState({ busy: false, error: err?.message || 'Could not read this file.' });
+    }
+  };
   const [autoDraftEnabled, setAutoDraftEnabled] = useState<boolean>(autoIndividual);
   const [autoWorksheetChoice, setAutoWorksheetChoice] = useState<
     'current' | 'frayer' | 'checkin' | 'corners' | 'none'
@@ -424,19 +586,22 @@ export function BreakoutManagerModal({
     (draftEditRoundId ? rounds.find((r) => r.id === draftEditRoundId) : null) ||
     activeRound ||
     (rounds.length > 0 ? rounds[rounds.length - 1] : null);
-  const isEditing = Boolean(targetRound) && draftRoundAction === 'update-current';
+  const isEditing = !preparedView && Boolean(targetRound) && draftRoundAction === 'update-current';
+  const isEditingPrepared = preparedView?.kind === 'edit-prepared';
+  const isLaunchingPrepared = preparedView?.kind === 'launch-prepared';
   const isSwitchingOrResuming = Boolean(
     isEditing && targetRound && (currentMode === 'main' || targetRound.id !== activeRound?.id)
   );
-  const templateLabelFor = (choice: typeof draftWorksheetChoice): string =>
-    choice === 'frayer' ? 'Frayer Model'
+  const templateLabelFor = (choice: RoundWorksheetChoice): string =>
+    choice === 'upload' ? (uploadedBg?.fileName || 'Uploaded worksheet').replace(/\.[a-z0-9]+$/i, '').slice(0, 30)
+    : choice === 'frayer' ? 'Frayer Model'
     : choice === 'checkin' ? 'Task Pulse Check'
     : choice === 'corners' ? 'Four Corners'
     : choice === 'current' && fullMainBackground ? 'Copy of Main'
     : 'Blank';
 
   const buildWorksheetConfig = (
-    choice: 'current' | 'frayer' | 'checkin' | 'corners' | 'none',
+    choice: RoundWorksheetChoice,
     topic: string
   ): { customBackground?: RoomBackground | null; copyWorksheet: boolean; templateLabel: string } => {
     let customBackground: RoomBackground | null | undefined = undefined;
@@ -444,6 +609,7 @@ export function BreakoutManagerModal({
     else if (choice === 'checkin') customBackground = generateTemplateBackground('checkin-columns', topic);
     else if (choice === 'corners') customBackground = generateTemplateBackground('four-corners', topic);
     else if (choice === 'none') customBackground = null;
+    else if (choice === 'upload') customBackground = uploadedBg;
     return {
       customBackground,
       copyWorksheet: choice === 'current',
@@ -473,7 +639,74 @@ export function BreakoutManagerModal({
         </div>
 
         <div className="p-5 space-y-5 overflow-y-auto">
-        {targetRound && (
+        {!preparedView && preparedRounds.length > 0 && (
+          <PreparedRoundsList
+            rounds={preparedRounds}
+            roundTemplates={roundTemplates}
+            subBoards={subBoards}
+            busy={preparedBusy}
+            confirmDeleteId={confirmDeleteId}
+            notice={preparedNotice}
+            onLaunch={async (round) => {
+              setPreparedNotice('');
+              if (round.mode === 'groups') {
+                setDraftBreakoutMode('groups');
+                if (!onLoadDraftGroupsForRound?.(round.id)) initializeDraftGroups(draftGroupCount, false);
+                setDraftAllowSelfSelect(Boolean(round.allowSelfSelect));
+                setDraftChatScope(round.chatScope === 'board' ? 'board' : 'unified');
+                setPreparedView({ kind: 'launch-prepared', round });
+                return;
+              }
+              setPreparedBusy(true);
+              const res = await onConfigureBreakout({ action: 'resume', roundId: round.id });
+              setPreparedBusy(false);
+              if (!res.ok) { window.alert(res.error || 'Could not launch this round.'); return; }
+              onFollowRound?.();
+              onClose();
+              onShowLiveGridOverview(true);
+            }}
+            onEdit={(round) => {
+              setPreparedNotice('');
+              setDraftBreakoutMode(round.mode);
+              if (round.mode === 'groups' && !onLoadDraftGroupsForRound?.(round.id)) {
+                initializeDraftGroups(draftGroupCount, false);
+              }
+              setDraftAllowSelfSelect(Boolean(round.allowSelfSelect));
+              setDraftChatScope(round.chatScope === 'board' ? 'board' : 'unified');
+              setRoundName(preparedRoundName(round));
+              setWorksheetTouched(false);
+              setPreparedView({ kind: 'edit-prepared', round });
+            }}
+            onDelete={async (round) => {
+              if (confirmDeleteId !== round.id) { setConfirmDeleteId(round.id); return; }
+              setConfirmDeleteId(null);
+              setPreparedBusy(true);
+              const res = await onConfigureBreakout({ action: 'delete-prepared', roundId: round.id });
+              setPreparedBusy(false);
+              if (!res.ok) window.alert(res.error || 'Could not delete this round.');
+            }}
+            onViewBoards={onViewRoundBoards ? (round) => { onClose(); onViewRoundBoards(round.id); } : undefined}
+          />
+        )}
+
+        {preparedView && (
+          <div className="flex items-center justify-between gap-2 p-3 rounded-[3px] bg-brand-50 border border-brand-200">
+            <p className="text-xs text-slate-800">
+              {isEditingPrepared ? 'Editing saved round ' : 'Launching '}
+              <span className="font-semibold">{preparedView.round.title}</span>
+              {isLaunchingPrepared && ' · put students in groups, then launch.'}
+            </p>
+            <button
+              type="button"
+              onClick={() => setPreparedView(null)}
+              className="px-2.5 py-1 rounded-[2px] border oh-btn text-[11px] font-medium text-slate-700 cursor-pointer shrink-0"
+            >
+              Back
+            </button>
+          </div>
+        )}
+
+        {targetRound && !preparedView && (
           <div className="grid grid-cols-2 gap-2.5">
             <button
               type="button"
@@ -549,7 +782,7 @@ export function BreakoutManagerModal({
         )}
 
         {/* 1. Mode Selection */}
-        {!isEditing && (
+        {!isEditing && !preparedView && (
           <div className="grid grid-cols-2 gap-2.5">
             <button
               type="button"
@@ -603,7 +836,19 @@ export function BreakoutManagerModal({
         {/* 2. Group Assignment Controls (when 'groups' is selected) */}
         {draftBreakoutMode === 'groups' && (
           <div className="p-4 rounded-[3px] bg-slate-50 border border-[#CBD5E1] space-y-3">
-            {!isEditing && (
+            {isLaunchingPrepared && (
+              <div className="flex justify-end">
+                <button
+                  type="button"
+                  onClick={() => setDraftGroups((prev) => shuffleStudentsIntoGroups(prev, users))}
+                  className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-[2px] border oh-btn text-xs font-medium text-slate-700 cursor-pointer"
+                >
+                  <Shuffle size={13} />
+                  <span>Auto-Randomize Students</span>
+                </button>
+              </div>
+            )}
+            {!isEditing && !isLaunchingPrepared && (
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <div className="flex items-center gap-2 text-xs">
                   <span className="font-semibold text-slate-700">Number of Groups:</span>
@@ -705,15 +950,34 @@ export function BreakoutManagerModal({
         )}
 
         {/* 3. Pre-load Worksheet / Template on Sub-Boards */}
-        {!isEditing && (
+        {!isEditing && !isLaunchingPrepared && (
           <div className="space-y-3 pt-1 border-t border-slate-200">
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 mb-1" htmlFor="breakout-round-name">
+                Round name (optional):
+              </label>
+              <input
+                id="breakout-round-name"
+                type="text"
+                maxLength={40}
+                value={roundName}
+                onChange={(e) => setRoundName(e.target.value)}
+                placeholder="e.g. Vocabulary warm-up"
+                className="w-full px-3 py-2 bg-slate-50 border border-[#CBD5E1] rounded-[2px] text-xs text-slate-900 focus:bg-white focus:border-brand-600 focus:outline-none"
+              />
+            </div>
+            {isEditingPrepared && preparedView && !worksheetTouched && (
+              <p className="text-[11px] text-slate-600">
+                Current worksheet: {templateName(roundTemplates[preparedView.round.id])}. Pick another below to replace it.
+              </p>
+            )}
             <label className="block text-xs font-semibold text-slate-700">
               Pre-load Worksheet / Template onto Every Board:
             </label>
             <div className="grid grid-cols-2 gap-2 text-xs">
               <button
                 type="button"
-                onClick={() => setDraftWorksheetChoice('frayer')}
+                onClick={() => chooseWorksheet('frayer')}
                 className={cn(
                   "p-2.5 rounded-[2px] border text-left cursor-pointer",
                   draftWorksheetChoice === 'frayer'
@@ -725,7 +989,7 @@ export function BreakoutManagerModal({
               </button>
               <button
                 type="button"
-                onClick={() => setDraftWorksheetChoice('checkin')}
+                onClick={() => chooseWorksheet('checkin')}
                 className={cn(
                   "p-2.5 rounded-[2px] border text-left cursor-pointer",
                   draftWorksheetChoice === 'checkin'
@@ -737,7 +1001,7 @@ export function BreakoutManagerModal({
               </button>
               <button
                 type="button"
-                onClick={() => setDraftWorksheetChoice('corners')}
+                onClick={() => chooseWorksheet('corners')}
                 className={cn(
                   "p-2.5 rounded-[2px] border text-left cursor-pointer",
                   draftWorksheetChoice === 'corners'
@@ -749,7 +1013,7 @@ export function BreakoutManagerModal({
               </button>
               <button
                 type="button"
-                onClick={() => setDraftWorksheetChoice('current')}
+                onClick={() => chooseWorksheet('current')}
                 className={cn(
                   "p-2.5 rounded-[2px] border text-left cursor-pointer",
                   draftWorksheetChoice === 'current'
@@ -761,7 +1025,35 @@ export function BreakoutManagerModal({
                   ? `Copy Current (${fullMainBackground.fileName.slice(0, 18)})`
                   : 'Blank Canvas (No Worksheet)'}
               </button>
+              <label
+                className={cn(
+                  "col-span-2 p-2.5 rounded-[2px] border text-left cursor-pointer",
+                  draftWorksheetChoice === 'upload' && uploadedBg
+                    ? "oh-btn-active font-semibold text-slate-900"
+                    : "oh-btn text-slate-700"
+                )}
+              >
+                <input
+                  type="file"
+                  aria-label="Upload a worksheet file for this round"
+                  accept={WORKSHEET_FILE_ACCEPT}
+                  className="sr-only"
+                  disabled={uploadState.busy}
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    e.target.value = '';
+                    if (file) void pickWorksheetFile(file);
+                  }}
+                />
+                {uploadState.busy
+                  ? 'Rendering…'
+                  : uploadedBg
+                    ? `Uploaded: ${uploadedBg.fileName.slice(0, 40)}`
+                    : `Upload a file… (PDF or image, first ${MAX_PDF_PAGES} pages)`}
+              </label>
             </div>
+            {uploadState.note && <p className="text-[11px] text-slate-500">Long PDF: {uploadState.note}.</p>}
+            {uploadState.error && <p className="text-[11px] text-red-700">{uploadState.error}</p>}
 
             {(draftWorksheetChoice === 'frayer' ||
               draftWorksheetChoice === 'checkin' ||
@@ -812,13 +1104,14 @@ export function BreakoutManagerModal({
           </div>
         </div>
 
-        {activeRound && !isEditing && (
+        {activeRound && !isEditing && !preparedView && (
           <p className="text-[11px] text-amber-800 bg-amber-50 border border-amber-200 rounded-[3px] px-3 py-2">
             {activeRound.title} will be archived. Nothing is deleted. You can still open and export it from the Round selector.
           </p>
         )}
 
         {/* Auto-Start on Entry: Students start on their own boards */}
+        {!preparedView && (
         <div className="p-3.5 rounded-[3px] bg-slate-50 border border-[#CBD5E1] space-y-2.5">
           <div className="flex items-start justify-between gap-3">
             <div>
@@ -936,6 +1229,7 @@ export function BreakoutManagerModal({
             </div>
           )}
         </div>
+        )}
         </div>
 
         <div className="oh-panel-header flex flex-wrap items-center justify-end gap-2 px-5 py-3 border-t border-[#CBD5E1] shrink-0">
@@ -960,49 +1254,142 @@ export function BreakoutManagerModal({
               Bring Everyone to Main
             </button>
           )}
-          <button
-            type="button"
-            onClick={async () => {
-              let payload: ConfigureBreakoutPayload;
-              if (isEditing && targetRound) {
-                payload = {
-                  action: isSwitchingOrResuming ? 'resume' : 'update-current',
-                  roundId: targetRound.id,
-                  allowSelfSelect: draftAllowSelfSelect,
-                  chatScope: draftChatScope,
-                  groups: targetRound.mode === 'groups' ? draftGroups : undefined,
-                };
-              } else {
-                let customBg: RoomBackground | null | undefined = undefined;
-                if (draftWorksheetChoice === 'frayer') customBg = generateTemplateBackground('frayer-model', draftWorksheetTopic);
-                else if (draftWorksheetChoice === 'checkin') customBg = generateTemplateBackground('checkin-columns', draftWorksheetTopic);
-                else if (draftWorksheetChoice === 'corners') customBg = generateTemplateBackground('four-corners', draftWorksheetTopic);
-                else if (draftWorksheetChoice === 'none') customBg = null;
-                payload = {
-                  action: 'new-round',
-                  mode: draftBreakoutMode,
-                  allowSelfSelect: draftAllowSelfSelect,
-                  chatScope: draftChatScope,
-                  copyWorksheet: draftWorksheetChoice === 'current',
-                  customBackground: customBg,
-                  groups: draftBreakoutMode === 'groups' ? draftGroups : undefined,
-                  templateLabel: templateLabelFor(draftWorksheetChoice),
-                };
+          {isLaunchingPrepared && preparedView ? (
+            <button
+              type="button"
+              disabled={preparedBusy || (!draftAllowSelfSelect && draftGroups.every((g) => g.assignedUserIds.length === 0))}
+              title={
+                !draftAllowSelfSelect && draftGroups.every((g) => g.assignedUserIds.length === 0)
+                  ? 'Assign students first, or turn on self-select'
+                  : undefined
               }
-              const res = await onConfigureBreakout(payload);
-              if (!res.ok) { window.alert(res.error || 'Could not update breakout boards.'); return; }
-              onFollowRound?.();
-              onClose();
-              onShowLiveGridOverview(payload.action !== 'update-current');
-            }}
-            className="px-4 py-1.5 rounded-[2px] border oh-btn-primary text-xs font-semibold text-white cursor-pointer"
-          >
-            {isEditing && targetRound
-              ? isSwitchingOrResuming
-                ? `Send Class to Round ${targetRound.number}`
-                : 'Save Changes'
-              : `Launch Round ${nextRoundNumber}`}
-          </button>
+              onClick={async () => {
+                setPreparedBusy(true);
+                const res = await onConfigureBreakout({
+                  action: 'resume',
+                  roundId: preparedView.round.id,
+                  groups: draftGroups,
+                  allowSelfSelect: draftAllowSelfSelect,
+                  chatScope: draftChatScope,
+                });
+                setPreparedBusy(false);
+                if (!res.ok) { window.alert(res.error || 'Could not launch this round.'); return; }
+                onFollowRound?.();
+                onClose();
+                onShowLiveGridOverview(true);
+              }}
+              className="px-4 py-1.5 rounded-[2px] border oh-btn-primary text-xs font-semibold text-white cursor-pointer disabled:opacity-50"
+            >
+              {`Launch "${preparedRoundName(preparedView.round) || preparedView.round.title}"`}
+            </button>
+          ) : isEditingPrepared && preparedView ? (
+            <button
+              type="button"
+              disabled={preparedBusy || uploadState.busy || (draftWorksheetChoice === 'upload' && worksheetTouched && !uploadedBg)}
+              onClick={async () => {
+                const round = preparedView.round;
+                const payload: ConfigureBreakoutPayload = {
+                  action: 'edit-prepared',
+                  roundId: round.id,
+                  title: roundName.trim() || undefined,
+                  allowSelfSelect: draftAllowSelfSelect,
+                  chatScope: draftChatScope,
+                  groups: round.mode === 'groups' ? draftGroups : undefined,
+                };
+                if (worksheetTouched) {
+                  const ws = buildWorksheetConfig(draftWorksheetChoice, draftWorksheetTopic);
+                  payload.customBackground = ws.customBackground;
+                  payload.copyWorksheet = ws.copyWorksheet;
+                  if (!payload.title) payload.templateLabel = ws.templateLabel;
+                }
+                setPreparedBusy(true);
+                const res = await onConfigureBreakout(payload);
+                setPreparedBusy(false);
+                if (!res.ok) { window.alert(res.error || 'Could not save this round.'); return; }
+                setPreparedNotice(`Saved changes to ${round.title.replace(/^Round \d+ · /, '')}.`);
+                setPreparedView(null);
+              }}
+              className="px-4 py-1.5 rounded-[2px] border oh-btn-primary text-xs font-semibold text-white cursor-pointer disabled:opacity-50"
+            >
+              Save Changes
+            </button>
+          ) : (
+            <>
+              {!isEditing && (
+                <button
+                  type="button"
+                  disabled={preparedBusy || uploadState.busy || (draftWorksheetChoice === 'upload' && !uploadedBg)}
+                  title="Save this round with its worksheet and groups. Nobody moves until you launch it."
+                  onClick={async () => {
+                    const ws = buildWorksheetConfig(draftWorksheetChoice, draftWorksheetTopic);
+                    setPreparedBusy(true);
+                    const res = await onConfigureBreakout({
+                      action: 'new-round',
+                      prepare: true,
+                      title: roundName.trim() || undefined,
+                      mode: draftBreakoutMode,
+                      allowSelfSelect: draftAllowSelfSelect,
+                      chatScope: draftChatScope,
+                      copyWorksheet: ws.copyWorksheet,
+                      customBackground: ws.customBackground,
+                      groups: draftBreakoutMode === 'groups' ? draftGroups : undefined,
+                      templateLabel: ws.templateLabel,
+                    });
+                    setPreparedBusy(false);
+                    if (!res.ok) { window.alert(res.error || 'Could not save this round.'); return; }
+                    setPreparedNotice(`Saved ${roundName.trim() || `Round ${nextRoundNumber}`} for later. Nobody moved.`);
+                    setRoundName('');
+                    setUploadedBg(null);
+                    setUploadState({ busy: false });
+                  }}
+                  className="px-4 py-1.5 rounded-[2px] border oh-btn text-xs font-semibold text-slate-800 cursor-pointer disabled:opacity-50"
+                >
+                  Save for later
+                </button>
+              )}
+              <button
+                type="button"
+                disabled={!isEditing && (uploadState.busy || (draftWorksheetChoice === 'upload' && !uploadedBg))}
+                onClick={async () => {
+                  let payload: ConfigureBreakoutPayload;
+                  if (isEditing && targetRound) {
+                    payload = {
+                      action: isSwitchingOrResuming ? 'resume' : 'update-current',
+                      roundId: targetRound.id,
+                      allowSelfSelect: draftAllowSelfSelect,
+                      chatScope: draftChatScope,
+                      groups: targetRound.mode === 'groups' ? draftGroups : undefined,
+                    };
+                  } else {
+                    const ws = buildWorksheetConfig(draftWorksheetChoice, draftWorksheetTopic);
+                    payload = {
+                      action: 'new-round',
+                      mode: draftBreakoutMode,
+                      title: roundName.trim() || undefined,
+                      allowSelfSelect: draftAllowSelfSelect,
+                      chatScope: draftChatScope,
+                      copyWorksheet: ws.copyWorksheet,
+                      customBackground: ws.customBackground,
+                      groups: draftBreakoutMode === 'groups' ? draftGroups : undefined,
+                      templateLabel: ws.templateLabel,
+                    };
+                  }
+                  const res = await onConfigureBreakout(payload);
+                  if (!res.ok) { window.alert(res.error || 'Could not update breakout boards.'); return; }
+                  onFollowRound?.();
+                  onClose();
+                  onShowLiveGridOverview(payload.action !== 'update-current');
+                }}
+                className="px-4 py-1.5 rounded-[2px] border oh-btn-primary text-xs font-semibold text-white cursor-pointer disabled:opacity-50"
+              >
+                {isEditing && targetRound
+                  ? isSwitchingOrResuming
+                    ? `Send Class to Round ${targetRound.number}`
+                    : 'Save Changes'
+                  : `Launch Round ${nextRoundNumber}`}
+              </button>
+            </>
+          )}
         </div>
       </div>
     </div>

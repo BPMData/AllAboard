@@ -235,6 +235,8 @@ export default function App() {
   const [elements, setElements] = useState<CanvasElement[]>([]);
   const [background, setBackground] = useState<RoomBackground | null>(null);
   const [subBoards, setSubBoards] = useState<Record<string, SubBoardData>>({});
+  /** Teacher-only: each round's starting worksheet (server `roundTemplates`). Empty for students. */
+  const [roundTemplates, setRoundTemplates] = useState<Record<string, RoomBackground | null>>({});
   const [teacherSelectedBoardId, setTeacherSelectedBoardId] = useState<string>('main');
 
   const [users, setUsers] = useState<User[]>([]);
@@ -405,9 +407,11 @@ export default function App() {
         users: initUsers,
         roomSettings: initRoom,
         isTeacher: verifiedTeacher,
+        roundTemplates: initRoundTemplates,
         assignedName,
         isNameLocked: initNameLocked,
       }) => {
+        setRoundTemplates(initRoundTemplates && typeof initRoundTemplates === 'object' ? initRoundTemplates : {});
         const nextSeen = new Set<string>();
         if (Array.isArray(initMsgs)) {
           setMessages(initMsgs);
@@ -450,12 +454,22 @@ export default function App() {
       ({
         breakoutConfig: syncedConfig,
         subBoards: syncedSubBoards,
+        roundTemplates: syncedRoundTemplates,
       }: {
         breakoutConfig: BreakoutConfig;
         subBoards: Record<string, SubBoardData>;
+        roundTemplates?: Record<string, RoomBackground | null>;
       }) => {
         setRoomSettings((prev) => ({ ...prev, breakoutConfig: syncedConfig }));
         if (syncedSubBoards) setSubBoards(syncedSubBoards);
+        if (syncedRoundTemplates && typeof syncedRoundTemplates === 'object') setRoundTemplates(syncedRoundTemplates);
+      }
+    );
+
+    newSocket.on(
+      'round-templates-sync',
+      ({ roundTemplates: synced }: { roundTemplates?: Record<string, RoomBackground | null> }) => {
+        if (synced && typeof synced === 'object') setRoundTemplates(synced);
       }
     );
 
@@ -929,13 +943,13 @@ export default function App() {
   }, [socket, roomId]);
 
   const handleConfigureBreakout = useCallback(
-    (payload: ConfigureBreakoutPayload): Promise<{ ok: boolean; error?: string }> => {
+    (payload: ConfigureBreakoutPayload): Promise<{ ok: boolean; error?: string; roundId?: string }> => {
       return new Promise((resolve) => {
         if (!socket) {
           resolve({ ok: false, error: 'Not connected to server.' });
           return;
         }
-        socket.emit('teacher:configure-breakout', payload, (res: { ok: boolean; error?: string }) => {
+        socket.emit('teacher:configure-breakout', payload, (res: { ok: boolean; error?: string; roundId?: string }) => {
           if (res?.ok && (payload.action === 'return-to-main' || payload.mode === 'main')) {
             setTeacherSelectedBoardId('main');
           }
@@ -1037,6 +1051,7 @@ export default function App() {
         subBoards?: Record<string, SubBoardData>;
         breakoutConfig?: BreakoutConfig;
         assets?: Record<string, string>;
+        roundTemplates?: Record<string, RoomBackground | null>;
       },
       mode: ImportRestoreMode
     ): Promise<{ ok: boolean; error?: string }> => {
@@ -1054,6 +1069,7 @@ export default function App() {
             subBoards: snapshot.subBoards,
             breakoutConfig: snapshot.breakoutConfig,
             assets: snapshot.assets,
+            roundTemplates: snapshot.roundTemplates,
             mode,
           },
           (response: { ok: boolean; error?: string }) => {
@@ -2012,6 +2028,7 @@ export default function App() {
           background={activeBackground}
           subBoards={subBoards}
           breakoutConfig={breakoutConfig}
+          roundTemplates={roundTemplates}
           users={users}
           remoteCursors={remoteCursors}
           laserSocket={socket}
