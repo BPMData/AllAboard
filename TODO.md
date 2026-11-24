@@ -65,6 +65,12 @@ Plan: [`PLANS_LESSON_PACKS.md`](PLANS_LESSON_PACKS.md) phases 2–3, with the op
 - [ ] **HTML worksheets:** add a tip in the upload dialog to print to PDF first.
 - [ ] **PowerPoint (`.pptx`) uploads:** add a tip to use *Save as PDF*, or to import through Slides / PDF from Drive.
 
+### Problem reports
+- [x] **"Something not working?"** guided report (issue #57): public GitHub issue plus private email to the shared
+      inbox, with copy/download/email fallback. See [`docs/REPORTS.md`](docs/REPORTS.md).
+  - [ ] **Owner setup:** deploy `tools/report-relay.gs`, add the `REPORT_RELAY_URL` / `REPORT_RELAY_TOKEN` secrets,
+        send a test report. Until then every report uses the fallback.
+
 ### Housekeeping
 - [ ] **Hosting: undecided.** Options, measurements, prices and a Compute Engine VM sketch are archived in
       [`docs/HOSTING_OPTIONS.md`](docs/HOSTING_OPTIONS.md). Nothing chosen; first read the `[load]` logs after PR #48.
