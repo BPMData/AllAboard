@@ -91,6 +91,41 @@ Plan: [`PLANS_LESSON_PACKS.md`](PLANS_LESSON_PACKS.md) phases 2–3, with the op
   - [ ] **Owner setup:** turn on AllAboard reports in OverBoard's report script (BPMData/OverBoard PR 56), add the
         `REPORT_RELAY_URL` / `REPORT_RELAY_TOKEN` secrets, send a test report. Until then every report uses the fallback.
 
+### Classroom simulator: fake students for testing alone
+- [ ] **One command that fills a room with fake students** so a teacher can test breakouts, worksheet variants,
+      corner mode, late joiners and lesson-pack reloads from one laptop, without a pile of incognito tabs.
+  - **Build on `scripts/loadtest.ts`.** It already connects fake Socket.IO students, locally or to `--url`, and
+    gets through the HTTPS proxy. Put the new script at `scripts/classroom.ts`, add `"classroom": "tsx scripts/classroom.ts"`
+    to `package.json`, and add a short **"Test with fake students"** section to `README.md`.
+  - **What the fake students do:**
+    - Join with readable names (`Ava (bot)`, `Ben (bot)`, …) and stay connected until you stop the script.
+    - **Stamp their name** on the main board, either in random corners or as you set with
+      `--corners tl:5,tr:5,bl:4,br:6`. The stamp position is worked out from the main board's worksheet bounds, so
+      it lands inside the boxes.
+    - **Follow breakouts.** When moved to their own board or a group board, each one writes its name in a text box
+      there, so the Live Grid shows who is who and which worksheet each got.
+    - Set status (**Need help** / **Done**) at random if `--statuses` is given.
+  - **Controls while it runs** (keys in the terminal, listed when it starts):
+    `l` = one late joiner, `L` = five late joiners, `s` = everyone re-stamps, `r` = everyone disconnects and
+    rejoins, `d` = everyone draws a scribble, `q` = everyone leaves and the script quits.
+  - **Safety:**
+    - Refuse to start unless the room code begins with `test-` (or `--i-know`), so it can never land in a real
+      class.
+    - Cap at 40 students.
+    - Never send the teacher PIN.
+    - On quit, remove the bots' ink and stamps (`clear-user-drawings`) and disconnect cleanly.
+  - **How to launch it**, once built (the README section should say exactly this):
+    1. **Against production (easiest):** open AllAboard yourself as teacher in room `test-whatever`. Then, in a
+       Claude Code session on this repo, say: *"Run `npm run classroom -- --url https://<the AllAboard URL>
+       --room test-whatever --students 20` and leave it running."* Tell Claude when you're done, and it presses `q`.
+    2. **On your own computer** (needs Node 22): `npm ci` once, then
+       `npm run classroom -- --url https://<the AllAboard URL> --room test-whatever --students 20`.
+    3. **Fully local:** run `npm run dev` in one terminal and `npm run classroom -- --room test-whatever` in
+       another. It defaults to `http://localhost:3000`. Then open `http://localhost:3000` as teacher.
+  - **Tests:** a `node:test` that runs the script against `startServer` with 5 bots, `--corners tl:2,br:3` and no
+    keyboard (`--seconds 5`). Check that 5 users joined, the stamps fall in the right quadrants
+    (`src/lib/stampQuadrants.ts`), and the bots' ink is gone after quit.
+
 ### Housekeeping
 - [ ] **Hosting: undecided.** Options, measurements, prices and a Compute Engine VM sketch are archived in
       [`docs/HOSTING_OPTIONS.md`](docs/HOSTING_OPTIONS.md). Nothing chosen; first read the `[load]` logs after PR #48.
