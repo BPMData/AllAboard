@@ -581,6 +581,7 @@ export function LoadLessonModal({
                 <li key={r.key}>
                   {r.title || (r.mode === 'groups' ? 'Groups' : 'Individual')} ·{' '}
                   {r.mode === 'groups' ? `${r.groups?.length ?? 0} groups` : 'Individual'} · {r.worksheet?.fileName || 'blank'}
+                  {r.ink?.length ? ` + teacher ink (${r.ink.length})` : ''}
                 </li>
               ))}
             </ol>

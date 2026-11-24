@@ -151,6 +151,7 @@ export interface ConfigureBreakoutPayload {
   allowSelfSelect?: boolean;
   chatScope?: 'unified' | 'board';
   copyWorksheet?: boolean;                   // 'new-round' / 'set-auto-individual'
+  copyInk?: boolean;                         // 'new-round' / 'edit-prepared', with copyWorksheet: also copy the teacher's Main ink
   customBackground?: RoomBackground | null;  // 'new-round' / 'set-auto-individual'
   groups?: BreakoutGroupDraft[];             // 'new-round': ids ignored. 'resume'/'update-current': ids must be real board ids
   templateLabel?: string;                    // 'new-round' / 'set-auto-individual', used in the round title
@@ -255,6 +256,8 @@ export interface RoomSnapshot {
   breakoutConfig?: BreakoutConfig;
   /** Each round's starting worksheet (server `room.roundTemplates`). Absent in older files. */
   roundTemplates?: Record<string, RoomBackground | null>;
+  /** Teacher ink copied onto each round's boards (server `room.roundTemplateInk`). Absent in older files. */
+  roundTemplateInk?: Record<string, CanvasElement[]>;
 }
 
 export interface PendingSnapshotData {
@@ -269,4 +272,5 @@ export interface PendingSnapshotData {
   breakoutConfig?: BreakoutConfig;
   assets?: Record<string, string>;
   roundTemplates?: Record<string, RoomBackground | null>;
+  roundTemplateInk?: Record<string, CanvasElement[]>;
 }

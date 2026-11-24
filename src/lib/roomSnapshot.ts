@@ -49,6 +49,8 @@ export function parseSnapshotText(fileName: string, text: string, fallbackRoomId
       assets: parsed.assets && typeof parsed.assets === 'object' ? parsed.assets : undefined,
       roundTemplates:
         parsed.roundTemplates && typeof parsed.roundTemplates === 'object' ? parsed.roundTemplates : undefined,
+      roundTemplateInk:
+        parsed.roundTemplateInk && typeof parsed.roundTemplateInk === 'object' ? parsed.roundTemplateInk : undefined,
     },
   };
 }

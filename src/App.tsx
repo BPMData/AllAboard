@@ -238,6 +238,8 @@ export default function App() {
   const [subBoards, setSubBoards] = useState<Record<string, SubBoardData>>({});
   /** Teacher-only: each round's starting worksheet (server `roundTemplates`). Empty for students. */
   const [roundTemplates, setRoundTemplates] = useState<Record<string, RoomBackground | null>>({});
+  /** Teacher-only: ink each round copies onto its boards (server `roundTemplateInk`). Empty for students. */
+  const [roundTemplateInk, setRoundTemplateInk] = useState<Record<string, CanvasElement[]>>({});
   const [teacherSelectedBoardId, setTeacherSelectedBoardId] = useState<string>('main');
 
   const [users, setUsers] = useState<User[]>([]);
@@ -409,10 +411,12 @@ export default function App() {
         roomSettings: initRoom,
         isTeacher: verifiedTeacher,
         roundTemplates: initRoundTemplates,
+        roundTemplateInk: initRoundTemplateInk,
         assignedName,
         isNameLocked: initNameLocked,
       }) => {
         setRoundTemplates(initRoundTemplates && typeof initRoundTemplates === 'object' ? initRoundTemplates : {});
+        setRoundTemplateInk(initRoundTemplateInk && typeof initRoundTemplateInk === 'object' ? initRoundTemplateInk : {});
         const nextSeen = new Set<string>();
         if (Array.isArray(initMsgs)) {
           setMessages(initMsgs);
@@ -456,21 +460,31 @@ export default function App() {
         breakoutConfig: syncedConfig,
         subBoards: syncedSubBoards,
         roundTemplates: syncedRoundTemplates,
+        roundTemplateInk: syncedTemplateInk,
       }: {
         breakoutConfig: BreakoutConfig;
         subBoards: Record<string, SubBoardData>;
         roundTemplates?: Record<string, RoomBackground | null>;
+        roundTemplateInk?: Record<string, CanvasElement[]>;
       }) => {
         setRoomSettings((prev) => ({ ...prev, breakoutConfig: syncedConfig }));
         if (syncedSubBoards) setSubBoards(syncedSubBoards);
         if (syncedRoundTemplates && typeof syncedRoundTemplates === 'object') setRoundTemplates(syncedRoundTemplates);
+        if (syncedTemplateInk && typeof syncedTemplateInk === 'object') setRoundTemplateInk(syncedTemplateInk);
       }
     );
 
     newSocket.on(
       'round-templates-sync',
-      ({ roundTemplates: synced }: { roundTemplates?: Record<string, RoomBackground | null> }) => {
+      ({
+        roundTemplates: synced,
+        roundTemplateInk: syncedInk,
+      }: {
+        roundTemplates?: Record<string, RoomBackground | null>;
+        roundTemplateInk?: Record<string, CanvasElement[]>;
+      }) => {
         if (synced && typeof synced === 'object') setRoundTemplates(synced);
+        if (syncedInk && typeof syncedInk === 'object') setRoundTemplateInk(syncedInk);
       }
     );
 
@@ -1053,6 +1067,7 @@ export default function App() {
         breakoutConfig?: BreakoutConfig;
         assets?: Record<string, string>;
         roundTemplates?: Record<string, RoomBackground | null>;
+        roundTemplateInk?: Record<string, CanvasElement[]>;
       },
       mode: ImportRestoreMode
     ): Promise<{ ok: boolean; error?: string }> => {
@@ -1071,6 +1086,7 @@ export default function App() {
             breakoutConfig: snapshot.breakoutConfig,
             assets: snapshot.assets,
             roundTemplates: snapshot.roundTemplates,
+            roundTemplateInk: snapshot.roundTemplateInk,
             mode,
           },
           (response: { ok: boolean; error?: string }) => {
@@ -2073,6 +2089,7 @@ export default function App() {
           subBoards={subBoards}
           breakoutConfig={breakoutConfig}
           roundTemplates={roundTemplates}
+          roundTemplateInk={roundTemplateInk}
           users={users}
           remoteCursors={remoteCursors}
           laserSocket={socket}

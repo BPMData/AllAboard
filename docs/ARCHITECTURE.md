@@ -121,6 +121,7 @@ Cloud Run service "allaboard"  ── one container :3000 (node server.ts, Build
 | `subBoards: Map<boardId, SubBoardState>` | Breakout boards. Each has `elements`, `messages`, `background`, `assignedUserIds`, `roundId`, `kind` (`individual`/`group`) |
 | `breakoutConfig` | `mode` (`main`/`individual`/`groups`, i.e. where students are **now**), `activeRoundId`, `rounds[]`, `allowSelfSelect`, `chatScope`, `userBoardOverrides` |
 | `roundTemplates[roundId]` | The worksheet each round's boards start with (copied to late joiners). Sent to **teachers only** (`init`, `breakout-sync`, `round-templates-sync`) and saved in room exports. |
+| `roundTemplateInk[roundId]` | **Template ink**: teacher Main ink (no name stamps) a round copies onto each of its boards, with new ids and the teacher as author so students can't erase it. Individual boards get it as they're made (late joiners too); group boards at launch. Set by `copyInk` with `copyWorksheet` on `new-round` / `edit-prepared`. Teachers only, like `roundTemplates`; in room exports and lesson packs (`LessonRound.ink`). |
 | `timer`, `lockedNames`, `bannedUsers`, `isCanvasLocked`, `hideStudentCursors`, `teacherPin`, `lastActiveAt` | As named |
 | `usersByUserId` | **Runtime only** (not persisted): roster, `sockets` set, `isTeacher`, student status |
 

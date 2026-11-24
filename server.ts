@@ -32,7 +32,7 @@ import { hasNameStamp, isTeacherStampKind } from './src/lib/stamps.ts';
 import { isAnonymousAuthorId, makeAnonymousAuthorId } from './src/lib/anonymousInk.ts';
 import { OVERVIEW_SYNC_MS, buildDigest, emptyChanges, type BoardChanges, type BoardDigest } from './src/lib/boardDigest.ts';
 import { CURSOR_EMIT_MS } from './src/lib/drawThrottle.ts';
-import { buildLessonPack, validateLesson, type LessonPack, type MainInkChoice } from './src/lib/lessonPack.ts';
+import { buildLessonPack, filterMainInk, validateLesson, type LessonPack, type MainInkChoice } from './src/lib/lessonPack.ts';
 import { monitorEventLoopDelay } from 'node:perf_hooks';
 import {
   MAX_APPEND_NUMBERS,
@@ -143,6 +143,8 @@ interface RoomState {
   breakoutConfig: BreakoutConfigState;
   /** Worksheet background each round was launched with, used to provision late-joining students. Server-only; not broadcast. */
   roundTemplates: Record<string, any | null>;
+  /** Teacher ink copied onto every board of a round when it's made (template ink). Server ids; teacher-authored. */
+  roundTemplateInk: Record<string, any[]>;
   timer: TimerState;
   usersByUserId: Map<string, ServerUserRecord>;
   /** userId → SHA-256 of that browser's private key. Server-only; never broadcast. */
@@ -165,6 +167,7 @@ interface SerializedRoom {
   subBoards?: Record<string, SubBoardState>;
   breakoutConfig?: BreakoutConfigState;
   roundTemplates?: Record<string, any | null>;
+  roundTemplateInk?: Record<string, any[]>;
   timer?: TimerState;
   userKeyHashes?: Record<string, string>;
   lockedNames?: Record<string, string>;
@@ -346,6 +349,7 @@ export async function startServer(options: StartServerOptions = {}) {
       subBoards,
       breakoutConfig,
       roundTemplates: item.roundTemplates && typeof item.roundTemplates === 'object' ? item.roundTemplates : {},
+      roundTemplateInk: storedTemplateInk(item.roundTemplateInk),
       timer: item.timer || {
         isRunning: false,
         durationMs: 5 * 60 * 1000,
@@ -378,6 +382,7 @@ export async function startServer(options: StartServerOptions = {}) {
       subBoards: serializeSubBoards(room.subBoards),
       breakoutConfig: room.breakoutConfig,
       roundTemplates: room.roundTemplates,
+      roundTemplateInk: room.roundTemplateInk,
       timer: room.timer,
       userKeyHashes: Object.fromEntries(room.userKeyHashes),
       lockedNames: room.lockedNames,
@@ -396,6 +401,7 @@ export async function startServer(options: StartServerOptions = {}) {
       room.messages.length === 0 &&
       room.background === null &&
       room.subBoards.size === 0 &&
+      Object.keys(room.roundTemplateInk).length === 0 &&
       room.teacherPinHash === null &&
       Object.keys(room.lockedNames).length === 0 &&
       Object.keys(room.bannedUsers).length === 0
@@ -588,6 +594,7 @@ export async function startServer(options: StartServerOptions = {}) {
         subBoards: new Map(),
         breakoutConfig: { mode: 'main', activeRoundId: undefined, rounds: [], allowSelfSelect: false, chatScope: 'unified' },
         roundTemplates: {},
+        roundTemplateInk: {},
         timer: {
           isRunning: false,
           durationMs: 5 * 60 * 1000,
@@ -819,7 +826,7 @@ export async function startServer(options: StartServerOptions = {}) {
       socket.emit('breakout-sync', {
         breakoutConfig: room.breakoutConfig,
         subBoards: serializeSubBoards(room.subBoards),
-        roundTemplates: room.roundTemplates,
+        ...teacherTemplatesPayload(room),
       });
     } else if (prev !== next) {
       const elements = boardElementsOf(room, boardId);
@@ -890,7 +897,7 @@ export async function startServer(options: StartServerOptions = {}) {
         io.to(id).emit('breakout-sync', {
           breakoutConfig: room.breakoutConfig,
           subBoards: full,
-          roundTemplates: room.roundTemplates,
+          ...teacherTemplatesPayload(room),
         });
       } else {
         io.to(id).emit('breakout-sync', {
@@ -916,6 +923,74 @@ export async function startServer(options: StartServerOptions = {}) {
       else if (bg && typeof bg === 'object' && Array.isArray((bg as any).pages)) out[key] = cloneBackground(bg);
     }
     return out;
+  }
+
+  /** A stored `roundTemplateInk` (SQLite row): only array values. */
+  function storedTemplateInk(raw: unknown): Record<string, any[]> {
+    const out: Record<string, any[]> = {};
+    if (!raw || typeof raw !== 'object') return out;
+    for (const [key, list] of Object.entries(raw as Record<string, unknown>)) {
+      if (Array.isArray(list) && list.length > 0) out[key] = list;
+    }
+    return out;
+  }
+
+  /**
+   * Imported `roundTemplateInk`: only keys naming a round in `cfg`, each a list of sound elements (no name stamps) at
+   * most `MAX_BOARD_ELEMENTS` long, with fresh server ids.
+   */
+  function cleanImportedTemplateInk(raw: unknown, cfg: BreakoutConfigLike): Record<string, any[]> {
+    const out: Record<string, any[]> = {};
+    if (!raw || typeof raw !== 'object') return out;
+    const ids = new Set(getRounds(cfg).map((r) => r.id));
+    for (const [key, list] of Object.entries(raw as Record<string, unknown>)) {
+      if (!ids.has(key) || !Array.isArray(list) || list.length > MAX_BOARD_ELEMENTS) continue;
+      const ink = list
+        .filter((el) => el && typeof el === 'object' && typeof el.userId === 'string' && elementFieldsOk(el))
+        .filter((el) => !(el.tool === 'stamp' && el.stamp === 'username'))
+        .map((el) => ({ ...structuredClone(el), id: randomUUID() }));
+      if (ink.length > 0) out[key] = ink;
+    }
+    return out;
+  }
+
+  // ---------- Template ink (PLANS_LESSON_PACKS.md, phase 3) ----------
+
+  /** Teacher-owned Main ink without name stamps: what "Also copy my ink from Main" puts on a round's boards. */
+  function mainTemplateInk(room: RoomState, callerId: string): any[] {
+    return filterMainInk(room.elements, 'teacher', teacherIdsOf(room, callerId))
+      .slice(0, MAX_BOARD_ELEMENTS)
+      .map((el) => structuredClone(el));
+  }
+
+  /** Sets or clears a round's template ink from a payload. `copyInk` counts only with `copyWorksheet` (same board). */
+  function setRoundTemplateInk(room: RoomState, roundId: string, payload: ConfigureBreakoutPayload, callerId: string) {
+    const ink = payload.copyInk === true && payload.copyWorksheet === true ? mainTemplateInk(room, callerId) : [];
+    if (ink.length > 0) room.roundTemplateInk[roundId] = ink;
+    else delete room.roundTemplateInk[roundId];
+  }
+
+  /** Fresh copies of a round's template ink for one board: new ids, that board, the teacher still the author. */
+  function templateInkForBoard(room: RoomState, roundId: string, boardId: string): any[] {
+    const ink = room.roundTemplateInk[roundId];
+    if (!Array.isArray(ink) || ink.length === 0) return [];
+    const now = Date.now();
+    return ink.map((el) => ({ ...structuredClone(el), id: randomUUID(), boardId, timestamp: now }));
+  }
+
+  /** Puts a round's template ink under whatever is already on each of its group boards. */
+  function stampTemplateInkOnGroupBoards(room: RoomState, roundId: string) {
+    if (!room.roundTemplateInk[roundId]?.length) return;
+    for (const sb of getBoardsInRound(room.subBoards, roundId)) {
+      if (sb.kind !== 'group') continue;
+      sb.elements = [...templateInkForBoard(room, roundId, sb.id), ...sb.elements].slice(0, MAX_BOARD_ELEMENTS);
+      noteChange(room, sb.id, { full: true });
+    }
+  }
+
+  /** Teacher-only: the round templates and their ink, as sent with `init`, `breakout-sync` and `round-templates-sync`. */
+  function teacherTemplatesPayload(room: RoomState) {
+    return { roundTemplates: room.roundTemplates, roundTemplateInk: room.roundTemplateInk };
   }
 
   // ---------- Lesson packs (PLANS_LESSON_PACKS.md, phase 2) ----------
@@ -946,6 +1021,7 @@ export async function startServer(options: StartServerOptions = {}) {
       mainInk,
       rounds,
       roundTemplates,
+      roundTemplateInk: room.roundTemplateInk,
       boards: Array.from(room.subBoards.values()).map((sb) => ({
         id: sb.id,
         roundId: sb.roundId,
@@ -1034,6 +1110,7 @@ export async function startServer(options: StartServerOptions = {}) {
     cfg.rounds = getRounds(cfg).filter((r) => r.id !== roundId);
     for (const sb of getBoardsInRound(room.subBoards, roundId)) room.subBoards.delete(sb.id);
     delete room.roundTemplates[roundId];
+    delete room.roundTemplateInk[roundId];
   }
 
   /**
@@ -1056,6 +1133,9 @@ export async function startServer(options: StartServerOptions = {}) {
       for (const sb of getBoardsInRound(room.subBoards, roundId)) room.subBoards.delete(sb.id);
       const worksheet = cloneBackground(lr.worksheet);
       room.roundTemplates[roundId] = worksheet;
+      const templateInk = lessonInk(lr.ink ?? [], roundId, author);
+      if (templateInk.length > 0) room.roundTemplateInk[roundId] = templateInk;
+      else delete room.roundTemplateInk[roundId];
       const meta: BreakoutRoundMeta = {
         id: roundId,
         number,
@@ -1132,7 +1212,7 @@ export async function startServer(options: StartServerOptions = {}) {
       kind: 'individual',
       title: `${user.name}'s Board`,
       assignedUserIds: [user.userId],
-      elements: [],
+      elements: templateInkForBoard(room, roundId, id),
       background: cloneBackground(getRoundTemplate(room, roundId)),
       messages: [],
     });
@@ -1203,7 +1283,12 @@ export async function startServer(options: StartServerOptions = {}) {
    * 'new-round'. When `prepared` is false this launches the round at once (moves every student), exactly as before.
    * When true it only saves the round: no individual boards, and mode / activeRoundId / room settings are untouched.
    */
-  function createRound(room: RoomState, payload: ConfigureBreakoutPayload, prepared: boolean): RoundResult {
+  function createRound(
+    room: RoomState,
+    payload: ConfigureBreakoutPayload,
+    prepared: boolean,
+    callerId: string
+  ): RoundResult {
     const cfg = room.breakoutConfig;
     const mode: 'individual' | 'groups' = payload.mode === 'groups' ? 'groups' : 'individual';
     const groups = Array.isArray(payload.groups) ? payload.groups.filter(Boolean) : [];
@@ -1218,6 +1303,7 @@ export async function startServer(options: StartServerOptions = {}) {
     const roundId = makeRoundId(roundNumber);
     const templateBg = payloadWorksheet(room, payload) ?? null;
     room.roundTemplates[roundId] = cloneBackground(templateBg);
+    setRoundTemplateInk(room, roundId, payload, callerId);
 
     const chatScope: 'unified' | 'board' = payload.chatScope === 'board' ? 'board' : 'unified';
     const allowSelfSelect = Boolean(payload.allowSelfSelect);
@@ -1234,6 +1320,8 @@ export async function startServer(options: StartServerOptions = {}) {
       if (!prepared) for (const u of getBreakoutStudents(room)) provisionIndividualBoard(room, roundId, u);
     } else {
       createGroupBoards(room, roundId, groups, templateBg);
+      // A prepared round's group boards get the template ink when it's launched (launchPreparedRound).
+      if (!prepared) stampTemplateInkOnGroupBoards(room, roundId);
     }
 
     if (prepared) {
@@ -1264,12 +1352,14 @@ export async function startServer(options: StartServerOptions = {}) {
     delete launched.allowSelfSelect;
     delete launched.chatScope;
     cfg.rounds = getRounds(cfg).map((r) => (r.id === round.id ? launched : r));
+    // Individual boards get the template ink as they're made; group boards already exist, so they get it now.
+    if (round.mode === 'groups') stampTemplateInkOnGroupBoards(room, round.id);
     if (typeof round.allowSelfSelect === 'boolean') cfg.allowSelfSelect = round.allowSelfSelect;
     if (round.chatScope === 'board' || round.chatScope === 'unified') cfg.chatScope = round.chatScope;
   }
 
   /** 'edit-prepared': title, worksheet, stored settings, and (group rounds) group titles, members and count. */
-  function editPreparedRound(room: RoomState, payload: ConfigureBreakoutPayload): RoundResult {
+  function editPreparedRound(room: RoomState, payload: ConfigureBreakoutPayload, callerId: string): RoundResult {
     const cfg = room.breakoutConfig;
     const round = getRoundById(cfg, payload.roundId);
     if (!round || !isPreparedRound(round)) {
@@ -1289,6 +1379,7 @@ export async function startServer(options: StartServerOptions = {}) {
     const worksheet = payloadWorksheet(room, payload);
     if (worksheet !== undefined) {
       room.roundTemplates[round.id] = cloneBackground(worksheet);
+      setRoundTemplateInk(room, round.id, payload, callerId);
       for (const sb of getBoardsInRound(room.subBoards, round.id)) {
         sb.background = cloneBackground(room.roundTemplates[round.id]);
         io.to(room.id).emit('background-sync', { boardId: sb.id, background: sb.background });
@@ -1337,6 +1428,7 @@ export async function startServer(options: StartServerOptions = {}) {
     const roundNumber = getNextRoundNumber(cfg);
     const roundId = makeRoundId(roundNumber);
     room.roundTemplates[roundId] = cloneBackground(cfg.autoIndividualBackground ?? null);
+    delete room.roundTemplateInk[roundId];
     const roundMeta: BreakoutRoundMeta = {
       id: roundId,
       number: roundNumber,
@@ -1532,7 +1624,7 @@ export async function startServer(options: StartServerOptions = {}) {
         users: getRosterPayload(room),
         roomSettings: getRoomSettingsPayload(room),
         isTeacher: isVerifiedTeacher,
-        ...(isVerifiedTeacher ? { roundTemplates: room.roundTemplates } : {}),
+        ...(isVerifiedTeacher ? teacherTemplatesPayload(room) : {}),
         assignedName: effectiveName || undefined,
         isNameLocked,
       });
@@ -1724,7 +1816,7 @@ export async function startServer(options: StartServerOptions = {}) {
           for (const u of getBreakoutStudents(room)) provisionIndividualBoard(room, round.id, u);
         }
       } else if (action === 'edit-prepared') {
-        const result = editPreparedRound(room, safePayload);
+        const result = editPreparedRound(room, safePayload, meta.userId);
         if (!result.ok) {
           callback?.(result);
           return;
@@ -1739,9 +1831,10 @@ export async function startServer(options: StartServerOptions = {}) {
         cfg.rounds = getRounds(cfg).filter((r) => r.id !== round.id);
         for (const sb of getBoardsInRound(room.subBoards, round.id)) room.subBoards.delete(sb.id);
         delete room.roundTemplates[round.id];
+        delete room.roundTemplateInk[round.id];
       } else {
         // 'new-round' (prepare: true creates it without moving anyone)
-        const result = createRound(room, safePayload, safePayload.prepare === true);
+        const result = createRound(room, safePayload, safePayload.prepare === true, meta.userId);
         if (!result.ok) {
           callback?.(result);
           return;
@@ -1948,7 +2041,7 @@ export async function startServer(options: StartServerOptions = {}) {
         getRounds(room.breakoutConfig).some((r) => r.id === templateRound)
       ) {
         room.roundTemplates[templateRound] = cloneBackground(interned);
-        io.to(teacherChannel(room.id)).emit('round-templates-sync', { roundTemplates: room.roundTemplates });
+        io.to(teacherChannel(room.id)).emit('round-templates-sync', teacherTemplatesPayload(room));
       }
 
       room.lastActiveAt = Date.now();
@@ -1994,6 +2087,7 @@ export async function startServer(options: StartServerOptions = {}) {
           mode,
           assets: importedAssets,
           roundTemplates: importedRoundTemplates,
+          roundTemplateInk: importedTemplateInk,
         },
         callback
       ) => {
@@ -2055,12 +2149,14 @@ export async function startServer(options: StartServerOptions = {}) {
             const knownRoundIds = new Set(getRounds(room.breakoutConfig).map((r) => r.id));
             const mergedRounds = getRounds(room.breakoutConfig);
             const importedTemplates = cleanImportedRoundTemplates(importedRoundTemplates, importedCfg);
+            const importedInk = cleanImportedTemplateInk(importedTemplateInk, importedCfg);
             for (const r of getRounds(importedCfg)) {
               if (knownRoundIds.has(r.id)) continue;
               mergedRounds.push(r);
               if (Object.prototype.hasOwnProperty.call(importedTemplates, r.id)) {
                 room.roundTemplates[r.id] = importedTemplates[r.id];
               }
+              if (importedInk[r.id]) room.roundTemplateInk[r.id] = importedInk[r.id];
             }
             room.breakoutConfig.rounds = mergedRounds;
           }
@@ -2071,12 +2167,16 @@ export async function startServer(options: StartServerOptions = {}) {
           if (importedSubBoards !== undefined) {
             room.subBoards = deserializeSubBoards(importedSubBoards);
             room.roundTemplates = {};
+            room.roundTemplateInk = {};
           }
           if (importedBreakoutConfig) {
             room.breakoutConfig = normalizeBreakoutConfig(importedBreakoutConfig);
           }
           if (importedRoundTemplates && typeof importedRoundTemplates === 'object') {
             room.roundTemplates = cleanImportedRoundTemplates(importedRoundTemplates, room.breakoutConfig);
+          }
+          if (importedTemplateInk && typeof importedTemplateInk === 'object') {
+            room.roundTemplateInk = cleanImportedTemplateInk(importedTemplateInk, room.breakoutConfig);
           }
           room.isCanvasLocked = true;
         } else {
@@ -2086,12 +2186,16 @@ export async function startServer(options: StartServerOptions = {}) {
           if (importedSubBoards !== undefined) {
             room.subBoards = deserializeSubBoards(importedSubBoards);
             room.roundTemplates = {};
+            room.roundTemplateInk = {};
           }
           if (importedBreakoutConfig) {
             room.breakoutConfig = normalizeBreakoutConfig(importedBreakoutConfig);
           }
           if (importedRoundTemplates && typeof importedRoundTemplates === 'object') {
             room.roundTemplates = cleanImportedRoundTemplates(importedRoundTemplates, room.breakoutConfig);
+          }
+          if (importedTemplateInk && typeof importedTemplateInk === 'object') {
+            room.roundTemplateInk = cleanImportedTemplateInk(importedTemplateInk, room.breakoutConfig);
           }
           room.isCanvasLocked = false;
         }
@@ -2110,7 +2214,7 @@ export async function startServer(options: StartServerOptions = {}) {
           roomSettings: getRoomSettingsPayload(room),
         });
         syncBoardChannels(room, false); // room-restored carried everything
-        io.to(teacherChannel(room.id)).emit('round-templates-sync', { roundTemplates: room.roundTemplates });
+        io.to(teacherChannel(room.id)).emit('round-templates-sync', teacherTemplatesPayload(room));
 
         callback?.({
           ok: true,

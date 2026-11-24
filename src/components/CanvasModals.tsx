@@ -345,6 +345,12 @@ function templateName(bg: RoomBackground | null | undefined): string {
   return bg?.fileName ? bg.fileName : 'none (blank board)';
 }
 
+/** " + your ink (3 marks)" for a round with template ink, else "". */
+function inkNote(ink: CanvasElement[] | undefined): string {
+  const n = ink?.length ?? 0;
+  return n > 0 ? ` + your ink (${n} mark${n === 1 ? '' : 's'})` : '';
+}
+
 /** Deals the online students into the given groups at random, keeping each group's id and title. */
 function shuffleStudentsIntoGroups(groups: BreakoutGroupDraft[], users: User[]): BreakoutGroupDraft[] {
   if (groups.length === 0) return groups;
@@ -357,6 +363,7 @@ function shuffleStudentsIntoGroups(groups: BreakoutGroupDraft[], users: User[]):
 interface PreparedRoundsListProps {
   rounds: BreakoutRoundMeta[];
   roundTemplates: Record<string, RoomBackground | null>;
+  roundTemplateInk: Record<string, CanvasElement[]>;
   subBoards: Record<string, SubBoardData>;
   busy: boolean;
   confirmDeleteId: string | null;
@@ -371,6 +378,7 @@ interface PreparedRoundsListProps {
 function PreparedRoundsList({
   rounds,
   roundTemplates,
+  roundTemplateInk,
   subBoards,
   busy,
   confirmDeleteId,
@@ -400,6 +408,7 @@ function PreparedRoundsList({
                 {r.mode === 'groups' ? `${groupCount} group${groupCount === 1 ? '' : 's'}` : 'Individual boards'}
                 {' · Worksheet: '}
                 {templateName(roundTemplates[r.id])}
+                {inkNote(roundTemplateInk[r.id])}
               </div>
             </div>
             <div className="flex items-center gap-1.5 shrink-0">
@@ -488,6 +497,10 @@ interface BreakoutManagerModalProps {
   preparedRounds?: BreakoutRoundMeta[];
   /** Teacher-only round worksheets, to show each prepared round's worksheet name. */
   roundTemplates?: Record<string, RoomBackground | null>;
+  /** Teacher-only: ink each round copies onto its boards (template ink). */
+  roundTemplateInk?: Record<string, CanvasElement[]>;
+  /** How many marks "Also copy my ink from Main" would copy. */
+  mainTeacherInkCount?: number;
   subBoards?: Record<string, SubBoardData>;
   /** Loads a round's real group boards into the draft groups. Returns false if it has none. */
   onLoadDraftGroupsForRound?: (roundId: string) => boolean;
@@ -536,6 +549,8 @@ export function BreakoutManagerModal({
   onShowLiveGridOverview,
   preparedRounds = [],
   roundTemplates = {},
+  roundTemplateInk = {},
+  mainTeacherInkCount = 0,
   subBoards = {},
   onLoadDraftGroupsForRound,
   onViewRoundBoards,
@@ -551,6 +566,8 @@ export function BreakoutManagerModal({
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [preparedBusy, setPreparedBusy] = useState(false);
   const [preparedNotice, setPreparedNotice] = useState('');
+  // "Also copy my ink from Main": only with the Copy Current worksheet, so the ink lines up with its pages.
+  const [copyInk, setCopyInk] = useState(false);
 
   const chooseWorksheet = (choice: RoundWorksheetChoice) => {
     setWorksheetTouched(true);
@@ -603,7 +620,7 @@ export function BreakoutManagerModal({
   const buildWorksheetConfig = (
     choice: RoundWorksheetChoice,
     topic: string
-  ): { customBackground?: RoomBackground | null; copyWorksheet: boolean; templateLabel: string } => {
+  ): { customBackground?: RoomBackground | null; copyWorksheet: boolean; copyInk: boolean; templateLabel: string } => {
     let customBackground: RoomBackground | null | undefined = undefined;
     if (choice === 'frayer') customBackground = generateTemplateBackground('frayer-model', topic);
     else if (choice === 'checkin') customBackground = generateTemplateBackground('checkin-columns', topic);
@@ -613,6 +630,7 @@ export function BreakoutManagerModal({
     return {
       customBackground,
       copyWorksheet: choice === 'current',
+      copyInk: choice === 'current' && copyInk && mainTeacherInkCount > 0,
       templateLabel: templateLabelFor(choice),
     };
   };
@@ -644,6 +662,7 @@ export function BreakoutManagerModal({
           <PreparedRoundsList
             rounds={preparedRounds}
             roundTemplates={roundTemplates}
+            roundTemplateInk={roundTemplateInk}
             subBoards={subBoards}
             busy={preparedBusy}
             confirmDeleteId={confirmDeleteId}
@@ -676,6 +695,7 @@ export function BreakoutManagerModal({
               setDraftChatScope(round.chatScope === 'board' ? 'board' : 'unified');
               setRoundName(preparedRoundName(round));
               setWorksheetTouched(false);
+              setCopyInk(Boolean(roundTemplateInk[round.id]?.length));
               setPreparedView({ kind: 'edit-prepared', round });
             }}
             onDelete={async (round) => {
@@ -969,7 +989,8 @@ export function BreakoutManagerModal({
             </div>
             {isEditingPrepared && preparedView && !worksheetTouched && (
               <p className="text-[11px] text-slate-600">
-                Current worksheet: {templateName(roundTemplates[preparedView.round.id])}. Pick another below to replace it.
+                Current worksheet: {templateName(roundTemplates[preparedView.round.id])}
+                {inkNote(roundTemplateInk[preparedView.round.id])}. Pick another below to replace it.
               </p>
             )}
             <label className="block text-xs font-semibold text-slate-700">
@@ -1053,6 +1074,24 @@ export function BreakoutManagerModal({
                     : `Upload a file… (PDF or image, first ${MAX_PDF_PAGES} pages)`}
               </label>
             </div>
+            {draftWorksheetChoice === 'current' && (
+              <label className="flex items-start gap-2 text-[11px] text-slate-700 cursor-pointer">
+                <input
+                  type="checkbox"
+                  className="mt-0.5"
+                  checked={copyInk && mainTeacherInkCount > 0}
+                  disabled={mainTeacherInkCount === 0}
+                  onChange={(e) => {
+                    setWorksheetTouched(true);
+                    setCopyInk(e.target.checked);
+                  }}
+                />
+                <span>
+                  Also copy my ink from Main ({mainTeacherInkCount} mark{mainTeacherInkCount === 1 ? '' : 's'}) onto
+                  every board. Students can write around it but can't erase it.
+                </span>
+              </label>
+            )}
             {uploadState.note && <p className="text-[11px] text-slate-500">Long PDF: {uploadState.note}.</p>}
             {uploadState.error && <p className="text-[11px] text-red-700">{uploadState.error}</p>}
 
@@ -1301,6 +1340,7 @@ export function BreakoutManagerModal({
                   const ws = buildWorksheetConfig(draftWorksheetChoice, draftWorksheetTopic);
                   payload.customBackground = ws.customBackground;
                   payload.copyWorksheet = ws.copyWorksheet;
+                  payload.copyInk = ws.copyInk;
                   if (!payload.title) payload.templateLabel = ws.templateLabel;
                 }
                 setPreparedBusy(true);
@@ -1332,6 +1372,7 @@ export function BreakoutManagerModal({
                       allowSelfSelect: draftAllowSelfSelect,
                       chatScope: draftChatScope,
                       copyWorksheet: ws.copyWorksheet,
+                      copyInk: ws.copyInk,
                       customBackground: ws.customBackground,
                       groups: draftBreakoutMode === 'groups' ? draftGroups : undefined,
                       templateLabel: ws.templateLabel,
@@ -1370,6 +1411,7 @@ export function BreakoutManagerModal({
                       allowSelfSelect: draftAllowSelfSelect,
                       chatScope: draftChatScope,
                       copyWorksheet: ws.copyWorksheet,
+                      copyInk: ws.copyInk,
                       customBackground: ws.customBackground,
                       groups: draftBreakoutMode === 'groups' ? draftGroups : undefined,
                       templateLabel: ws.templateLabel,

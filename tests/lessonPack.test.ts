@@ -143,6 +143,18 @@ describe('lesson packs (pure)', () => {
     );
   });
 
+  it('template ink: a round carries its template ink with a placeholder author and no name stamps', () => {
+    const pack = buildLessonPack(
+      input({ roundTemplateInk: { r2: [el('tmpl', 'teacher', { boardId: 'r2' }), nameStamp('st', 'teacher')] } })
+    );
+    const exit = pack.rounds[1];
+    assert.equal(exit.ink?.length, 1);
+    assert.equal(exit.ink?.[0].userId, 'lesson');
+    assert.equal(exit.ink?.[0].boardId, undefined);
+    assert.equal(pack.rounds[0].ink, undefined);
+    assert.equal(parseLessonText('x', JSON.stringify(pack)).lesson?.rounds[1].ink?.length, 1);
+  });
+
   it('4 – lessonAssetUrls finds main, round and auto-individual pages once each', () => {
     const urls = lessonAssetUrls(buildLessonPack(input()));
     assert.deepEqual(urls.sort(), [url('a'), url('b'), url('c'), url('d'), url('e')].sort());

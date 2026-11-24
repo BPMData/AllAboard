@@ -200,6 +200,8 @@ interface CanvasProps {
   breakoutConfig: BreakoutConfig;
   /** Teacher-only: each round's starting worksheet. */
   roundTemplates?: Record<string, RoomBackground | null>;
+  /** Teacher-only: ink each round copies onto its boards. */
+  roundTemplateInk?: Record<string, CanvasElement[]>;
   users: User[];
   remoteCursors: Record<string, RemoteCursor>;
   laserSocket: Socket | null;
@@ -249,6 +251,7 @@ interface CanvasProps {
       breakoutConfig?: BreakoutConfig;
       assets?: Record<string, string>;
       roundTemplates?: Record<string, RoomBackground | null>;
+      roundTemplateInk?: Record<string, CanvasElement[]>;
     },
     mode: ImportRestoreMode
   ) => Promise<{ ok: boolean; error?: string }>;
@@ -652,6 +655,7 @@ function WorksheetPageNode({
 }
 
 const EMPTY_ROUND_TEMPLATES: Record<string, RoomBackground | null> = {};
+const EMPTY_TEMPLATE_INK: Record<string, CanvasElement[]> = {};
 
 export default function Canvas({
   roomId,
@@ -663,6 +667,7 @@ export default function Canvas({
   subBoards,
   breakoutConfig,
   roundTemplates = EMPTY_ROUND_TEMPLATES,
+  roundTemplateInk = EMPTY_TEMPLATE_INK,
   users,
   remoteCursors,
   laserSocket,
@@ -951,6 +956,15 @@ export default function Canvas({
   // Launched rounds only. Prepared rounds are listed in the breakout manager until they're launched.
   const rounds = useMemo(() => getLaunchedRounds(breakoutConfig), [breakoutConfig]);
   const preparedRounds = useMemo(() => getPreparedRounds(breakoutConfig), [breakoutConfig]);
+  // What "Also copy my ink from Main" would copy: teachers' Main ink, without name stamps (server: mainTemplateInk).
+  const mainTeacherInkCount = useMemo(() => {
+    if (!isTeacher) return 0;
+    const teacherIds = new Set(users.filter((u) => u.isTeacher).map((u) => u.userId));
+    teacherIds.add(userId);
+    return fullMainElements.filter(
+      (el) => teacherIds.has(el.userId) && !(el.tool === 'stamp' && el.stamp === 'username')
+    ).length;
+  }, [isTeacher, users, userId, fullMainElements]);
   const activeRound = useMemo(() => getActiveRound(breakoutConfig), [breakoutConfig]);
 
   // Boards in the live (active) round. Used for students, counts, and broadcast targets.
@@ -2407,6 +2421,7 @@ export default function Canvas({
       subBoards,
       breakoutConfig,
       ...(Object.keys(roundTemplates).length > 0 ? { roundTemplates } : {}),
+      ...(Object.keys(roundTemplateInk).length > 0 ? { roundTemplateInk } : {}),
     };
 
     return {
@@ -2594,6 +2609,7 @@ export default function Canvas({
         breakoutConfig: pendingSnapshot.breakoutConfig,
         assets: pendingSnapshot.assets,
         roundTemplates: pendingSnapshot.roundTemplates,
+        roundTemplateInk: pendingSnapshot.roundTemplateInk,
       },
       importMode
     );
@@ -5603,6 +5619,8 @@ export default function Canvas({
           rounds={rounds}
           preparedRounds={preparedRounds}
           roundTemplates={roundTemplates}
+          roundTemplateInk={roundTemplateInk}
+          mainTeacherInkCount={mainTeacherInkCount}
           subBoards={subBoards}
           onLoadDraftGroupsForRound={loadDraftGroupsForRound}
           onViewRoundBoards={(roundId) => {

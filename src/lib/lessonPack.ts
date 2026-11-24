@@ -44,7 +44,7 @@ export interface LessonRound {
   groups?: { title: string }[];
   /** Groups only: ink drawn on each prepared group board, by index. */
   groupInk?: CanvasElement[][];
-  /** Phase 3 (template ink); absent until then. */
+  /** Template ink: the teacher's marks copied onto every board of the round when it's launched. */
   ink?: CanvasElement[];
   allowSelfSelect?: boolean;
   chatScope?: ChatScope;
@@ -95,6 +95,8 @@ export interface LessonBuildInput {
   rounds: BreakoutRoundMeta[];
   /** Worksheet per round id (the server's round templates, with its usual fallback). */
   roundTemplates: Record<string, RoomBackground | null | undefined>;
+  /** Template ink per round id (phase 3): teacher ink copied onto each of the round's boards. */
+  roundTemplateInk?: Record<string, CanvasElement[] | undefined>;
   boards: LessonBoardInput[];
   /** Which rounds to include. Omitted: every prepared round, plus launched rounds when `includeLaunchedRounds`. */
   roundIds?: string[];
@@ -170,6 +172,8 @@ export function buildLessonPack(input: LessonBuildInput): LessonPack {
       mode: r.mode === 'groups' ? 'groups' : 'individual',
       worksheet: cloneBg(input.roundTemplates[r.id]),
     };
+    const templateInk = (input.roundTemplateInk?.[r.id] ?? []).filter((el) => !isNameStamp(el)).map(stripElement);
+    if (templateInk.length > 0) round.ink = templateInk.slice(0, LESSON_MAX_ELEMENTS);
     if (round.mode === 'groups') {
       const groupBoards = input.boards
         .filter((b) => b.roundId === r.id && b.kind === 'group')
