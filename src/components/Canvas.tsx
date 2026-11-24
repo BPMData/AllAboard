@@ -4317,18 +4317,6 @@ export default function Canvas({
             <span>Save .JSON</span>
           </button>
 
-          {isTeacher && onTeacherLessonRequest && (
-            <button
-              type="button"
-              onClick={() => setLessonModal('save')}
-              className="flex items-center gap-1.5 px-2 py-1 text-xs font-medium oh-btn border text-slate-700 rounded-[2px] transition-colors whitespace-nowrap shrink-0 cursor-pointer"
-              title="Save this lesson (worksheets, your ink, breakout rounds and settings, no student work) as a .allaboard file"
-            >
-              <BookMarked size={14} />
-              <span>Save lesson…</span>
-            </button>
-          )}
-
           <button
             type="button"
             onClick={handleExportPNG}
@@ -5330,6 +5318,18 @@ export default function Canvas({
               <Upload size={13} />
               <span>Import .JSON</span>
             </button>
+
+            {onTeacherLessonRequest && (
+              <button
+                type="button"
+                onClick={() => setLessonModal('save')}
+                className="flex items-center gap-1.5 px-3 py-1 rounded-[2px] border oh-btn text-xs font-medium text-slate-800 transition-colors whitespace-nowrap shrink-0 cursor-pointer"
+                title="Save this lesson (worksheets, your ink, breakout rounds and settings, no student work) as a .allaboard file"
+              >
+                <BookMarked size={13} />
+                <span>Save lesson…</span>
+              </button>
+            )}
 
             {onTeacherLessonRequest && (
               <button
