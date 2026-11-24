@@ -1,5 +1,13 @@
-import { expect, test } from '@playwright/test';
+import { expect, test, type Page } from '@playwright/test';
 import { joinRoom, newUser, uniqueRoom } from './helpers';
+
+const PIN = '4829';
+
+/** "N drawn" is only the viewer's own count, so the other screen is checked on the teacher's Class tab. */
+async function rosterRow(teacher: Page, name: string) {
+  await teacher.getByRole('button', { name: /^Class/ }).click();
+  return teacher.locator('div', { hasText: new RegExp(`^${name}\\s*Online`) }).first();
+}
 
 /**
  * The real eraser: erasing across the middle of a shape-brush stroke leaves two pieces (no eraser stroke is
@@ -8,11 +16,11 @@ import { joinRoom, newUser, uniqueRoom } from './helpers';
 test('erasing a shape-brush stroke splits it, syncs, and undoes in one step', async ({ browser }) => {
   test.setTimeout(60_000);
   const room = uniqueRoom('eraser');
+  const teacher = await newUser(browser);
   const alex = await newUser(browser);
-  const bea = await newUser(browser);
   await alex.page.addInitScript(() => localStorage.setItem('allaboard-hollow-shape', 'star'));
+  await joinRoom(teacher.page, room, 'Ms T', PIN);
   await joinRoom(alex.page, room, 'Alex');
-  await joinRoom(bea.page, room, 'Bea');
 
   const hollowButton = alex.page.getByTitle(/^Hollow Star Brush/);
   await hollowButton.click();
@@ -24,6 +32,7 @@ test('erasing a shape-brush stroke splits it, syncs, and undoes in one step', as
   await alex.page.mouse.move(1000, 450, { steps: 25 });
   await alex.page.mouse.up();
   await expect(alex.page.getByText('1 drawn')).toBeVisible();
+  await expect(await rosterRow(teacher.page, 'Alex')).toContainText('1 item');
 
   await alex.page.getByTitle(/Personal Eraser/).click();
   await alex.page.mouse.move(750, 350);
@@ -33,11 +42,11 @@ test('erasing a shape-brush stroke splits it, syncs, and undoes in one step', as
 
   // Two pieces, and no eraser stroke counted.
   await expect(alex.page.getByText('2 drawn')).toBeVisible();
-  await expect(bea.page.getByText('2 drawn')).toBeVisible();
+  await expect(await rosterRow(teacher.page, 'Alex')).toContainText('2 items');
 
   await alex.page.getByRole('button', { name: 'Undo' }).click();
   await expect(alex.page.getByText('1 drawn')).toBeVisible();
-  await expect(bea.page.getByText('1 drawn')).toBeVisible();
+  await expect(await rosterRow(teacher.page, 'Alex')).toContainText('1 item');
 
   // Erasing the whole stroke leaves nothing at all.
   await alex.page.mouse.move(450, 450);
@@ -48,9 +57,8 @@ test('erasing a shape-brush stroke splits it, syncs, and undoes in one step', as
   }
   await alex.page.mouse.up();
   // Nothing of the stroke, and no eraser stroke, is left.
-  for (const u of [alex, bea]) {
-    await expect(u.page.getByText(/^[12] drawn$/)).toHaveCount(0);
-  }
+  await expect(alex.page.getByText('0 drawn')).toBeVisible();
+  await expect(await rosterRow(teacher.page, 'Alex')).toContainText('0 items');
 
-  for (const u of [alex, bea]) await u.context.close();
+  for (const u of [teacher, alex]) await u.context.close();
 });
