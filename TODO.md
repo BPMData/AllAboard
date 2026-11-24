@@ -17,6 +17,7 @@ specs are in git history.
     every board. With content-addressed assets, 30 boards cost one stored image.
 
 ### Prepared ("draft") breakout rounds
+Plan: [`PLANS_LESSON_PACKS.md`](PLANS_LESSON_PACKS.md) phase 1.
 - [ ] **Create breakout rounds in advance without moving anyone**, each with its own worksheet, mode
       (individual/groups) and groups. Launch one later with a click.
   - **Mostly exists:** rounds are already saved objects (`breakoutConfig.rounds`, `room.roundTemplates`), and
@@ -33,6 +34,7 @@ specs are in git history.
   - If a student stamped more than once (one-name-stamp rule off), use their **most recent** stamp.
 
 ### Lesson packs: a whole lesson in one file, shareable between teachers
+Plan: [`PLANS_LESSON_PACKS.md`](PLANS_LESSON_PACKS.md) phases 2–3, with the open decisions listed there.
 - [ ] **Export/import a "lesson pack"**: one file with everything needed to run a lesson, minus student data:
   - the **main board** (background and teacher ink)
   - **prepared rounds** with their worksheets and groups
