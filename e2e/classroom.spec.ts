@@ -45,6 +45,8 @@ test.describe('lobby', () => {
     await expect.poll(() => handshakes).toBeGreaterThan(0);
     const before = handshakes;
 
+    // The box starts out holding "main"; clear it, then type one letter at a time like a person would.
+    await page.getByLabel('Room Code').fill('');
     await page.getByLabel('Room Code').pressSequentially(room);
     await expect(page.getByLabel('Room Code')).toHaveValue(room);
     await page.waitForTimeout(500);
