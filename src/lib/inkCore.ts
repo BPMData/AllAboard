@@ -1089,6 +1089,40 @@ export function hasSubsequentOverlappingEraser(
 }
 
 /**
+ * Stamps that an eraser stroke touches, so they can be deleted outright. A stamp is one object: covering it
+ * with eraser ink only hides it, which left one-name-stamp mode thinking the student's name stamp was still
+ * down. Same rule as stroke erasing: only stamps by the eraser's own author.
+ */
+export function stampsHitByEraser(elements: CanvasElement[], eraser: CanvasElement): CanvasElement[] {
+  const pts = eraser.points;
+  if (eraser.tool !== 'eraser' || !pts || pts.length < 2) return [];
+  const r = Math.max(8, (eraser.strokeWidth || 6) * 1.5) / 2;
+  const step = Math.max(2, r / 2);
+  const hit: CanvasElement[] = [];
+  for (const el of elements) {
+    if (el.tool !== 'stamp' || el.userId !== eraser.userId) continue;
+    const [x0, y0, x1, y1] = getElementBounds(el);
+    const inside = (x: number, y: number) => x >= x0 - r && x <= x1 + r && y >= y0 - r && y <= y1 + r;
+    let touched = pts.length < 4 && inside(pts[0], pts[1]);
+    for (let i = 0; !touched && i + 3 < pts.length; i += 2) {
+      const ax = pts[i];
+      const ay = pts[i + 1];
+      const dx = pts[i + 2] - ax;
+      const dy = pts[i + 3] - ay;
+      const n = Math.max(1, Math.ceil(Math.hypot(dx, dy) / step));
+      for (let k = 0; k <= n; k++) {
+        if (inside(ax + (dx * k) / n, ay + (dy * k) / n)) {
+          touched = true;
+          break;
+        }
+      }
+    }
+    if (touched) hit.push(el);
+  }
+  return hit;
+}
+
+/**
  * Find the topmost modifiable, non-erased element at world coordinates (x, y) within `tol`.
  */
 export function hitElementAtPoint(

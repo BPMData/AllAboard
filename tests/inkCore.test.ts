@@ -44,6 +44,7 @@ import {
   hitElementAtPoint,
   lassoSelectElements,
   translateElement,
+  stampsHitByEraser,
 } from '../src/lib/inkCore';
 
 function makeEl(overrides: Partial<CanvasElement> & Pick<CanvasElement, 'id' | 'tool'>): CanvasElement {
@@ -689,5 +690,38 @@ describe('hollow shape brush: a finished stroke becomes one picture', () => {
       assert.ok(hollowBitmapPixelsInUse() <= HOLLOW_BITMAP_BUDGET_PX, `${hollowBitmapPixelsInUse()} px in use`);
     }
     assert.ok(hollowBitmapPixelsInUse() > 0);
+  });
+});
+
+describe('stampsHitByEraser', () => {
+  const stamp = (id: string, x: number, y: number, userId = 'u1'): CanvasElement =>
+    ({ id, tool: 'stamp', stamp: 'username', userId, userName: 'Ava', color: '#000', strokeWidth: 6, x, y }) as CanvasElement;
+  const eraser = (points: number[], strokeWidth = 20, userId = 'u1'): CanvasElement =>
+    ({ id: 'e', tool: 'eraser', userId, userName: 'Ava', color: '#fff', strokeWidth, points }) as CanvasElement;
+
+  it('finds a stamp the eraser passes over, and not one far away', () => {
+    const els = [stamp('near', 0, 0), stamp('far', 1000, 1000)];
+    const hit = stampsHitByEraser(els, eraser([-200, 0, 200, 0]));
+    assert.deepEqual(hit.map((e) => e.id), ['near']);
+  });
+
+  it('catches a stamp between two widely spaced points of a fast swipe', () => {
+    const hit = stampsHitByEraser([stamp('s', 0, 0)], eraser([-2000, 0, 2000, 0], 8));
+    assert.equal(hit.length, 1);
+  });
+
+  it('catches a single-click eraser dab on the stamp', () => {
+    assert.equal(stampsHitByEraser([stamp('s', 50, 50)], eraser([50, 50])).length, 1);
+  });
+
+  it("ignores other users' stamps and non-stamp elements", () => {
+    const pen = { id: 'p', tool: 'solid', userId: 'u1', userName: 'Ava', color: '#000', strokeWidth: 4, points: [0, 0, 5, 5] } as CanvasElement;
+    const hit = stampsHitByEraser([stamp('theirs', 0, 0, 'u2'), pen], eraser([-50, 0, 50, 0]));
+    assert.equal(hit.length, 0);
+  });
+
+  it('returns nothing for a non-eraser stroke', () => {
+    const pen = { ...eraser([-50, 0, 50, 0]), tool: 'solid' } as CanvasElement;
+    assert.equal(stampsHitByEraser([stamp('s', 0, 0)], pen).length, 0);
   });
 });

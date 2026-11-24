@@ -91,6 +91,32 @@ Plan: [`PLANS_LESSON_PACKS.md`](PLANS_LESSON_PACKS.md) phases 2–3, with the op
   - [ ] **Owner setup:** turn on AllAboard reports in OverBoard's report script (BPMData/OverBoard PR 56), add the
         `REPORT_RELAY_URL` / `REPORT_RELAY_TOKEN` secrets, send a test report. Until then every report uses the fallback.
 
+### A real eraser (remove objects instead of covering them)
+- [ ] **Make the eraser delete or trim what it touches, instead of adding an "eraser stroke" element.** Today the
+      eraser is a white ink stroke stored like any other ink, and `getVisibleStrokeRuns` / `expandElementVisiblePieces`
+      (`src/lib/inkCore.ts`) work out what still shows at render time. Effects:
+  - Erasing makes a board **heavier**, not lighter. Each swipe is another element (it counts toward the 10,000-per-board
+    cap) and makes every later render, digest and PDF export do more work.
+  - Hidden objects still exist. That was the one-name-stamp bug (fixed Nov 2026 for **stamps only**: erasing a stamp
+    now deletes it, via `stampsHitByEraser`). Erased text notes (`allGoneNoteIds`) and fully erased strokes still sit
+    in the data, still show up in lasso selection, and still count in "N drawn".
+  - **Goal:** on pen-up, an eraser stroke turns into edits.
+    - Fully covered strokes, notes and shapes are **removed**.
+    - Partly erased freehand strokes are **split** into their visible pieces. `expandElementVisiblePieces` already
+      computes them, and lasso-move already uses it.
+    - No eraser element is stored.
+    - Undo stays one step: one `replace` entry with what was removed and what was added.
+  - **Watch out for:**
+    - Live erasing feedback while the pen is down. Keep drawing the white stroke locally and only commit edits on
+      pen-up.
+    - Other users' views. They get remove and add batches, not a stroke.
+    - Shapes and hollow strokes, which can't be split cleanly. Remove them only when fully covered, and otherwise
+      keep a covering stroke for just those.
+    - Old rooms that already contain eraser elements. Keep rendering them, or migrate them on load.
+    - Rate and size caps on large batches (`socketGuards.ts`).
+  - **Tests:** element counts go **down** after erasing, a partial erase leaves the right pieces, undo/redo restores
+    them exactly, and a second browser sees the same result.
+
 ### Classroom simulator: fake students for testing alone
 - [ ] **One command that fills a room with fake students** so a teacher can test breakouts, worksheet variants,
       corner mode, late joiners and lesson-pack reloads from one laptop, without a pile of incognito tabs.
