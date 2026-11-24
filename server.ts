@@ -34,6 +34,15 @@ import { isAnonymousAuthorId, makeAnonymousAuthorId } from './src/lib/anonymousI
 import { OVERVIEW_SYNC_MS, buildDigest, emptyChanges, type BoardChanges, type BoardDigest } from './src/lib/boardDigest.ts';
 import { CURSOR_EMIT_MS } from './src/lib/drawThrottle.ts';
 import { buildLessonPack, filterMainInk, validateLesson, type LessonPack, type MainInkChoice } from './src/lib/lessonPack.ts';
+import {
+  availableLetters,
+  byStudentName,
+  hasVariantContent,
+  normalizeRoundVariants,
+  pickVariant,
+  variantBackground,
+  type RoundVariants,
+} from './src/lib/roundVariants.ts';
 import { monitorEventLoopDelay } from 'node:perf_hooks';
 import {
   MAX_APPEND_NUMBERS,
@@ -151,6 +160,8 @@ interface RoomState {
   roundTemplates: Record<string, any | null>;
   /** Teacher ink copied onto every board of a round when it's made (template ink). Server ids; teacher-authored. */
   roundTemplateInk: Record<string, any[]>;
+  /** Worksheets B–D and the rule for who gets which, per individual round (A is the round template). Teacher-only. */
+  roundVariants: Record<string, RoundVariants>;
   timer: TimerState;
   usersByUserId: Map<string, ServerUserRecord>;
   /** userId → SHA-256 of that browser's private key. Server-only; never broadcast. */
@@ -174,6 +185,7 @@ interface SerializedRoom {
   breakoutConfig?: BreakoutConfigState;
   roundTemplates?: Record<string, any | null>;
   roundTemplateInk?: Record<string, any[]>;
+  roundVariants?: Record<string, RoundVariants>;
   timer?: TimerState;
   userKeyHashes?: Record<string, string>;
   lockedNames?: Record<string, string>;
@@ -368,6 +380,7 @@ export async function startServer(options: StartServerOptions = {}) {
       breakoutConfig,
       roundTemplates: item.roundTemplates && typeof item.roundTemplates === 'object' ? item.roundTemplates : {},
       roundTemplateInk: storedTemplateInk(item.roundTemplateInk),
+      roundVariants: storedRoundVariants(item.roundVariants),
       timer: item.timer || {
         isRunning: false,
         durationMs: 5 * 60 * 1000,
@@ -401,6 +414,7 @@ export async function startServer(options: StartServerOptions = {}) {
       breakoutConfig: room.breakoutConfig,
       roundTemplates: room.roundTemplates,
       roundTemplateInk: room.roundTemplateInk,
+      roundVariants: room.roundVariants,
       timer: room.timer,
       userKeyHashes: Object.fromEntries(room.userKeyHashes),
       lockedNames: room.lockedNames,
@@ -441,6 +455,9 @@ export async function startServer(options: StartServerOptions = {}) {
     }
     for (const key of Object.keys(room.roundTemplates)) {
       room.roundTemplates[key] = internBackground(store, room.roundTemplates[key]);
+    }
+    for (const v of Object.values(room.roundVariants)) {
+      v.extra = v.extra.map((bg) => (bg ? internBackground(store, bg) : null));
     }
     if (room.breakoutConfig.autoIndividualBackground !== undefined) {
       room.breakoutConfig.autoIndividualBackground = internBackground(
@@ -613,6 +630,7 @@ export async function startServer(options: StartServerOptions = {}) {
         breakoutConfig: { mode: 'main', activeRoundId: undefined, rounds: [], allowSelfSelect: false, chatScope: 'unified' },
         roundTemplates: {},
         roundTemplateInk: {},
+        roundVariants: {},
         timer: {
           isRunning: false,
           durationMs: 5 * 60 * 1000,
@@ -953,6 +971,45 @@ export async function startServer(options: StartServerOptions = {}) {
     return out;
   }
 
+  /** A stored `roundVariants` (SQLite row): only valid records. Backgrounds are interned by internRoomAssets. */
+  function storedRoundVariants(raw: unknown): Record<string, RoundVariants> {
+    const out: Record<string, RoundVariants> = {};
+    if (!raw || typeof raw !== 'object') return out;
+    for (const [key, value] of Object.entries(raw as Record<string, unknown>)) {
+      const v = normalizeRoundVariants(value);
+      if (v) out[key] = v;
+    }
+    return out;
+  }
+
+  /** A variants record from a client or a file: checked, worksheets interned. null when it carries nothing. */
+  function cleanRoundVariants(raw: unknown): RoundVariants | null {
+    const v = normalizeRoundVariants(raw);
+    if (!v) return null;
+    v.extra = v.extra.map((bg) => (bg ? cloneBackground(bg) : null));
+    return hasVariantContent(v) ? v : null;
+  }
+
+  /** Imported `roundVariants`: only keys naming an individual round in `cfg`. */
+  function cleanImportedRoundVariants(raw: unknown, cfg: BreakoutConfigLike): Record<string, RoundVariants> {
+    const out: Record<string, RoundVariants> = {};
+    if (!raw || typeof raw !== 'object') return out;
+    const ids = new Set(getRounds(cfg).filter((r) => r.mode === 'individual').map((r) => r.id));
+    for (const [key, value] of Object.entries(raw as Record<string, unknown>)) {
+      if (!ids.has(key)) continue;
+      const v = cleanRoundVariants(value);
+      if (v) out[key] = v;
+    }
+    return out;
+  }
+
+  /** Sets or clears a round's variants. Group rounds never have any. */
+  function setRoundVariants(room: RoomState, roundId: string, mode: string, raw: unknown) {
+    const v = mode === 'individual' ? cleanRoundVariants(raw) : null;
+    if (v) room.roundVariants[roundId] = v;
+    else delete room.roundVariants[roundId];
+  }
+
   /**
    * Imported `roundTemplateInk`: only keys naming a round in `cfg`, each a list of sound elements (no name stamps) at
    * most `MAX_BOARD_ELEMENTS` long, with fresh server ids.
@@ -1008,7 +1065,7 @@ export async function startServer(options: StartServerOptions = {}) {
 
   /** Teacher-only: the round templates and their ink, as sent with `init`, `breakout-sync` and `round-templates-sync`. */
   function teacherTemplatesPayload(room: RoomState) {
-    return { roundTemplates: room.roundTemplates, roundTemplateInk: room.roundTemplateInk };
+    return { roundTemplates: room.roundTemplates, roundTemplateInk: room.roundTemplateInk, roundVariants: room.roundVariants };
   }
 
   // ---------- Lesson packs (PLANS_LESSON_PACKS.md, phase 2) ----------
@@ -1023,7 +1080,14 @@ export async function startServer(options: StartServerOptions = {}) {
   function buildLessonForRoom(
     room: RoomState,
     caller: { userId: string; name: string },
-    opts: { title?: unknown; exportedBy?: unknown; mainInk?: unknown; includeLaunchedRounds?: unknown; roundIds?: unknown }
+    opts: {
+      title?: unknown;
+      exportedBy?: unknown;
+      mainInk?: unknown;
+      includeLaunchedRounds?: unknown;
+      roundIds?: unknown;
+      includeStudentPicks?: unknown;
+    }
   ): LessonPack {
     const cfg = room.breakoutConfig;
     const rounds = getRounds(cfg);
@@ -1040,6 +1104,8 @@ export async function startServer(options: StartServerOptions = {}) {
       rounds,
       roundTemplates,
       roundTemplateInk: room.roundTemplateInk,
+      roundVariants: room.roundVariants,
+      includeStudentPicks: opts.includeStudentPicks === true,
       boards: Array.from(room.subBoards.values()).map((sb) => ({
         id: sb.id,
         roundId: sb.roundId,
@@ -1084,11 +1150,19 @@ export async function startServer(options: StartServerOptions = {}) {
     }
     // Intern any stray data: URL (a hand-edited file), then require every page to be a stored asset.
     lesson.main.background = cloneBackground(lesson.main.background);
-    for (const r of lesson.rounds) r.worksheet = cloneBackground(r.worksheet);
+    for (const r of lesson.rounds) {
+      r.worksheet = cloneBackground(r.worksheet);
+      if (r.variants) r.variants.extra = r.variants.extra.map((bg) => cloneBackground(bg));
+    }
     if (lesson.settings.autoIndividualBackground) {
       lesson.settings.autoIndividualBackground = cloneBackground(lesson.settings.autoIndividualBackground);
     }
-    const backgrounds = [lesson.main.background, ...lesson.rounds.map((r) => r.worksheet), lesson.settings.autoIndividualBackground];
+    const backgrounds = [
+      lesson.main.background,
+      ...lesson.rounds.map((r) => r.worksheet),
+      ...lesson.rounds.flatMap((r) => r.variants?.extra ?? []),
+      lesson.settings.autoIndividualBackground,
+    ];
     let missing = 0;
     for (const bg of backgrounds) {
       for (const page of bg?.pages ?? []) {
@@ -1129,6 +1203,7 @@ export async function startServer(options: StartServerOptions = {}) {
     for (const sb of getBoardsInRound(room.subBoards, roundId)) room.subBoards.delete(sb.id);
     delete room.roundTemplates[roundId];
     delete room.roundTemplateInk[roundId];
+    delete room.roundVariants[roundId];
   }
 
   /**
@@ -1154,6 +1229,7 @@ export async function startServer(options: StartServerOptions = {}) {
       const templateInk = lessonInk(lr.ink ?? [], roundId, author);
       if (templateInk.length > 0) room.roundTemplateInk[roundId] = templateInk;
       else delete room.roundTemplateInk[roundId];
+      setRoundVariants(room, roundId, lr.mode, lr.variants ? { ...lr.variants, assigned: {} } : null);
       const meta: BreakoutRoundMeta = {
         id: roundId,
         number,
@@ -1214,7 +1290,8 @@ export async function startServer(options: StartServerOptions = {}) {
   function provisionIndividualBoard(
     room: RoomState,
     roundId: string,
-    user: { userId: string; name: string }
+    user: { userId: string; name: string },
+    late = true
   ): boolean {
     const existing = getBoardsInRound(room.subBoards, roundId).find(
       (sb) => sb.kind === 'individual' && sb.assignedUserIds.includes(user.userId)
@@ -1231,10 +1308,35 @@ export async function startServer(options: StartServerOptions = {}) {
       title: `${user.name}'s Board`,
       assignedUserIds: [user.userId],
       elements: templateInkForBoard(room, roundId, id),
-      background: cloneBackground(getRoundTemplate(room, roundId)),
+      background: cloneBackground(variantWorksheetFor(room, roundId, user, late)),
       messages: [],
     });
     return true;
+  }
+
+  /** The worksheet a new individual board gets: the round's own, or the student's variant (B–D) by the round's rule. */
+  function variantWorksheetFor(room: RoomState, roundId: string, user: { userId: string; name: string }, late: boolean) {
+    const template = getRoundTemplate(room, roundId);
+    const variants = room.roundVariants[roundId];
+    if (!variants) return template;
+    const before = variants.assigned[user.userId];
+    const index =
+      typeof before === 'number' && availableLetters(variants).includes(before)
+        ? before
+        : pickVariant(variants, {
+            userId: user.userId,
+            name: user.name,
+            late,
+            mainElements: room.elements,
+            mainBackground: room.background,
+          });
+    variants.assigned[user.userId] = index;
+    return variantBackground(variants, index, template);
+  }
+
+  /** Students in the order worksheets are dealt out: alphabetical by name. */
+  function studentsInDealOrder(room: RoomState): ServerUserRecord[] {
+    return getBreakoutStudents(room).sort(byStudentName);
   }
 
   /** Applies group titles/assignments + allowSelfSelect + chatScope to a round. NEVER touches elements/background/messages. */
@@ -1322,6 +1424,7 @@ export async function startServer(options: StartServerOptions = {}) {
     const templateBg = payloadWorksheet(room, payload) ?? null;
     room.roundTemplates[roundId] = cloneBackground(templateBg);
     setRoundTemplateInk(room, roundId, payload, callerId);
+    setRoundVariants(room, roundId, mode, payload.variants);
 
     const chatScope: 'unified' | 'board' = payload.chatScope === 'board' ? 'board' : 'unified';
     const allowSelfSelect = Boolean(payload.allowSelfSelect);
@@ -1335,7 +1438,7 @@ export async function startServer(options: StartServerOptions = {}) {
     };
 
     if (mode === 'individual') {
-      if (!prepared) for (const u of getBreakoutStudents(room)) provisionIndividualBoard(room, roundId, u);
+      if (!prepared) for (const u of studentsInDealOrder(room)) provisionIndividualBoard(room, roundId, u, false);
     } else {
       createGroupBoards(room, roundId, groups, templateBg);
       // A prepared round's group boards get the template ink when it's launched (launchPreparedRound).
@@ -1403,6 +1506,13 @@ export async function startServer(options: StartServerOptions = {}) {
         io.to(room.id).emit('background-sync', { boardId: sb.id, background: sb.background });
       }
     }
+    if (payload.variants !== undefined) {
+      // The form doesn't edit per-student picks: keep the ones already on the round (e.g. from a lesson pack).
+      const keep = room.roundVariants[round.id]?.overrides;
+      const raw: Record<string, unknown> | null =
+        payload.variants && typeof payload.variants === 'object' ? (payload.variants as unknown as Record<string, unknown>) : null;
+      setRoundVariants(room, round.id, round.mode, raw && !('overrides' in raw) && keep ? { ...raw, overrides: keep } : raw);
+    }
 
     if (round.mode === 'groups' && Array.isArray(payload.groups)) {
       const wanted = payload.groups.filter(Boolean).slice(0, MAX_GROUPS_PER_ROUND);
@@ -1447,6 +1557,7 @@ export async function startServer(options: StartServerOptions = {}) {
     const roundId = makeRoundId(roundNumber);
     room.roundTemplates[roundId] = cloneBackground(cfg.autoIndividualBackground ?? null);
     delete room.roundTemplateInk[roundId];
+    delete room.roundVariants[roundId];
     const roundMeta: BreakoutRoundMeta = {
       id: roundId,
       number: roundNumber,
@@ -1817,7 +1928,8 @@ export async function startServer(options: StartServerOptions = {}) {
           callback?.({ ok: false, error: 'There is no breakout round to resume or edit yet.' });
           return;
         }
-        if (isPreparedRound(round)) {
+        const launchingNow = isPreparedRound(round);
+        if (launchingNow) {
           if (action !== 'resume') {
             callback?.({ ok: false, error: 'Launch this prepared round first, or edit it with Edit.' });
             return;
@@ -1831,7 +1943,7 @@ export async function startServer(options: StartServerOptions = {}) {
           delete cfg.userBoardOverrides;
         }
         if (round.mode === 'individual' && cfg.mode === 'individual' && cfg.activeRoundId === round.id) {
-          for (const u of getBreakoutStudents(room)) provisionIndividualBoard(room, round.id, u);
+          for (const u of studentsInDealOrder(room)) provisionIndividualBoard(room, round.id, u, !launchingNow);
         }
       } else if (action === 'edit-prepared') {
         const result = editPreparedRound(room, safePayload, meta.userId);
@@ -1850,6 +1962,7 @@ export async function startServer(options: StartServerOptions = {}) {
         for (const sb of getBoardsInRound(room.subBoards, round.id)) room.subBoards.delete(sb.id);
         delete room.roundTemplates[round.id];
         delete room.roundTemplateInk[round.id];
+        delete room.roundVariants[round.id];
       } else {
         // 'new-round' (prepare: true creates it without moving anyone)
         const result = createRound(room, safePayload, safePayload.prepare === true, meta.userId);
@@ -2067,6 +2180,27 @@ export async function startServer(options: StartServerOptions = {}) {
       callback?.({ ok: true, updated, skipped });
     });
 
+    // Teacher-only: remember a round's worksheet variants and who got which (Send worksheet…), so reopening it
+    // starts from what was sent and late joiners get their variant. Worksheets should already be asset URLs.
+    socket.on('teacher:set-round-variants', (payload, callback) => {
+      const meta = socketMeta.get(socket.id);
+      const room = meta && rooms.get(meta.roomId);
+      if (!meta || !room || !room.usersByUserId.get(meta.userId)?.isTeacher) {
+        callback?.({ ok: false, error: 'Only a verified Teacher can change worksheet variants.' });
+        return;
+      }
+      const round = getRoundById(room.breakoutConfig, payload?.roundId);
+      if (!round || round.mode !== 'individual') {
+        callback?.({ ok: false, error: 'Worksheet variants are for individual rounds only.' });
+        return;
+      }
+      setRoundVariants(room, round.id, round.mode, payload?.variants ?? null);
+      room.lastActiveAt = Date.now();
+      scheduleSaveToDisk(room, true);
+      io.to(teacherChannel(room.id)).emit('round-templates-sync', teacherTemplatesPayload(room));
+      callback?.({ ok: true });
+    });
+
     // Teacher-only Background Worksheet transform update (position, scale, layout)
     socket.on('teacher:update-background', ({ boardId = 'main', patch }) => {
       const meta = socketMeta.get(socket.id);
@@ -2106,6 +2240,7 @@ export async function startServer(options: StartServerOptions = {}) {
           assets: importedAssets,
           roundTemplates: importedRoundTemplates,
           roundTemplateInk: importedTemplateInk,
+          roundVariants: importedRoundVariants,
         },
         callback
       ) => {
@@ -2168,6 +2303,7 @@ export async function startServer(options: StartServerOptions = {}) {
             const mergedRounds = getRounds(room.breakoutConfig);
             const importedTemplates = cleanImportedRoundTemplates(importedRoundTemplates, importedCfg);
             const importedInk = cleanImportedTemplateInk(importedTemplateInk, importedCfg);
+            const importedVariants = cleanImportedRoundVariants(importedRoundVariants, importedCfg);
             for (const r of getRounds(importedCfg)) {
               if (knownRoundIds.has(r.id)) continue;
               mergedRounds.push(r);
@@ -2175,6 +2311,7 @@ export async function startServer(options: StartServerOptions = {}) {
                 room.roundTemplates[r.id] = importedTemplates[r.id];
               }
               if (importedInk[r.id]) room.roundTemplateInk[r.id] = importedInk[r.id];
+              if (importedVariants[r.id]) room.roundVariants[r.id] = importedVariants[r.id];
             }
             room.breakoutConfig.rounds = mergedRounds;
           }
@@ -2186,6 +2323,7 @@ export async function startServer(options: StartServerOptions = {}) {
             room.subBoards = deserializeSubBoards(importedSubBoards);
             room.roundTemplates = {};
             room.roundTemplateInk = {};
+            room.roundVariants = {};
           }
           if (importedBreakoutConfig) {
             room.breakoutConfig = normalizeBreakoutConfig(importedBreakoutConfig);
@@ -2195,6 +2333,9 @@ export async function startServer(options: StartServerOptions = {}) {
           }
           if (importedTemplateInk && typeof importedTemplateInk === 'object') {
             room.roundTemplateInk = cleanImportedTemplateInk(importedTemplateInk, room.breakoutConfig);
+          }
+          if (importedRoundVariants && typeof importedRoundVariants === 'object') {
+            room.roundVariants = cleanImportedRoundVariants(importedRoundVariants, room.breakoutConfig);
           }
           room.isCanvasLocked = true;
         } else {
@@ -2205,6 +2346,7 @@ export async function startServer(options: StartServerOptions = {}) {
             room.subBoards = deserializeSubBoards(importedSubBoards);
             room.roundTemplates = {};
             room.roundTemplateInk = {};
+            room.roundVariants = {};
           }
           if (importedBreakoutConfig) {
             room.breakoutConfig = normalizeBreakoutConfig(importedBreakoutConfig);
@@ -2214,6 +2356,9 @@ export async function startServer(options: StartServerOptions = {}) {
           }
           if (importedTemplateInk && typeof importedTemplateInk === 'object') {
             room.roundTemplateInk = cleanImportedTemplateInk(importedTemplateInk, room.breakoutConfig);
+          }
+          if (importedRoundVariants && typeof importedRoundVariants === 'object') {
+            room.roundVariants = cleanImportedRoundVariants(importedRoundVariants, room.breakoutConfig);
           }
           room.isCanvasLocked = false;
         }

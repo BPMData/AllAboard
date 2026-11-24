@@ -1,5 +1,5 @@
 import type { CanvasElement, RoomBackground } from '../types';
-import { layoutPages } from './worksheetLayout';
+import { layoutPages } from './worksheetLayout.ts';
 
 /** Which quarter of a worksheet page a point falls in. */
 export type Quadrant = 'tl' | 'tr' | 'bl' | 'br';

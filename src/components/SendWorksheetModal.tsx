@@ -8,6 +8,12 @@ import {
   processWorksheetFile,
 } from '../lib/worksheetLoader';
 import { quadrantsByUser, type Quadrant } from '../lib/stampQuadrants';
+import {
+  sameWorksheet,
+  studentKey,
+  uploadWorksheetPages,
+  type RoundVariants,
+} from '../lib/roundVariants';
 
 const LETTERS = ['A', 'B', 'C', 'D'] as const;
 type Letter = (typeof LETTERS)[number];
@@ -41,26 +47,102 @@ interface SendWorksheetModalProps {
   mainBackground: RoomBackground | null;
   onSend: (boardIds: string[], bg: RoomBackground | null, roundTemplateFor?: string) => Promise<SendWorksheetResult>;
   onClose: () => void;
+  /** The round's worksheet (A) and its saved variants (B–D, rule, picks), so the form starts from what was sent. */
+  roundWorksheet?: RoomBackground | null;
+  roundVariants?: RoundVariants | null;
+  users?: User[];
+  /** Ack-style teacher request (upload-asset, set-round-variants). Without it, nothing is remembered. */
+  onRequest?: (event: any, payload: unknown, timeoutMs?: number) => Promise<any>;
+}
+
+const letterIndex = (l: Letter) => LETTERS.indexOf(l);
+
+/** A–D as they were last sent: A is the round's worksheet, B–D come from the saved variants. */
+function initialVariants(roundWorksheet: RoomBackground | null | undefined, saved: RoundVariants | null | undefined): Variant[] {
+  const out: Variant[] = [{ letter: 'A', bg: roundWorksheet ?? null, rendering: false }];
+  saved?.extra.forEach((bg, i) => {
+    if (bg) out.push({ letter: LETTERS[i + 1], bg, rendering: false });
+  });
+  return out;
 }
 
 /** Teacher modal: send up to four worksheet variants (A–D) to selected boards of one breakout round. */
-export function SendWorksheetModal({ round, boards, mainElements, mainBackground, onSend, onClose }: SendWorksheetModalProps) {
+export function SendWorksheetModal({
+  round,
+  boards,
+  mainElements,
+  mainBackground,
+  onSend,
+  onClose,
+  roundWorksheet = null,
+  roundVariants = null,
+  users = [],
+  onRequest,
+}: SendWorksheetModalProps) {
+  const individual = round.mode === 'individual';
+  const saved = individual ? roundVariants : null;
+  const nameOf = (userId: string | undefined) => (userId ? users.find((u) => u.userId === userId)?.name ?? '' : '');
+  // Students are dealt out alphabetically by name (the same order the server uses at launch), then by board title.
   const sortedBoards = useMemo(
-    () => [...boards].sort((a, b) => a.title.localeCompare(b.title, undefined, { numeric: true })),
-    [boards]
+    () =>
+      [...boards].sort((a, b) => {
+        const na = nameOf(a.assignedUserIds[0]);
+        const nb = nameOf(b.assignedUserIds[0]);
+        return (
+          (na && nb ? na.localeCompare(nb, undefined, { sensitivity: 'base', numeric: true }) : 0) ||
+          a.title.localeCompare(b.title, undefined, { numeric: true })
+        );
+      }),
+    [boards, users]
   );
-  const [variants, setVariants] = useState<Variant[]>([{ letter: 'A', bg: null, rendering: false }]);
+  const [initial] = useState(() => initialVariants(roundWorksheet, saved));
+  const [variants, setVariants] = useState<Variant[]>(initial);
   const [selected, setSelected] = useState<Set<string>>(() => new Set(boards.map((b) => b.id)));
-  const [chosenMode, setChosenMode] = useState<Mode | null>(null);
-  const [overrides, setOverrides] = useState<Record<string, Letter>>({});
-  const [cornerMap, setCornerMap] = useState<Record<CornerKey, Letter>>({ tl: 'A', tr: 'B', bl: 'C', br: 'D', none: 'A' });
-  const [lateJoiners, setLateJoiners] = useState(true);
+  const [chosenMode, setChosenMode] = useState<Mode | null>(() => (saved && initial.length > 1 ? saved.rule : null));
+  // Until the teacher changes the rule, each board keeps the letter it already has.
+  const [ruleTouched, setRuleTouched] = useState(false);
+  const [overrides, setOverrides] = useState<Record<string, Letter>>(() => {
+    const out: Record<string, Letter> = {};
+    if (!saved) return out;
+    for (const b of boards) {
+      const idx = saved.overrides[studentKey(nameOf(b.assignedUserIds[0]))];
+      if (typeof idx === 'number' && initial.some((v) => v.letter === LETTERS[idx])) out[b.id] = LETTERS[idx];
+    }
+    return out;
+  });
+  const [cornerMap, setCornerMap] = useState<Record<CornerKey, Letter>>(() => {
+    const m = saved?.cornerMap;
+    return m
+      ? { tl: LETTERS[m.tl], tr: LETTERS[m.tr], bl: LETTERS[m.bl], br: LETTERS[m.br], none: LETTERS[m.none] }
+      : { tl: 'A', tr: 'B', bl: 'C', br: 'D', none: 'A' };
+  });
+  const [lateJoiners, setLateJoiners] = useState<'rule' | 'a'>(saved?.lateJoiners ?? (individual ? 'rule' : 'a'));
   const [progress, setProgress] = useState('');
   const [error, setError] = useState('');
+
+  // The letter each board shows now: who got which (saved), else the worksheet on the board matched to A–D.
+  const currentLetters = useMemo(() => {
+    const out: Record<string, Letter> = {};
+    for (const b of boards) {
+      const idx = saved?.assigned[b.assignedUserIds[0]];
+      const fromSaved = typeof idx === 'number' ? initial.find((v) => v.letter === LETTERS[idx]) : undefined;
+      if (fromSaved && sameWorksheet(fromSaved.bg, b.background)) out[b.id] = fromSaved.letter;
+      else {
+        const match = b.background ? initial.find((v) => v.bg && sameWorksheet(v.bg, b.background)) : undefined;
+        if (match) out[b.id] = match.letter;
+      }
+    }
+    return out;
+    // Computed once from what the round had when the form opened.
+  }, []);
 
   const letters = variants.map((v) => v.letter);
   const variantFor = (l: Letter) => variants.find((v) => v.letter === l);
   const mode: Mode = chosenMode ?? (letters.length >= 2 ? 'rotate' : 'same');
+  const chooseMode = (m: Mode) => {
+    setRuleTouched(true);
+    setChosenMode(m);
+  };
 
   // Corner mode: only for individual rounds, and only when Main has a worksheet with name stamps on it.
   const quadrants = useMemo(() => {
@@ -88,7 +170,8 @@ export function SendWorksheetModal({ round, boards, mainElements, mainBackground
           ? cornerMap[quadrantOf(b) ?? 'none']
           : 'A';
     const o = overrides[b.id];
-    assignment.set(b.id, o && letters.includes(o) ? o : auto);
+    const now = ruleTouched ? undefined : currentLetters[b.id];
+    assignment.set(b.id, o && letters.includes(o) ? o : now && letters.includes(now) ? now : auto);
   });
 
   const usedLetters = LETTERS.filter((l) => [...assignment.values()].includes(l));
@@ -97,7 +180,11 @@ export function SendWorksheetModal({ round, boards, mainElements, mainBackground
   const sending = Boolean(progress);
   const withWork = selectedBoards.filter((b) => b.elements.length > 0).length;
   const sendDisabled =
-    sending || rendering || selectedBoards.length === 0 || missingLetters.length > 0 || (lateJoiners && !variantFor('A')?.bg);
+    sending ||
+    rendering ||
+    missingLetters.length > 0 ||
+    (selectedBoards.length === 0 && !individual) ||
+    (individual && lateJoiners === 'a' && !variantFor('A')?.bg);
 
   let cornerSummary = '';
   if (effectiveMode === 'corner') {
@@ -131,32 +218,82 @@ export function SendWorksheetModal({ round, boards, mainElements, mainBackground
     }
   };
 
+  const upload = async (dataUrl: string) => {
+    if (!onRequest) return dataUrl;
+    const res = await onRequest('teacher:upload-asset', { dataUrl });
+    if (!res?.ok || typeof res.url !== 'string') throw new Error(res?.error || 'Could not upload a worksheet image.');
+    return res.url as string;
+  };
+
   const send = async () => {
     setError('');
-    const plan = LETTERS.map((l) => ({
-      letter: l,
-      ids: selectedBoards.filter((b) => assignment.get(b.id) === l).map((b) => b.id),
-      template: l === 'A' && lateJoiners,
-    })).filter((p) => p.ids.length > 0 || p.template);
-    let skipped = 0;
-    // One emit per variant, one after another, so large worksheets never share a packet.
-    for (let i = 0; i < plan.length; i++) {
-      const p = plan[i];
-      setProgress(`Sending ${p.letter} (${i + 1}/${plan.length})…`);
-      const res = await onSend(p.ids, variantFor(p.letter)!.bg, p.template ? round.id : undefined);
-      if (!res.ok) {
-        setProgress('');
-        setError(res.error || `Could not send worksheet ${p.letter}.`);
+    try {
+      // Upload new files first, so every emit below is small and boards, A and the saved variants share one image.
+      setProgress('Uploading…');
+      const ready = new Map<Letter, RoomBackground | null>();
+      for (const v of variants) ready.set(v.letter, await uploadWorksheetPages(v.bg, upload));
+
+      const aChanged = Boolean(ready.get('A')) && !sameWorksheet(ready.get('A'), roundWorksheet);
+      const plan = LETTERS.map((l) => ({
+        letter: l,
+        // Only boards whose worksheet actually changes: resending the same image would be a no-op.
+        ids: selectedBoards
+          .filter((b) => assignment.get(b.id) === l && !sameWorksheet(b.background, ready.get(l) ?? null))
+          .map((b) => b.id),
+        template: l === 'A' && aChanged,
+      })).filter((p) => p.ids.length > 0 || p.template);
+      let skipped = 0;
+      // One emit per variant, one after another, so large worksheets never share a packet.
+      for (let i = 0; i < plan.length; i++) {
+        const p = plan[i];
+        setProgress(`Sending ${p.letter} (${i + 1}/${plan.length})…`);
+        const res = await onSend(p.ids, ready.get(p.letter) ?? null, p.template ? round.id : undefined);
+        if (!res.ok) throw new Error(res.error || `Could not send worksheet ${p.letter}.`);
+        skipped += res.skipped?.length || 0;
+      }
+
+      if (individual && onRequest) {
+        setProgress('Saving…');
+        const pickByName: Record<string, number> = { ...(saved?.overrides ?? {}) };
+        const assigned: Record<string, number> = { ...(saved?.assigned ?? {}) };
+        for (const b of boards) {
+          const uid = b.assignedUserIds[0];
+          const key = studentKey(nameOf(uid));
+          if (key) delete pickByName[key];
+          if (key && overrides[b.id] && letters.includes(overrides[b.id])) pickByName[key] = letterIndex(overrides[b.id]);
+          if (uid && selected.has(b.id)) assigned[uid] = letterIndex(assignment.get(b.id)!);
+        }
+        const toIndex = (l: Letter) => (letters.includes(l) ? letterIndex(l) : 0);
+        const res = await onRequest('teacher:set-round-variants', {
+          roundId: round.id,
+          variants: {
+            extra: [1, 2, 3].map((i) => ready.get(LETTERS[i]) ?? null),
+            rule: effectiveMode,
+            cornerMap: {
+              tl: toIndex(cornerMap.tl),
+              tr: toIndex(cornerMap.tr),
+              bl: toIndex(cornerMap.bl),
+              br: toIndex(cornerMap.br),
+              none: toIndex(cornerMap.none),
+            },
+            lateJoiners,
+            overrides: pickByName,
+            assigned,
+          },
+        });
+        if (!res?.ok) throw new Error(res?.error || 'Sent, but could not remember the worksheets for late joiners.');
+      }
+
+      setProgress('');
+      if (skipped) {
+        setError(`Sent, but ${skipped} board${skipped === 1 ? ' was' : 's were'} not found (the round may have changed).`);
         return;
       }
-      skipped += res.skipped?.length || 0;
+      onClose();
+    } catch (err: any) {
+      setProgress('');
+      setError(err?.message || 'Could not send the worksheets.');
     }
-    setProgress('');
-    if (skipped) {
-      setError(`Sent, but ${skipped} board${skipped === 1 ? ' was' : 's were'} not found (the round may have changed).`);
-      return;
-    }
-    onClose();
   };
 
   const letterSelect = (value: Letter, onChange: (l: Letter) => void, options: readonly Letter[], label: string) => (
@@ -235,11 +372,11 @@ export function SendWorksheetModal({ round, boards, mainElements, mainBackground
           <section className="space-y-1">
             <h4 className="font-semibold">Who gets which</h4>
             <label className="flex gap-2">
-              <input type="radio" name="sw-mode" checked={effectiveMode === 'same'} onChange={() => setChosenMode('same')} />
+              <input type="radio" name="sw-mode" checked={effectiveMode === 'same'} onChange={() => chooseMode('same')} />
               Same worksheet (A) for all selected
             </label>
             <label className="flex gap-2">
-              <input type="radio" name="sw-mode" checked={effectiveMode === 'rotate'} onChange={() => setChosenMode('rotate')} />
+              <input type="radio" name="sw-mode" checked={effectiveMode === 'rotate'} onChange={() => chooseMode('rotate')} />
               Deal out {letters.join(', ')} in turn (alphabetical by student)
             </label>
             <label className={`flex gap-2 ${cornerDisabledReason ? 'text-slate-400' : ''}`} title={cornerDisabledReason || undefined}>
@@ -248,7 +385,7 @@ export function SendWorksheetModal({ round, boards, mainElements, mainBackground
                 name="sw-mode"
                 disabled={Boolean(cornerDisabledReason)}
                 checked={effectiveMode === 'corner'}
-                onChange={() => setChosenMode('corner')}
+                onChange={() => chooseMode('corner')}
               />
               By name-stamp corner on the main board
               {cornerDisabledReason && <span className="text-xs">({cornerDisabledReason})</span>}
@@ -258,7 +395,7 @@ export function SendWorksheetModal({ round, boards, mainElements, mainBackground
                 {(['tl', 'tr', 'bl', 'br', 'none'] as CornerKey[]).map((k) => (
                   <label key={k} className="flex items-center justify-between gap-2 text-xs">
                     {CORNER_LABEL[k]} →
-                    {letterSelect(cornerMap[k], (l) => setCornerMap((m) => ({ ...m, [k]: l })), LETTERS, `${CORNER_LABEL[k]} worksheet`)}
+                    {letterSelect(cornerMap[k], (l) => { setRuleTouched(true); setCornerMap((m) => ({ ...m, [k]: l })); }, LETTERS, `${CORNER_LABEL[k]} worksheet`)}
                   </label>
                 ))}
               </div>
@@ -321,10 +458,27 @@ export function SendWorksheetModal({ round, boards, mainElements, mainBackground
             </table>
           </section>
 
-          <label className="flex gap-2">
-            <input type="checkbox" checked={lateJoiners} onChange={(e) => setLateJoiners(e.target.checked)} />
-            Late joiners get worksheet A
-          </label>
+          {individual ? (
+            <label className="flex items-center gap-2">
+              Late joiners get
+              <select
+                aria-label="Late joiners get"
+                value={lateJoiners}
+                onChange={(e) => setLateJoiners(e.target.value === 'a' ? 'a' : 'rule')}
+                className="bg-slate-50 border border-[#CBD5E1] rounded-[2px] px-1.5 py-0.5 text-xs text-slate-800 cursor-pointer"
+              >
+                <option value="rule">their worksheet by the same rule</option>
+                <option value="a">worksheet A</option>
+              </select>
+            </label>
+          ) : (
+            <p className="text-xs text-slate-500">New group boards in this round start with worksheet A.</p>
+          )}
+          {!ruleTouched && Object.keys(currentLetters).length > 0 && (
+            <p className="text-xs text-slate-500">
+              Boards keep the worksheet they already have. Pick a rule above to deal them out again, or change one board below.
+            </p>
+          )}
 
           {withWork > 0 && (
             <p className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-[2px] p-2">

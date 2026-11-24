@@ -37,6 +37,16 @@ import { AlertCircle, Check, Download, FolderOpen, Shuffle, X } from 'lucide-rea
 import { cn } from '../lib/utils';
 import { StudentStatusBadge } from './StudentStatusBadge';
 import { SendWorksheetModal, type SendWorksheetResult } from './SendWorksheetModal';
+import {
+  WorksheetVariantsEditor,
+  draftFromVariants,
+  draftHasVariants,
+  emptyVariantsDraft,
+  missingVariantLetters,
+  type VariantsDraft,
+} from './WorksheetVariantsEditor';
+import { uploadWorksheetPages, variantsNote, type RoundVariants } from '../lib/roundVariants';
+import type { LessonRequest } from './LessonPackModals';
 
 export type { PendingSnapshotData };
 
@@ -59,6 +69,10 @@ interface LiveGridOverviewProps {
     bg: RoomBackground | null,
     roundTemplateFor?: string
   ) => Promise<SendWorksheetResult>;
+  /** Each round's worksheet A and saved variants, so Send worksheet… starts from what was sent. */
+  roundTemplates?: Record<string, RoomBackground | null>;
+  roundVariants?: Record<string, RoundVariants>;
+  onTeacherRequest?: LessonRequest;
   users: User[];
   fullMainElements: CanvasElement[];
   fullMainBackground: RoomBackground | null;
@@ -87,6 +101,9 @@ export function LiveGridOverview({
   onTeacherClearStatus,
   onSpotlightBoard,
   onSendWorksheet,
+  roundTemplates,
+  roundVariants,
+  onTeacherRequest,
   users,
   fullMainElements,
   fullMainBackground,
@@ -299,6 +316,10 @@ export function LiveGridOverview({
             mainElements={fullMainElements}
             mainBackground={fullMainBackground}
             onSend={onSendWorksheet}
+            roundWorksheet={roundTemplates?.[viewingRound.id] ?? null}
+            roundVariants={roundVariants?.[viewingRound.id] ?? null}
+            users={users}
+            onRequest={onTeacherRequest}
             onClose={() => setShowSendWorksheet(false)}
           />
         )}
@@ -364,6 +385,7 @@ interface PreparedRoundsListProps {
   rounds: BreakoutRoundMeta[];
   roundTemplates: Record<string, RoomBackground | null>;
   roundTemplateInk: Record<string, CanvasElement[]>;
+  roundVariants: Record<string, RoundVariants>;
   subBoards: Record<string, SubBoardData>;
   busy: boolean;
   confirmDeleteId: string | null;
@@ -379,6 +401,7 @@ function PreparedRoundsList({
   rounds,
   roundTemplates,
   roundTemplateInk,
+  roundVariants,
   subBoards,
   busy,
   confirmDeleteId,
@@ -409,6 +432,7 @@ function PreparedRoundsList({
                 {' · Worksheet: '}
                 {templateName(roundTemplates[r.id])}
                 {inkNote(roundTemplateInk[r.id])}
+                {variantsNote(roundVariants[r.id])}
               </div>
             </div>
             <div className="flex items-center gap-1.5 shrink-0">
@@ -499,6 +523,10 @@ interface BreakoutManagerModalProps {
   roundTemplates?: Record<string, RoomBackground | null>;
   /** Teacher-only: ink each round copies onto its boards (template ink). */
   roundTemplateInk?: Record<string, CanvasElement[]>;
+  /** Teacher-only: worksheet variants B–D per individual round. */
+  roundVariants?: Record<string, RoundVariants>;
+  /** Teacher socket requests (used to upload variant worksheet images one at a time). */
+  onTeacherRequest?: LessonRequest;
   /** How many marks "Also copy my ink from Main" would copy. */
   mainTeacherInkCount?: number;
   subBoards?: Record<string, SubBoardData>;
@@ -550,6 +578,8 @@ export function BreakoutManagerModal({
   preparedRounds = [],
   roundTemplates = {},
   roundTemplateInk = {},
+  roundVariants = {},
+  onTeacherRequest,
   mainTeacherInkCount = 0,
   subBoards = {},
   onLoadDraftGroupsForRound,
@@ -568,6 +598,36 @@ export function BreakoutManagerModal({
   const [preparedNotice, setPreparedNotice] = useState('');
   // "Also copy my ink from Main": only with the Copy Current worksheet, so the ink lines up with its pages.
   const [copyInk, setCopyInk] = useState(false);
+  // Worksheets B–D for an individual round, and who gets which.
+  const [variantsDraft, setVariantsDraft] = useState<VariantsDraft>(emptyVariantsDraft);
+  const [variantsBusy, setVariantsBusy] = useState(false);
+  const usesVariants = draftBreakoutMode === 'individual';
+  const variantsBlocked = usesVariants && (variantsBusy || missingVariantLetters(variantsDraft).length > 0);
+
+  /** The variants to send: worksheet images uploaded first, one at a time. null = none (or a group round). */
+  const buildVariantsPayload = async (keepPicks: boolean): Promise<RoundVariants | null> => {
+    if (!usesVariants || !draftHasVariants(variantsDraft)) return null;
+    const upload = async (dataUrl: string) => {
+      if (!onTeacherRequest) return dataUrl;
+      const res = await onTeacherRequest('teacher:upload-asset', { dataUrl });
+      if (!res?.ok || typeof res.url !== 'string') throw new Error(res?.error || 'Could not upload a worksheet image.');
+      return res.url as string;
+    };
+    const extra: (RoomBackground | null)[] = [];
+    for (let i = 0; i < 3; i++) {
+      extra.push(i < variantsDraft.slots ? await uploadWorksheetPages(variantsDraft.extra[i], upload) : null);
+    }
+    const payload: Partial<RoundVariants> = {
+      extra,
+      rule: variantsDraft.rule,
+      cornerMap: variantsDraft.cornerMap,
+      lateJoiners: variantsDraft.lateJoiners,
+      assigned: {},
+    };
+    // Without `overrides` the server keeps the round's per-student picks (edit); a new round starts with none.
+    if (!keepPicks) payload.overrides = {};
+    return payload as RoundVariants;
+  };
 
   const chooseWorksheet = (choice: RoundWorksheetChoice) => {
     setWorksheetTouched(true);
@@ -663,6 +723,7 @@ export function BreakoutManagerModal({
             rounds={preparedRounds}
             roundTemplates={roundTemplates}
             roundTemplateInk={roundTemplateInk}
+            roundVariants={roundVariants}
             subBoards={subBoards}
             busy={preparedBusy}
             confirmDeleteId={confirmDeleteId}
@@ -696,6 +757,7 @@ export function BreakoutManagerModal({
               setRoundName(preparedRoundName(round));
               setWorksheetTouched(false);
               setCopyInk(Boolean(roundTemplateInk[round.id]?.length));
+              setVariantsDraft(draftFromVariants(roundVariants[round.id]));
               setPreparedView({ kind: 'edit-prepared', round });
             }}
             onDelete={async (round) => {
@@ -719,7 +781,10 @@ export function BreakoutManagerModal({
             </p>
             <button
               type="button"
-              onClick={() => setPreparedView(null)}
+              onClick={() => {
+                setPreparedView(null);
+                setVariantsDraft(emptyVariantsDraft());
+              }}
               className="px-2.5 py-1 rounded-[2px] border oh-btn text-[11px] font-medium text-slate-700 cursor-pointer shrink-0"
             >
               Back
@@ -1110,6 +1175,26 @@ export function BreakoutManagerModal({
                 />
               </div>
             )}
+            {usesVariants && (
+              <WorksheetVariantsEditor
+                value={variantsDraft}
+                onChange={setVariantsDraft}
+                onBusyChange={setVariantsBusy}
+                disabled={preparedBusy}
+                worksheetAName={
+                  isEditingPrepared && preparedView && !worksheetTouched
+                    ? templateName(roundTemplates[preparedView.round.id])
+                    : draftWorksheetChoice === 'upload'
+                      ? uploadedBg?.fileName || 'the uploaded file'
+                      : templateLabelFor(draftWorksheetChoice)
+                }
+              />
+            )}
+            {usesVariants && missingVariantLetters(variantsDraft).length > 0 && (
+              <p className="text-[11px] text-red-700">
+                Choose a file for worksheet {missingVariantLetters(variantsDraft).join(', ')}, or remove it.
+              </p>
+            )}
           </div>
         )}
 
@@ -1325,7 +1410,12 @@ export function BreakoutManagerModal({
           ) : isEditingPrepared && preparedView ? (
             <button
               type="button"
-              disabled={preparedBusy || uploadState.busy || (draftWorksheetChoice === 'upload' && worksheetTouched && !uploadedBg)}
+              disabled={
+                preparedBusy ||
+                uploadState.busy ||
+                variantsBlocked ||
+                (draftWorksheetChoice === 'upload' && worksheetTouched && !uploadedBg)
+              }
               onClick={async () => {
                 const round = preparedView.round;
                 const payload: ConfigureBreakoutPayload = {
@@ -1344,11 +1434,18 @@ export function BreakoutManagerModal({
                   if (!payload.title) payload.templateLabel = ws.templateLabel;
                 }
                 setPreparedBusy(true);
-                const res = await onConfigureBreakout(payload);
+                let res: { ok: boolean; error?: string };
+                try {
+                  if (round.mode === 'individual') payload.variants = await buildVariantsPayload(true);
+                  res = await onConfigureBreakout(payload);
+                } catch (err: any) {
+                  res = { ok: false, error: err?.message };
+                }
                 setPreparedBusy(false);
                 if (!res.ok) { window.alert(res.error || 'Could not save this round.'); return; }
                 setPreparedNotice(`Saved changes to ${round.title.replace(/^Round \d+ · /, '')}.`);
                 setPreparedView(null);
+                setVariantsDraft(emptyVariantsDraft());
               }}
               className="px-4 py-1.5 rounded-[2px] border oh-btn-primary text-xs font-semibold text-white cursor-pointer disabled:opacity-50"
             >
@@ -1359,12 +1456,21 @@ export function BreakoutManagerModal({
               {!isEditing && (
                 <button
                   type="button"
-                  disabled={preparedBusy || uploadState.busy || (draftWorksheetChoice === 'upload' && !uploadedBg)}
+                  disabled={preparedBusy || uploadState.busy || variantsBlocked || (draftWorksheetChoice === 'upload' && !uploadedBg)}
                   title="Save this round with its worksheet and groups. Nobody moves until you launch it."
                   onClick={async () => {
                     const ws = buildWorksheetConfig(draftWorksheetChoice, draftWorksheetTopic);
                     setPreparedBusy(true);
+                    let variants: RoundVariants | null = null;
+                    try {
+                      variants = await buildVariantsPayload(false);
+                    } catch (err: any) {
+                      setPreparedBusy(false);
+                      window.alert(err?.message || 'Could not upload the worksheets.');
+                      return;
+                    }
                     const res = await onConfigureBreakout({
+                      variants,
                       action: 'new-round',
                       prepare: true,
                       title: roundName.trim() || undefined,
@@ -1383,6 +1489,7 @@ export function BreakoutManagerModal({
                     setRoundName('');
                     setUploadedBg(null);
                     setUploadState({ busy: false });
+                    setVariantsDraft(emptyVariantsDraft());
                   }}
                   className="px-4 py-1.5 rounded-[2px] border oh-btn text-xs font-semibold text-slate-800 cursor-pointer disabled:opacity-50"
                 >
@@ -1391,7 +1498,7 @@ export function BreakoutManagerModal({
               )}
               <button
                 type="button"
-                disabled={!isEditing && (uploadState.busy || (draftWorksheetChoice === 'upload' && !uploadedBg))}
+                disabled={!isEditing && (uploadState.busy || variantsBlocked || (draftWorksheetChoice === 'upload' && !uploadedBg))}
                 onClick={async () => {
                   let payload: ConfigureBreakoutPayload;
                   if (isEditing && targetRound) {
@@ -1416,6 +1523,12 @@ export function BreakoutManagerModal({
                       groups: draftBreakoutMode === 'groups' ? draftGroups : undefined,
                       templateLabel: ws.templateLabel,
                     };
+                    try {
+                      payload.variants = await buildVariantsPayload(false);
+                    } catch (err: any) {
+                      window.alert(err?.message || 'Could not upload the worksheets.');
+                      return;
+                    }
                   }
                   const res = await onConfigureBreakout(payload);
                   if (!res.ok) { window.alert(res.error || 'Could not update breakout boards.'); return; }

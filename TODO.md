@@ -13,28 +13,21 @@ specs are in git history.
   - [x] **Everyone's current boards:** replaces only each board's **background**, never the student's ink.
     Done (Nov 2026): Live Grid → **Send worksheet…** sends up to four variants (A–D) to selected boards of the
     viewed round (same / rotate / by name-stamp corner), via `teacher:set-background-multi`.
-  - [ ] **A prepared breakout round** (see below): sets that round's worksheet template, so students who enter
-    it later get it.
-  - [ ] **Set up worksheet variants (A–D) before class, on a prepared round.** Today variants can only be sent
-    from Live Grid → **Send worksheet…**, after the round is live and students already have boards.
-    - In the prepared-round form (Breakout manager → **Save for later** / **Edit**), let the teacher upload up to
-      four variants and pick the distribution: same for all / deal out in turn / by name-stamp corner.
-    - On **Launch**, the server gives each new board its variant. Corner mode reads the main board's stamps at
-      launch time. Late joiners get their variant by the same rule, not always A.
-    - Save variants and the distribution rule **on the round**, so they survive a restart.
-    - **Lesson packs must carry all of it.** Anything a teacher sets up ahead of time (prepared rounds, their
-      variants A–D, the distribution rule, the corner mapping, per-student overrides, the late-joiner rule) must
-      go into **Save lesson…** (`.allaboard`) and come back intact with **Load lesson…**. Per-student overrides
-      only make sense in the same class, so on load, match them by student name and drop the ones that don't
-      match. Add a round-trip test: save a pack, load it into a fresh room, and check that every prepared field
-      matches.
-  - [ ] **Make a sent distribution editable.** Reopening **Send worksheet…** starts empty: the uploaded variants
-    and who got which are forgotten, so changing one student's card means uploading everything again.
-    - Remember each round's variants and assignments, and reopen the modal with them filled in.
-    - Allow changing one board's letter, swapping a variant's file, or switching the distribution rule, and send
-      only the boards whose worksheet actually changes.
-    - Keep the existing rule: ink stays and only the worksheet underneath changes. Warn about boards that
-      already have work, as the modal does now.
+  - [x] **A prepared breakout round** (see below): sets that round's worksheet template, so students who enter
+    it later get it. Done: the prepared-round form's worksheet is the round's template, and **Edit** changes it.
+  - [x] **Set up worksheet variants (A–D) before class, on a prepared round.**
+    Done (Nov 2026): the prepared-round form (individual rounds) adds worksheets B–D, the rule (same / deal out in
+    turn / by name-stamp corner, with the corner map) and the late-joiner rule. On **Launch** the server deals them
+    out alphabetically by student, or reads Main's name stamps; late joiners get theirs by the same rule (or A).
+    Stored on the room as teacher-only `roundVariants` (`src/lib/roundVariants.ts`), so they survive restarts and
+    room saves. Lesson packs carry them; per-student picks (matched by name) go in only when the teacher ticks
+    "include student picks", and who-got-which never does. Tests: `tests/roundVariantsServer.test.ts`.
+    Group rounds have no variants yet.
+  - [x] **Make a sent distribution editable.**
+    Done (Nov 2026): **Send worksheet…** reopens with the round's A–D files, rule, corner map and per-student picks.
+    Each board keeps the letter it has until the teacher changes the rule; changing one board's letter or a file
+    sends only the boards whose worksheet changes. Individual rounds save it all (`teacher:set-round-variants`),
+    so late joiners get their variant too.
   - **Server:** a teacher-only path that applies `internBackground` once and then reuses the same asset URL for
     every board. With content-addressed assets, 30 boards cost one stored image.
 

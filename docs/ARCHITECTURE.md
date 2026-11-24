@@ -123,6 +123,7 @@ Cloud Run service "allaboard"  ── one container :3000 (node server.ts, Build
 | `breakoutConfig` | `mode` (`main`/`individual`/`groups`, i.e. where students are **now**), `activeRoundId`, `rounds[]`, `allowSelfSelect`, `chatScope`, `userBoardOverrides` |
 | `roundTemplates[roundId]` | The worksheet each round's boards start with (copied to late joiners). Sent to **teachers only** (`init`, `breakout-sync`, `round-templates-sync`) and saved in room exports. |
 | `roundTemplateInk[roundId]` | **Template ink**: teacher Main ink (no name stamps) a round copies onto each of its boards, with new ids and the teacher as author so students can't erase it. Individual boards get it as they're made (late joiners too); group boards at launch. Set by `copyInk` with `copyWorksheet` on `new-round` / `edit-prepared`. Teachers only, like `roundTemplates`; in room exports and lesson packs (`LessonRound.ink`). |
+| `roundVariants[roundId]` | **Worksheet variants** for an individual round: worksheets B–D (A is always `roundTemplates[roundId]`), the rule (`same` / `rotate` / `corner` + corner map), the late-joiner rule, per-student picks by lowercased name, and `assigned` (userId → letter, session data). Used when each board is made (`provisionIndividualBoard`; launch deals out alphabetically). Set by `variants` on `new-round` / `edit-prepared` and by `teacher:set-round-variants` (Send worksheet…). Teachers only; in room exports and lesson packs without `assigned` (picks only when the teacher opts in). |
 | `timer`, `lockedNames`, `bannedUsers`, `isCanvasLocked`, `hideStudentCursors`, `teacherPin`, `lastActiveAt` | As named |
 | `usersByUserId` | **Runtime only** (not persisted): roster, `sockets` set, `isTeacher`, student status |
 
@@ -153,6 +154,7 @@ Cloud Run service "allaboard"  ── one container :3000 (node server.ts, Build
 - Room and identity: `check-room` (ack, no side effects), `join-room`, `update-profile`, `user:set-status`, `cursor-move`, `disconnect`
 - Teacher actions: `teacher:auth`, `teacher:step-down`, `teacher:configure-breakout` (actions above), `teacher:set-background`,
   `teacher:set-background-multi` (one worksheet to many boards; optional `roundTemplateFor` sets the round template),
+  `teacher:set-round-variants` (ack; an individual round's worksheets B–D, rule and picks, `src/lib/roundVariants.ts`),
   `teacher:update-background`, `teacher:rename-user`, `teacher:delete-message`, `teacher:unban-user`,
   `teacher:purge-user-contributions`, `teacher:set-lock`, `teacher:set-hide-cursors`, `teacher:set-one-name-stamp`, `teacher:clear-status`, `teacher:spotlight-board`, `laser-pulse`, `teacher:clear-all`, `teacher:import-room`
 - Lesson packs (teacher-only, ack; `src/lib/lessonPack.ts`): `teacher:export-lesson` (server builds the skeleton,
