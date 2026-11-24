@@ -101,7 +101,7 @@ import {
   liveLiftPoint,
   traceSmoothStrokePath,
   traceHollowTipShape,
-  drawHollowElementOnCtx,
+  drawHollowElementCached,
   getNoteFontSize,
   noteSize,
   computeNotesGone,
@@ -171,6 +171,7 @@ import {
   RotateCcw,
   FileSpreadsheet,
   PanelLeftOpen,
+  LifeBuoy,
   HardDrive,
   Keyboard,
   Crosshair,
@@ -268,6 +269,8 @@ interface CanvasProps {
   isChatHidden?: boolean;
   unreadChatCount?: number;
   onShowChat?: () => void;
+  /** Opens "Something not working?" (shown here only while the chat sidebar, which has the main link, is hidden). */
+  onReportProblem?: () => void;
 }
 
 const MIN_SCALE = 0.1;
@@ -473,29 +476,35 @@ function SmoothStrokeShape({
   globalCompositeOperation?: GlobalCompositeOperation;
   opacity?: number;
 }) {
+  // Stable draw function: a new one on every React render would make react-konva repaint the
+  // whole ink layer on every mouse move, cursor update or chat message.
+  const sceneFunc = useCallback(
+    (ctx: any) => {
+      const rawCtx = (ctx as any)._context as CanvasRenderingContext2D;
+      if (!rawCtx || !points || points.length < 2) return;
+      rawCtx.save();
+      rawCtx.strokeStyle = color;
+      rawCtx.fillStyle = color;
+      rawCtx.lineWidth = strokeWidth;
+      rawCtx.lineCap = 'round';
+      rawCtx.lineJoin = 'round';
+      const kind = traceSmoothStrokePath(rawCtx, points, strokeWidth);
+      if (kind === 'dot') {
+        rawCtx.fill();
+      } else if (kind === 'stroke') {
+        rawCtx.stroke();
+      }
+      rawCtx.restore();
+    },
+    [points, color, strokeWidth]
+  );
   return (
     <Shape
       opacity={opacity}
       globalCompositeOperation={globalCompositeOperation}
       listening={false}
       perfectDrawEnabled={false}
-      sceneFunc={(ctx) => {
-        const rawCtx = (ctx as any)._context as CanvasRenderingContext2D;
-        if (!rawCtx || !points || points.length < 2) return;
-        rawCtx.save();
-        rawCtx.strokeStyle = color;
-        rawCtx.fillStyle = color;
-        rawCtx.lineWidth = strokeWidth;
-        rawCtx.lineCap = 'round';
-        rawCtx.lineJoin = 'round';
-        const kind = traceSmoothStrokePath(rawCtx, points, strokeWidth);
-        if (kind === 'dot') {
-          rawCtx.fill();
-        } else if (kind === 'stroke') {
-          rawCtx.stroke();
-        }
-        rawCtx.restore();
-      }}
+      sceneFunc={sceneFunc}
     />
   );
 }
@@ -516,15 +525,34 @@ function HollowStrokeShape({
   hollowWeight?: number;
   hollowShape?: HollowShapeKind;
 }) {
+  // Stable draw function (see SmoothStrokeShape); the swept geometry itself is cached per stroke in inkCore.
+  const sceneFunc = useCallback(
+    (ctx: any) => {
+      const rawCtx = (ctx as any)._context as CanvasRenderingContext2D;
+      if (!rawCtx || !points || points.length < 2) return;
+      drawHollowElementCached(rawCtx, points, strokeWidth, hollowWeight, color, hollowShape);
+    },
+    [points, strokeWidth, hollowWeight, color, hollowShape]
+  );
+  return <Shape listening={false} perfectDrawEnabled={false} sceneFunc={sceneFunc} />;
+}
+
+/**
+ * Spray stroke. Its own component so the `dash` array keeps the same identity between renders
+ * (a fresh array would repaint the ink layer on every React render).
+ */
+function SprayStrokeLine({ points, color, strokeWidth }: { points: number[]; color: string; strokeWidth: number }) {
+  const dash = useMemo(() => [1, Math.max(6, Math.round(strokeWidth * 0.9))], [strokeWidth]);
   return (
-    <Shape
-      listening={false}
-      perfectDrawEnabled={false}
-      sceneFunc={(ctx) => {
-        const rawCtx = (ctx as any)._context as CanvasRenderingContext2D;
-        if (!rawCtx || !points || points.length < 2) return;
-        drawHollowElementOnCtx(rawCtx, points, strokeWidth, hollowWeight, color, hollowShape);
-      }}
+    <Line
+      points={points}
+      stroke={color}
+      strokeWidth={strokeWidth * 1.4}
+      tension={0.4}
+      lineCap="round"
+      lineJoin="round"
+      opacity={0.45}
+      dash={dash}
     />
   );
 }
@@ -715,6 +743,7 @@ export default function Canvas({
   isChatHidden = false,
   unreadChatCount = 0,
   onShowChat,
+  onReportProblem,
 }: CanvasProps) {
   // OverBoard-style Separate Tool Settings & Memory
   const [penColor, setPenColor] = useState<string>(() => readLocalColor('allaboard-pen-color', '#111111'));
@@ -3652,18 +3681,7 @@ export default function Canvas({
       }
 
       if (el.tool === 'spray') {
-        return (
-          <Line
-            points={pts}
-            stroke={el.color}
-            strokeWidth={el.strokeWidth * 1.4}
-            tension={0.4}
-            lineCap="round"
-            lineJoin="round"
-            opacity={0.45}
-            dash={[1, Math.max(6, Math.round(el.strokeWidth * 0.9))]}
-          />
-        );
+        return <SprayStrokeLine points={pts} color={el.color} strokeWidth={el.strokeWidth} />;
       }
 
       if (el.tool === 'highlighter') {
@@ -3781,6 +3799,17 @@ export default function Canvas({
             >
               Room: <span className="font-mono font-semibold text-slate-900">{roomId}</span>
             </span>
+            {onReportProblem && (
+              <button
+                type="button"
+                onClick={onReportProblem}
+                className="p-1.5 rounded-[2px] border oh-btn text-slate-600 hover:text-slate-900 transition-colors cursor-pointer shrink-0"
+                title="Something not working? Report a problem"
+                aria-label="Something not working?"
+              >
+                <LifeBuoy size={15} />
+              </button>
+            )}
           </div>
         )}
 

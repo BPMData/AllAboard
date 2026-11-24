@@ -19,6 +19,7 @@ import {
   PanelLeftClose,
   Shuffle,
   LogOut,
+  LifeBuoy,
   Eye,
   EyeOff,
 } from 'lucide-react';
@@ -54,6 +55,8 @@ interface ChatProps {
   onCreateNewRoom: () => void;
   onSwitchRoom: (newRoomId: string) => void;
   onLeaveRoom?: () => void;
+  /** Opens "Something not working?". */
+  onReportProblem?: () => void;
   onUpdateName: (newName: string) => void;
   onClearUserDrawings: (targetUserId: string) => void;
   onTeacherRenameUser?: (targetUserId: string, newName: string) => void;
@@ -99,6 +102,7 @@ export default function Chat({
   onCreateNewRoom,
   onSwitchRoom,
   onLeaveRoom,
+  onReportProblem,
   onUpdateName,
   onClearUserDrawings,
   onTeacherRenameUser,
@@ -503,6 +507,20 @@ export default function Chat({
                     >
                       <LogOut size={11} />
                       <span>Lobby</span>
+                    </button>
+                  </>
+                )}
+                {onReportProblem && (
+                  <>
+                    <span className="text-slate-300" aria-hidden="true">·</span>
+                    <button
+                      type="button"
+                      onClick={onReportProblem}
+                      className="flex items-center gap-1 px-1.5 py-0.5 text-[11px] font-medium text-slate-600 hover:text-slate-900 hover:bg-slate-200/60 rounded-[2px] transition-colors cursor-pointer whitespace-nowrap"
+                      title="Report a bug, glitch or failure"
+                    >
+                      <LifeBuoy size={11} />
+                      <span>Something not working?</span>
                     </button>
                   </>
                 )}

@@ -15,6 +15,15 @@ import {
   traceSmoothStrokePath,
   traceHollowTipShape,
   drawHollowElementOnCtx,
+  simplifyPathForSweep,
+  hollowTipConvexPieces,
+  buildHollowSweepPolygons,
+  getHollowSweepGeometry,
+  drawHollowElementCached,
+  hollowBitmapPixelsInUse,
+  HOLLOW_BITMAP_BUDGET_PX,
+  HOLLOW_SWEEP_TOLERANCE,
+  HOLLOW_SWEEP_POLYS_PER_FILL,
   getNoteFontSize,
   noteSize,
   getNoteBox,
@@ -383,3 +392,302 @@ describe('hollow shape brush geometry and rendering', () => {
   });
 });
 
+
+describe('hollow shape brush: swept strokes stay cheap to paint (shape-tool FPS bug)', () => {
+  // A long, dense, curvy pen path like a big scribble across the board (point every ~1.5px).
+  function scribble(totalLen: number): number[] {
+    const pts: number[] = [100, 100];
+    let t = 0;
+    let x = 100;
+    let y = 100;
+    let len = 0;
+    while (len < totalLen) {
+      t += 0.004;
+      const nx = 700 + 600 * Math.sin(t * 3.1);
+      const ny = 420 + 330 * Math.sin(t * 7.3 + 1);
+      const d = Math.hypot(nx - x, ny - y);
+      const n = Math.max(1, Math.floor(d / 1.5));
+      for (let k = 1; k <= n; k++) {
+        pts.push(Math.round((x + ((nx - x) * k) / n) * 10) / 10, Math.round((y + ((ny - y) * k) / n) * 10) / 10);
+      }
+      len += d;
+      x = nx;
+      y = ny;
+    }
+    return pts;
+  }
+
+  function distToSeg(px: number, py: number, ax: number, ay: number, bx: number, by: number) {
+    const dx = bx - ax;
+    const dy = by - ay;
+    const l2 = dx * dx + dy * dy;
+    const t = l2 > 0 ? Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy) / l2)) : 0;
+    return Math.hypot(ax + dx * t - px, ay + dy * t - py);
+  }
+
+  function isConvex(poly: number[]): boolean {
+    const n = poly.length / 2;
+    let sign = 0;
+    for (let i = 0; i < n; i++) {
+      const [ax, ay] = [poly[i * 2], poly[i * 2 + 1]];
+      const [bx, by] = [poly[((i + 1) % n) * 2], poly[((i + 1) % n) * 2 + 1]];
+      const [cx, cy] = [poly[((i + 2) % n) * 2], poly[((i + 2) % n) * 2 + 1]];
+      const c = (bx - ax) * (cy - by) - (by - ay) * (cx - bx);
+      if (Math.abs(c) < 1e-9) continue;
+      if (sign === 0) sign = Math.sign(c);
+      else if (Math.sign(c) !== sign) return false;
+    }
+    return true;
+  }
+
+  /** Distance from (px, py) to a convex polygon (0 when inside). */
+  function distToConvex(poly: number[], px: number, py: number): number {
+    const n = poly.length / 2;
+    let inside = true;
+    let sign = 0;
+    let best = Infinity;
+    for (let i = 0; i < n; i++) {
+      const ax = poly[i * 2];
+      const ay = poly[i * 2 + 1];
+      const bx = poly[((i + 1) % n) * 2];
+      const by = poly[((i + 1) % n) * 2 + 1];
+      best = Math.min(best, distToSeg(px, py, ax, ay, bx, by));
+      const c = (bx - ax) * (py - ay) - (by - ay) * (px - ax);
+      if (Math.abs(c) > 1e-9) {
+        if (sign === 0) sign = Math.sign(c);
+        else if (Math.sign(c) !== sign) inside = false;
+      }
+    }
+    return inside ? 0 : best;
+  }
+
+  const bigStroke = scribble(6000);
+
+  it('simplifies a dense pen path a lot without straying more than the tolerance', () => {
+    const simple = simplifyPathForSweep(bigStroke);
+    assert.deepEqual(simple.slice(0, 2), bigStroke.slice(0, 2), 'keeps the first point');
+    assert.deepEqual(simple.slice(-2), bigStroke.slice(-2), 'keeps the last point');
+    assert.ok(simple.length * 5 < bigStroke.length, `${bigStroke.length / 2} points became ${simple.length / 2}`);
+    for (let i = 0; i < bigStroke.length; i += 2) {
+      let best = Infinity;
+      for (let j = 0; j + 3 < simple.length; j += 2) {
+        best = Math.min(best, distToSeg(bigStroke[i], bigStroke[i + 1], simple[j], simple[j + 1], simple[j + 2], simple[j + 3]));
+        if (best <= HOLLOW_SWEEP_TOLERANCE) break;
+      }
+      assert.ok(best <= HOLLOW_SWEEP_TOLERANCE + 1e-9, `raw point ${i / 2} is ${best.toFixed(3)}px from the simplified path`);
+    }
+    assert.deepEqual(simplifyPathForSweep([5, 6]), [5, 6]);
+    assert.deepEqual(simplifyPathForSweep([0, 0, 10, 0]), [0, 0, 10, 0]);
+  });
+
+  it('splits every tip shape into convex pieces that use the same corners as the drawn stamp', () => {
+    for (const shape of ['square', 'triangle', 'diamond', 'star'] as const) {
+      const pieces = hollowTipConvexPieces(20, shape);
+      for (const piece of pieces) assert.ok(isConvex(piece), `${shape} piece is convex`);
+      const traced: number[] = [];
+      const rec = {
+        moveTo: (x: number, y: number) => traced.push(x, y),
+        lineTo: (x: number, y: number) => traced.push(x, y),
+        rect: (x: number, y: number, w: number, h: number) => traced.push(x, y, x + w, y, x + w, y + h, x, y + h),
+        closePath: () => {},
+      };
+      traceHollowTipShape(rec, 0, 0, 20, shape);
+      for (let i = 0; i < traced.length; i += 2) {
+        const covered = pieces.some((piece) => distToConvex(piece, traced[i], traced[i + 1]) < 1e-6);
+        assert.ok(covered, `${shape} corner (${traced[i]}, ${traced[i + 1]}) is inside a piece`);
+      }
+    }
+    assert.equal(hollowTipConvexPieces(20, 'star').length, 5);
+  });
+
+  it('covers the tip shape at every raw pen point (no gaps in the swept stroke)', () => {
+    const path = bigStroke.slice(0, 1200);
+    for (const shape of ['square', 'triangle', 'diamond', 'star'] as const) {
+      const polys = buildHollowSweepPolygons(simplifyPathForSweep(path), 18, shape);
+      const corners = hollowTipConvexPieces(18, shape).flat();
+      for (let i = 0; i < path.length; i += 6) {
+        for (let c = 0; c < corners.length; c += 2) {
+          const px = path[i] + corners[c];
+          const py = path[i + 1] + corners[c + 1];
+          let best = Infinity;
+          for (const poly of polys) {
+            best = Math.min(best, distToConvex(poly, px, py));
+            if (best === 0) break;
+          }
+          assert.ok(best <= HOLLOW_SWEEP_TOLERANCE + 1e-6, `${shape}: corner at pen point ${i / 2} is ${best.toFixed(3)}px outside`);
+        }
+      }
+    }
+  });
+
+  it('paints a big dragged shape stroke with a bounded number of small fills, not one giant path', () => {
+    for (const shape of ['square', 'triangle', 'diamond', 'star'] as const) {
+      let contoursInPath = 0;
+      const contoursPerFill: number[] = [];
+      const ctx = {
+        fillStyle: '',
+        save: () => {},
+        restore: () => {},
+        beginPath: () => {
+          contoursInPath = 0;
+        },
+        moveTo: () => {
+          contoursInPath += 1;
+        },
+        lineTo: () => {},
+        closePath: () => {},
+        fill: () => {
+          contoursPerFill.push(contoursInPath);
+        },
+      };
+      drawHollowElementOnCtx(ctx, bigStroke, 36, 3, '#222222', shape);
+      const totalContours = contoursPerFill.reduce((a, b) => a + b, 0);
+      assert.ok(
+        Math.max(...contoursPerFill) <= HOLLOW_SWEEP_POLYS_PER_FILL,
+        `${shape}: largest fill had ${Math.max(...contoursPerFill)} contours`
+      );
+      // The old renderer stamped the shape every ~5px here: ~1,200 copies per pass for this stroke
+      // (6,000 star contours per pass), all in one path. The sweep needs far fewer.
+      const pieces = shape === 'star' ? 5 : 1;
+      assert.ok(totalContours < 2 * pieces * 300, `${shape}: ${totalContours} contours for both passes`);
+    }
+  });
+
+  it('builds a finished stroke once and reuses it on every repaint', () => {
+    const pts = bigStroke.slice(0, 400);
+    const a = getHollowSweepGeometry(pts, 18, 15, 'star');
+    const b = getHollowSweepGeometry(pts, 18, 15, 'star');
+    assert.equal(a, b, 'same stroke, same settings: cached');
+    const c = getHollowSweepGeometry(pts, 18, 15, 'square');
+    assert.notEqual(c, a, 'different shape rebuilds');
+    const d = getHollowSweepGeometry(pts.slice(), 18, 15, 'square');
+    assert.notEqual(d, c, 'a new points array (stroke still growing) rebuilds');
+  });
+});
+
+describe('hollow shape brush: a finished stroke becomes one picture', () => {
+  function makeLog() {
+    const log = { fills: 0, images: 0, canvases: 0 };
+    const pathCtx = () => ({
+      fillStyle: '',
+      save() {},
+      restore() {},
+      beginPath() {},
+      moveTo() {},
+      lineTo() {},
+      closePath() {},
+      quadraticCurveTo() {},
+      arc() {},
+      stroke() {},
+      setTransform() {},
+      fill() {
+        log.fills += 1;
+      },
+    });
+    let m = { a: 2, b: 0, c: 0, d: 2, e: 10, f: 20 };
+    const ctx = {
+      ...pathCtx(),
+      getTransform: () => m,
+      drawImage() {
+        log.images += 1;
+      },
+    };
+    const makeCanvas = (w: number, h: number) => {
+      log.canvases += 1;
+      return { width: w, height: h, getContext: () => pathCtx() };
+    };
+    return { log, ctx, makeCanvas, setTransform: (next: typeof m) => (m = next) };
+  }
+
+  const stroke = () => {
+    const pts: number[] = [];
+    for (let i = 0; i <= 600; i++) pts.push(100 + i * 1.5, 200 + 60 * Math.sin(i / 8));
+    return pts;
+  };
+
+  it('paints shapes once, then repaints as a single image', () => {
+    const { log, ctx, makeCanvas } = makeLog();
+    const pts = stroke();
+    drawHollowElementCached(ctx, pts, 36, 3, '#cc0000', 'star', makeCanvas);
+    assert.ok(log.fills > 0, 'first paint draws the shapes');
+    assert.equal(log.images, 0);
+
+    log.fills = 0;
+    drawHollowElementCached(ctx, pts, 36, 3, '#cc0000', 'star', makeCanvas);
+    assert.equal(log.canvases, 1, 'second paint at the same zoom makes the picture');
+    assert.equal(log.images, 1);
+
+    log.fills = 0;
+    log.images = 0;
+    for (let i = 0; i < 20; i++) drawHollowElementCached(ctx, pts, 36, 3, '#cc0000', 'star', makeCanvas);
+    assert.equal(log.fills, 0, 'later repaints fill nothing');
+    assert.equal(log.images, 20, 'one image per repaint');
+    assert.equal(log.canvases, 1, 'picture reused');
+  });
+
+  it('goes back to shapes while zooming and remakes the picture once the zoom settles', () => {
+    const { log, ctx, makeCanvas, setTransform } = makeLog();
+    const pts = stroke();
+    drawHollowElementCached(ctx, pts, 36, 3, '#0000cc', 'square', makeCanvas);
+    drawHollowElementCached(ctx, pts, 36, 3, '#0000cc', 'square', makeCanvas);
+    assert.equal(log.canvases, 1);
+
+    setTransform({ a: 3, b: 0, c: 0, d: 3, e: 0, f: 0 });
+    log.fills = 0;
+    log.images = 0;
+    drawHollowElementCached(ctx, pts, 36, 3, '#0000cc', 'square', makeCanvas);
+    assert.ok(log.fills > 0, 'new zoom: crisp shapes, not a stretched picture');
+    assert.equal(log.images, 0);
+    drawHollowElementCached(ctx, pts, 36, 3, '#0000cc', 'square', makeCanvas);
+    assert.equal(log.canvases, 2, 'picture remade at the settled zoom');
+    assert.equal(log.images, 1);
+
+    // Panning (translation only) keeps the picture.
+    setTransform({ a: 3, b: 0, c: 0, d: 3, e: 250, f: -40 });
+    drawHollowElementCached(ctx, pts, 36, 3, '#0000cc', 'square', makeCanvas);
+    assert.equal(log.canvases, 2);
+    assert.equal(log.images, 2);
+  });
+
+  it('stays vector for a stroke still being drawn, round strokes, and rotated contexts', () => {
+    const { log, ctx, makeCanvas, setTransform } = makeLog();
+    let pts = stroke();
+    for (let i = 0; i < 5; i++) {
+      pts = [...pts, pts[pts.length - 2] + 1.5, pts[pts.length - 1]]; // each move is a new points array
+      drawHollowElementCached(ctx, pts, 36, 3, '#00aa00', 'triangle', makeCanvas);
+    }
+    assert.equal(log.canvases, 0, 'no picture while the pen is down');
+
+    const done = stroke();
+    drawHollowElementCached(ctx, done, 36, 3, '#00aa00', 'circle', makeCanvas);
+    drawHollowElementCached(ctx, done, 36, 3, '#00aa00', 'circle', makeCanvas);
+    assert.equal(log.canvases, 0, 'round brush strokes are already cheap and stay as they were');
+
+    const short = [0, 0, 40, 10, 80, 0];
+    drawHollowElementCached(ctx, short, 36, 3, '#00aa00', 'star', makeCanvas);
+    drawHollowElementCached(ctx, short, 36, 3, '#00aa00', 'star', makeCanvas);
+    assert.equal(log.canvases, 0, 'small strokes are cheap already and use no picture memory');
+
+    setTransform({ a: 1, b: 0.5, c: -0.5, d: 1, e: 0, f: 0 });
+    drawHollowElementCached(ctx, done, 36, 3, '#00aa00', 'diamond', makeCanvas);
+    drawHollowElementCached(ctx, done, 36, 3, '#00aa00', 'diamond', makeCanvas);
+    assert.equal(log.canvases, 0);
+  });
+
+  it('keeps total picture memory under the budget by dropping the oldest', () => {
+    const { ctx, makeCanvas } = makeLog();
+    // ~1,300 x 600 world px at 2x: about 3M screen px per stroke picture.
+    const strokes: number[][] = [];
+    for (let k = 0; k < 30; k++) {
+      const pts: number[] = [];
+      for (let i = 0; i <= 300; i++) pts.push(i * 4.3 + k * 0.01, 300 * Math.sin(i / 20));
+      strokes.push(pts);
+    }
+    for (const pts of strokes) {
+      drawHollowElementCached(ctx, pts, 36, 3, '#333333', 'star', makeCanvas);
+      drawHollowElementCached(ctx, pts, 36, 3, '#333333', 'star', makeCanvas);
+      assert.ok(hollowBitmapPixelsInUse() <= HOLLOW_BITMAP_BUDGET_PX, `${hollowBitmapPixelsInUse()} px in use`);
+    }
+    assert.ok(hollowBitmapPixelsInUse() > 0);
+  });
+});

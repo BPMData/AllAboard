@@ -26,6 +26,7 @@ import {
   uniqueStrings,
 } from './src/lib/breakoutRounds.ts';
 import { distRouter } from './staticAssets.ts';
+import { createReportHandler, reportBodyParser } from './problemReportRoute.ts';
 import { RoomStore, internBackground, isValidAssetHash } from './roomStore.ts';
 import { BackupMirror, DirBackend, GcsBackend, sniffMime, type BackupBackend } from './backupMirror.ts';
 import { hasNameStamp, isTeacherStampKind } from './src/lib/stamps.ts';
@@ -94,6 +95,11 @@ export interface StartServerOptions {
   skipVite?: boolean;
   /** Tests only: how often teachers get digests of boards they aren't viewing (default OVERVIEW_SYNC_MS). */
   overviewSyncMs?: number;
+  /** Problem reports (docs/REPORTS.md). Default: REPORT_RELAY_URL / REPORT_RELAY_TOKEN from the environment. */
+  reportRelayUrl?: string;
+  reportRelayToken?: string;
+  /** Tests only: stands in for fetch when calling the report relay. */
+  reportFetch?: typeof fetch;
 }
 
 interface ServerUserRecord {
@@ -250,6 +256,18 @@ export async function startServer(options: StartServerOptions = {}) {
   app.get('/healthz', (_req, res) => {
     res.status(200).json({ status: 'ok' });
   });
+
+  // "Something not working?" reports → the reporting relay (problemReportRoute.ts, docs/REPORTS.md).
+  app.post(
+    '/api/report',
+    reportBodyParser(),
+    createReportHandler({
+      relayUrl: options.reportRelayUrl ?? process.env.REPORT_RELAY_URL,
+      relayToken: options.reportRelayToken ?? process.env.REPORT_RELAY_TOKEN,
+      appVersion: process.env.K_REVISION,
+      fetchImpl: options.reportFetch,
+    }),
+  );
 
   app.get('/api/rooms/:roomId', (req, res) => {
     res.setHeader('Cache-Control', 'no-store');
