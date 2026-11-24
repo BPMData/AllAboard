@@ -29,12 +29,14 @@ import Chat, { getUserColor } from './components/Chat';
 import Canvas from './components/Canvas';
 import RoomExistsModal from './components/RoomExistsModal';
 import PurgeContributionsModal from './components/PurgeContributionsModal';
+import ProblemReportModal from './components/ProblemReportModal';
+import { describeUserAgent, type ReportDiagnostics } from './lib/problemReport';
 import RoomHistoryDropdown from './components/RoomHistoryDropdown';
 import { normalizeRoomCode, sanitizeRoomCodeDraft } from './lib/roomCode';
 import { recordRoomHistory } from './lib/roomHistory';
 import type { LessonRequestEvent } from './lib/lessonPack';
 import { motion } from 'motion/react';
-import { LogIn, Users, KeyRound, PlusCircle, Shuffle, Eye, EyeOff } from 'lucide-react';
+import { LogIn, Users, KeyRound, PlusCircle, Shuffle, Eye, EyeOff, LifeBuoy } from 'lucide-react';
 import { POINT_FLUSH_MS } from './lib/drawThrottle';
 import { MIN_TEACHER_PIN_LENGTH } from './lib/teacherPin';
 import { applyDigest, type BoardDigest } from './lib/boardDigest';
@@ -1193,6 +1195,80 @@ export default function App() {
     }
   }, [effectiveRoomId]);
 
+  // "Something not working?" (issue #57, docs/REPORTS.md). Purely local until the reporter presses Send: it emits
+  // nothing on the socket and changes no room state, so a class keeps going while someone fills it in.
+  const [showProblemReport, setShowProblemReport] = useState<boolean>(false);
+  const openProblemReport = useCallback(() => setShowProblemReport(true), []);
+  const closeProblemReport = useCallback(() => setShowProblemReport(false), []);
+
+  /** Only facts about the app and this device. Never names, room codes, PINs, chat, ink or worksheets. */
+  const getReportDiagnostics = useCallback((): ReportDiagnostics => {
+    const { browser, os } = describeUserAgent(typeof navigator !== 'undefined' ? navigator.userAgent : '');
+    const diag: ReportDiagnostics = {
+      browser,
+      os,
+      screen: typeof window !== 'undefined' ? `${window.innerWidth}x${window.innerHeight}` : undefined,
+      language: typeof navigator !== 'undefined' ? navigator.language : undefined,
+      touch: typeof navigator !== 'undefined' ? navigator.maxTouchPoints > 0 : undefined,
+      online: typeof navigator !== 'undefined' ? navigator.onLine : undefined,
+      page: isJoined ? 'room' : 'lobby',
+      connection: !socket ? 'not started' : socket.connected ? 'connected' : 'disconnected',
+      transport: socket?.io?.engine?.transport?.name,
+    };
+    if (isJoined) {
+      diag.role = isTeacher ? 'teacher' : 'student';
+      diag.breakoutMode = breakoutConfig.mode;
+      diag.boardKind = activeBoardId === 'main' ? 'main' : subBoards[activeBoardId]?.kind || 'breakout';
+      diag.worksheetPages = activeBackground?.pages?.length ?? 0;
+      diag.itemsOnBoard = activeElements.length;
+      diag.peopleInRoom = users.length;
+      diag.canvasLocked = Boolean(roomSettings.isCanvasLocked);
+      diag.chatHidden = isChatHidden;
+    }
+    return diag;
+  }, [
+    isJoined,
+    socket,
+    isTeacher,
+    breakoutConfig.mode,
+    activeBoardId,
+    subBoards,
+    activeBackground,
+    activeElements,
+    users,
+    roomSettings.isCanvasLocked,
+    isChatHidden,
+  ]);
+
+  /** Scrubbed out of the description before it's previewed or sent. The values themselves never leave the browser. */
+  const reportRedactions = useMemo(() => {
+    let savedPin = '';
+    try {
+      savedPin = localStorage.getItem(STORAGE_KEYS.TEACHER_PIN_PREFIX + effectiveRoomId) || '';
+    } catch {
+      savedPin = '';
+    }
+    return [
+      // "main" is the default room and an everyday word, so it stays.
+      effectiveRoomId === 'main' ? '' : roomId,
+      effectiveRoomId === 'main' ? '' : effectiveRoomId,
+      userName,
+      savedPin,
+      initialTeacherPin,
+      ...users.map((u) => u.name),
+      ...(roomSettings.bannedUsers || []).map((u) => u.name),
+    ].filter((v): v is string => typeof v === 'string' && v.trim().length >= 2);
+    // Recomputed when the dialog opens (showProblemReport), so a PIN saved since then is included.
+  }, [roomId, effectiveRoomId, userName, initialTeacherPin, users, roomSettings.bannedUsers, showProblemReport]);
+
+  const problemReportModal = showProblemReport ? (
+    <ProblemReportModal
+      getDiagnostics={getReportDiagnostics}
+      redact={reportRedactions}
+      onClose={closeProblemReport}
+    />
+  ) : null;
+
   /** After a lesson loads into a new room: remember its PIN (so the join makes us teacher there) and go there. */
   const handleOpenLoadedLessonRoom = useCallback(
     (newRoomId: string, pin: string) => {
@@ -2015,6 +2091,15 @@ export default function App() {
           </form>
         </motion.div>
 
+        <button
+          type="button"
+          onClick={openProblemReport}
+          className="fixed bottom-3 right-3 flex items-center gap-1.5 px-2.5 py-1.5 rounded-[2px] border oh-btn bg-white text-xs font-medium text-slate-600 hover:text-slate-900 cursor-pointer"
+        >
+          <LifeBuoy size={13} />
+          <span>Something not working?</span>
+        </button>
+
         {pendingRoomPrompt && (
           <RoomExistsModal
             availability={pendingRoomPrompt.availability}
@@ -2028,6 +2113,8 @@ export default function App() {
             onCancel={handleCancelRoomPrompt}
           />
         )}
+
+        {problemReportModal}
       </div>
     );
   }
@@ -2061,6 +2148,7 @@ export default function App() {
           onTeacherKickUser={handleTeacherKickUser}
           onTeacherUnbanUser={handleTeacherUnbanUser}
           onTeacherClearStatus={handleClearStatus}
+          onReportProblem={openProblemReport}
           width={chatWidth}
           onWidthChange={setChatWidth}
           onResetWidth={() =>
@@ -2135,6 +2223,7 @@ export default function App() {
           fullMainMessages={messages}
           fullMainBackground={background}
           isChatHidden={isChatHidden}
+          onReportProblem={openProblemReport}
           unreadChatCount={unreadChatCount}
           onShowChat={() => {
             setIsChatHidden(false);
@@ -2168,6 +2257,8 @@ export default function App() {
           onCancel={handleCancelPurgeContributions}
         />
       )}
+
+      {problemReportModal}
     </div>
   );
 }

@@ -171,6 +171,7 @@ import {
   RotateCcw,
   FileSpreadsheet,
   PanelLeftOpen,
+  LifeBuoy,
   HardDrive,
   Keyboard,
   Crosshair,
@@ -268,6 +269,8 @@ interface CanvasProps {
   isChatHidden?: boolean;
   unreadChatCount?: number;
   onShowChat?: () => void;
+  /** Opens "Something not working?" (shown here only while the chat sidebar, which has the main link, is hidden). */
+  onReportProblem?: () => void;
 }
 
 const MIN_SCALE = 0.1;
@@ -715,6 +718,7 @@ export default function Canvas({
   isChatHidden = false,
   unreadChatCount = 0,
   onShowChat,
+  onReportProblem,
 }: CanvasProps) {
   // OverBoard-style Separate Tool Settings & Memory
   const [penColor, setPenColor] = useState<string>(() => readLocalColor('allaboard-pen-color', '#111111'));
@@ -3781,6 +3785,17 @@ export default function Canvas({
             >
               Room: <span className="font-mono font-semibold text-slate-900">{roomId}</span>
             </span>
+            {onReportProblem && (
+              <button
+                type="button"
+                onClick={onReportProblem}
+                className="p-1.5 rounded-[2px] border oh-btn text-slate-600 hover:text-slate-900 transition-colors cursor-pointer shrink-0"
+                title="Something not working? Report a problem"
+                aria-label="Something not working?"
+              >
+                <LifeBuoy size={15} />
+              </button>
+            )}
           </div>
         )}
 
