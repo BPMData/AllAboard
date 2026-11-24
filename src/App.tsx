@@ -41,6 +41,7 @@ import { LogIn, Users, KeyRound, PlusCircle, Shuffle, Eye, EyeOff, LifeBuoy } fr
 import { POINT_FLUSH_MS } from './lib/drawThrottle';
 import { MIN_TEACHER_PIN_LENGTH } from './lib/teacherPin';
 import { applyDigest, type BoardDigest } from './lib/boardDigest';
+import { applyElementGroups, type ElementGroup } from './lib/elementGroups';
 import {
   appendPointBatches,
   createPointQueue,
@@ -816,6 +817,14 @@ export default function App() {
         if (!Array.isArray(ids) || ids.length === 0) return;
         const idSet = new Set(ids);
         applyBoardElementsTransform(boardId, (list) => list.filter((el) => !idSet.has(el.id)));
+      }
+    );
+
+    newSocket.on(
+      'elements-replaced',
+      ({ boardId = 'main', groups }: { boardId?: string; groups: ElementGroup<CanvasElement>[] }) => {
+        if (!Array.isArray(groups) || groups.length === 0) return;
+        applyBoardElementsTransform(boardId, (list) => applyElementGroups(list, groups));
       }
     );
 
@@ -1791,6 +1800,22 @@ export default function App() {
     [socket, activeBoardId, updateActiveBoardElements]
   );
 
+  /** Edits that keep stacking order (eraser split/remove and its undo). See src/lib/elementGroups.ts. */
+  const handleElementsReplace = useCallback(
+    (groups: ElementGroup<CanvasElement>[]) => {
+      if (!groups || groups.length === 0) return;
+      const normalized = groups.map((g) => ({
+        ...g,
+        elements: g.elements.map((el) => ({ ...el, boardId: activeBoardId })),
+      }));
+      updateActiveBoardElements((list) => applyElementGroups(list, normalized));
+      if (socket) {
+        emitDrawing(socket, 'elements-replace', { boardId: activeBoardId, groups: normalized });
+      }
+    },
+    [socket, activeBoardId, updateActiveBoardElements, emitDrawing]
+  );
+
   const handleElementRemove = useCallback(
     (id: string) => {
       if (activeBoardId === 'main') {
@@ -2216,6 +2241,7 @@ export default function App() {
           onElementsBatchUpdate={handleElementsBatchUpdate}
           onElementsBatchAdd={handleElementsBatchAdd}
           onElementsBatchRemove={handleElementsBatchRemove}
+          onElementsReplace={handleElementsReplace}
           onCursorMove={handleCursorMove}
           onUndo={handleUndo}
           onClearMine={handleClearMine}

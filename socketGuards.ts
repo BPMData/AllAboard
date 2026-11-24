@@ -39,6 +39,7 @@ const DRAW_EVENTS = new Set([
   'elements-batch-update',
   'elements-batch-add',
   'elements-batch-remove',
+  'elements-replace',
   'element-remove',
   'undo',
   'clear-user-drawings',

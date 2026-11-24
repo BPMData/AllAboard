@@ -85,7 +85,14 @@ Plan: [`PLANS_LESSON_PACKS.md`](PLANS_LESSON_PACKS.md) phases 2–3, with the op
         `REPORT_RELAY_URL` / `REPORT_RELAY_TOKEN` secrets, send a test report. Until then every report uses the fallback.
 
 ### A real eraser (remove objects instead of covering them)
-- [ ] **Make the eraser delete or trim what it touches, instead of adding an "eraser stroke" element.** Today the
+- [x] **Make the eraser delete or trim what it touches, instead of adding an "eraser stroke" element.**
+  Done (Nov 2026): on pen-up `src/lib/eraserEdits.ts` turns the stroke into edits. Pen, highlighter, spray, straight
+  lines and shape-brush strokes are split into what's left (each shape-brush piece gets its own cached picture);
+  fully covered ink, notes and stamps are removed; no eraser element is stored. Rectangles and circles it only
+  partly covers keep a trimmed piece of eraser over just them. One new event, `elements-replace`
+  (`src/lib/elementGroups.ts`), applies the edits in place so stacking order never changes, and one undo puts
+  everything back. Old rooms' eraser strokes still render as before. Tests: `tests/eraserEdits.test.ts`,
+  `e2e/eraser.spec.ts`. Today the
       eraser is a white ink stroke stored like any other ink, and `getVisibleStrokeRuns` / `expandElementVisiblePieces`
       (`src/lib/inkCore.ts`) work out what still shows at render time. Effects:
   - Erasing makes a board **heavier**, not lighter. Each swipe is another element (it counts toward the 10,000-per-board
