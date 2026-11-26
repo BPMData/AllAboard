@@ -79,3 +79,17 @@ npm run test:e2e
 ## Tech Stack
 - **Frontend**: React 19, TypeScript, Tailwind CSS, Konva / React-Konva, PDF.js (`pdfjs-dist`), Lucide Icons
 - **Backend**: Node.js, Express, Socket.IO (WebSocket rooms with SQLite persistence)
+
+---
+
+## Contributing
+
+Issues and pull requests are welcome. Read [CONTRIBUTING.md](CONTRIBUTING.md) first: submitting a pull request gives
+the project's owner the right to relicense your contribution, including under commercial terms.
+
+## License
+
+Copyright (C) 2026 Bryan Murphy. AllAboard's code is licensed under the
+[GNU Affero General Public License v3.0](LICENSE) (AGPLv3): you may use, change and share it, but if you share a
+changed version, or run one as a website or online service, you must share its source code under AGPLv3 too.
+The libraries it uses keep their own licenses.
