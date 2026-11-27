@@ -96,6 +96,10 @@ export function useRoomSocket({
   const [socket, setSocket] = useState<AppSocket | null>(null);
   const outgoingInkRef = useRef<PointQueue | null>(null);
   const seenChatIdsRef = useRef<Set<string>>(new Set());
+  // Read through a ref: roomId follows the Room Code box (every keystroke in the lobby), and listing it below would
+  // reconnect the socket each time. Only the room-kicked fallback reads it.
+  const roomIdRef = useRef(roomId);
+  roomIdRef.current = roomId;
   useEffect(() => {
     const newSocket: AppSocket = io({
       reconnection: true,
@@ -423,7 +427,7 @@ export function useRoomSocket({
         } catch {
           // Ignore
         }
-        const targetRoom = kickedRoom || roomId;
+        const targetRoom = kickedRoom || roomIdRef.current;
         setKickNotice(
           reason === 'identity'
             ? `This browser couldn't be verified for room #${targetRoom}. Refresh the page to join again.`
@@ -684,7 +688,35 @@ export function useRoomSocket({
       incomingInk.clear();
       newSocket.close();
     };
-  }, [userId, userColor, liveRoomId]);
+  }, [
+    userId,
+    userKey,
+    userColor,
+    liveRoomId,
+    userNameRef,
+    isJoinedRef,
+    isChatHiddenRef,
+    activeBoardIdRef,
+    chatScopeRef,
+    setElements,
+    setSubBoards,
+    setIsTeacher,
+    setRoundTemplates,
+    setRoundTemplateInk,
+    setRoundVariants,
+    setMessages,
+    setBackground,
+    setUnreadChatCount,
+    setUsers,
+    setRoomSettings,
+    setIsNameLocked,
+    setUserName,
+    setHistoryVersion,
+    setKickNotice,
+    setIsJoined,
+    setPendingPurgePrompt,
+    setRemoteCursors,
+  ]);
 
   // Teachers get live traffic only for the board they're looking at; tell the server whenever that changes
   // (and after every reconnect, since the server forgets per-socket state).

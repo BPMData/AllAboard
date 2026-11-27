@@ -174,12 +174,16 @@ export default function App() {
   });
   const [remoteCursors, setRemoteCursors] = useState<Record<string, RemoteCursor>>({});
 
-  const breakoutConfig: BreakoutConfig = roomSettings.breakoutConfig || {
-    mode: 'main',
-    rounds: [],
-    allowSelfSelect: false,
-    chatScope: 'unified',
-  };
+  const breakoutConfig: BreakoutConfig = useMemo(
+    () =>
+      roomSettings.breakoutConfig || {
+        mode: 'main',
+        rounds: [],
+        allowSelfSelect: false,
+        chatScope: 'unified',
+      },
+    [roomSettings.breakoutConfig]
+  );
 
   // Determine which boardId the current user should be viewing/drawing on
   const activeBoardId = useMemo(() => {
@@ -190,7 +194,7 @@ export default function App() {
       return teacherSelectedBoardId;
     }
     return findStudentBoardId(subBoards, breakoutConfig, userId);
-  }, [isTeacher, teacherSelectedBoardId, roomSettings.breakoutConfig, subBoards, userId]);
+  }, [isTeacher, teacherSelectedBoardId, breakoutConfig, subBoards, userId]);
 
   const activeBoardIdRef = useRef<string>(activeBoardId);
   const chatScopeRef = useRef<'unified' | 'board'>(breakoutConfig.chatScope || 'unified');
