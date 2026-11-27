@@ -5,18 +5,21 @@ import {
   MAX_STROKE_NUMBERS,
   appendAll,
   elementFieldsOk,
-  isPointArray
+  isPointArray,
 } from '../socketGuards.ts';
-import {
-  getBoardsInRound
-} from '../src/lib/breakoutRounds.ts';
+import { getBoardsInRound } from '../src/lib/breakoutRounds.ts';
 import { applyElementGroups } from '../src/lib/elementGroups.ts';
 import { hasNameStamp, isTeacherStampKind } from '../src/lib/stamps.ts';
 import type { RoomState } from './types.ts';
 
 import type { ServerContext, TypedSocket } from './types.ts';
-export function registerDrawingHandlers(socket: TypedSocket, ctx: ServerContext, boardFull: (boardId: string, elements: any[]) => void) {
-  const { rooms, socketMeta, scheduleSaveToDisk, broadcastBreakoutSync, boardChannel, boardAudience, pendingCursors } = ctx;
+export function registerDrawingHandlers(
+  socket: TypedSocket,
+  ctx: ServerContext,
+  boardFull: (boardId: string, elements: any[]) => void
+) {
+  const { rooms, socketMeta, scheduleSaveToDisk, broadcastBreakoutSync, boardChannel, boardAudience, pendingCursors } =
+    ctx;
   function getBoardElements(room: RoomState, boardId?: string): any[] | null {
     if (!boardId || boardId === 'main') return room.elements;
     const sb = room.subBoards.get(boardId);
@@ -27,8 +30,13 @@ export function registerDrawingHandlers(socket: TypedSocket, ctx: ServerContext,
     const board = boardId === 'main' ? room : room.subBoards.get(boardId);
     if (board) {
       board.elements = userId ? board.elements.filter((el) => el.userId !== userId) : [];
-      publishDrawingEdit(room, { full: true }, 'state-sync', { boardId, elements: board.elements },
-        { includeSender: true, immediateSave: true });
+      publishDrawingEdit(
+        room,
+        { full: true },
+        'state-sync',
+        { boardId, elements: board.elements },
+        { includeSender: true, immediateSave: true }
+      );
     } else {
       // A stale board selection still counts as room activity, as it did before.
       room.lastActiveAt = Date.now();
@@ -160,7 +168,7 @@ export function registerDrawingHandlers(socket: TypedSocket, ctx: ServerContext,
     const appliedUpdates: any[] = [];
     const movedToFront: any[] = [];
 
-    for (let i = 0; i < targetElements.length;) {
+    for (let i = 0; i < targetElements.length; ) {
       const el = targetElements[i];
       const patch = updateMap.get(el.id);
       if (patch && (el.userId === meta.userId || senderRecord?.isTeacher)) {
@@ -189,11 +197,16 @@ export function registerDrawingHandlers(socket: TypedSocket, ctx: ServerContext,
     }
 
     if (appliedUpdates.length > 0) {
-      publishDrawingEdit(room, bringToFront ? { full: true } : { upsert: appliedUpdates.map((u) => u.id) }, 'elements-batch-updated', {
-        boardId,
-        updates: appliedUpdates,
-        bringToFront: Boolean(bringToFront),
-      });
+      publishDrawingEdit(
+        room,
+        bringToFront ? { full: true } : { upsert: appliedUpdates.map((u) => u.id) },
+        'elements-batch-updated',
+        {
+          boardId,
+          updates: appliedUpdates,
+          bringToFront: Boolean(bringToFront),
+        }
+      );
     }
   });
 
@@ -272,7 +285,10 @@ export function registerDrawingHandlers(socket: TypedSocket, ctx: ServerContext,
     }
 
     if (added.length > 0) {
-      publishDrawingEdit(room, { upsert: added.map((e) => e.id) }, 'elements-batch-added', { boardId, elements: added });
+      publishDrawingEdit(room, { upsert: added.map((e) => e.id) }, 'elements-batch-added', {
+        boardId,
+        elements: added,
+      });
     }
     if (rejectedFull) {
       boardFull(boardId, targetElements);
@@ -327,7 +343,12 @@ export function registerDrawingHandlers(socket: TypedSocket, ctx: ServerContext,
       if (!g || !Array.isArray(g.ids) || !Array.isArray(g.elements)) return;
       if (g.after !== undefined && g.after !== null && typeof g.after !== 'string') return;
       if (!g.ids.every((id: unknown) => typeof id === 'string')) return;
-      if (!g.elements.every((el: any) => el && typeof el.id === 'string' && typeof el.tool === 'string' && elementFieldsOk(el))) return;
+      if (
+        !g.elements.every(
+          (el: any) => el && typeof el.id === 'string' && typeof el.tool === 'string' && elementFieldsOk(el)
+        )
+      )
+        return;
       idCount += g.ids.length;
       elCount += g.elements.length;
     }
@@ -348,7 +369,8 @@ export function registerDrawingHandlers(socket: TypedSocket, ctx: ServerContext,
     }));
 
     let next = applyElementGroups(targetElements, clean);
-    if (next.length > MAX_BOARD_ELEMENTS && next.length > targetElements.length) return boardFull(boardId, targetElements);
+    if (next.length > MAX_BOARD_ELEMENTS && next.length > targetElements.length)
+      return boardFull(boardId, targetElements);
     let droppedNameStamp = false;
     if (room.oneNameStamp && !isTeacher) {
       const isMine = (el: any) => el.tool === 'stamp' && el.stamp === 'username' && el.userId === meta.userId;
@@ -361,7 +383,13 @@ export function registerDrawingHandlers(socket: TypedSocket, ctx: ServerContext,
     targetElements.splice(0, targetElements.length, ...next);
 
     if (droppedNameStamp) {
-      publishDrawingEdit(room, { full: true }, 'state-sync', { boardId, elements: targetElements }, { includeSender: true });
+      publishDrawingEdit(
+        room,
+        { full: true },
+        'state-sync',
+        { boardId, elements: targetElements },
+        { includeSender: true }
+      );
     } else {
       publishDrawingEdit(room, { full: true }, 'elements-replaced', { boardId, groups: clean });
     }
@@ -395,12 +423,23 @@ export function registerDrawingHandlers(socket: TypedSocket, ctx: ServerContext,
     const room = rooms.get(meta.roomId);
     if (!room?.usersByUserId.get(meta.userId)?.isTeacher) return;
     const pulse = payload as { boardId?: unknown; x?: unknown; y?: unknown; strokeId?: unknown };
-    if (typeof pulse.boardId !== 'string' || meta.channel !== boardChannel(room.id, pulse.boardId) ||
-      typeof pulse.x !== 'number' || !Number.isFinite(pulse.x) ||
-      typeof pulse.y !== 'number' || !Number.isFinite(pulse.y) ||
-      typeof pulse.strokeId !== 'string' || pulse.strokeId.length > 64) return;
+    if (
+      typeof pulse.boardId !== 'string' ||
+      meta.channel !== boardChannel(room.id, pulse.boardId) ||
+      typeof pulse.x !== 'number' ||
+      !Number.isFinite(pulse.x) ||
+      typeof pulse.y !== 'number' ||
+      !Number.isFinite(pulse.y) ||
+      typeof pulse.strokeId !== 'string' ||
+      pulse.strokeId.length > 64
+    )
+      return;
     socket.to(boardAudience(room.id, pulse.boardId)).emit('laser-pulse', {
-      boardId: pulse.boardId, x: pulse.x, y: pulse.y, strokeId: pulse.strokeId, userId: meta.userId,
+      boardId: pulse.boardId,
+      x: pulse.x,
+      y: pulse.y,
+      strokeId: pulse.strokeId,
+      userId: meta.userId,
     });
   });
 
@@ -440,7 +479,13 @@ export function registerDrawingHandlers(socket: TypedSocket, ctx: ServerContext,
     for (let i = targetElements.length - 1; i >= 0; i--) {
       if (targetElements[i].userId === userId) {
         const removed = targetElements.splice(i, 1)[0];
-        publishDrawingEdit(room, { removed: [removed.id] }, 'element-removed', { id: removed.id, boardId }, { includeSender: true });
+        publishDrawingEdit(
+          room,
+          { removed: [removed.id] },
+          'element-removed',
+          { id: removed.id, boardId },
+          { includeSender: true }
+        );
         break;
       }
     }

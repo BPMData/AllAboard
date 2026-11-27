@@ -25,10 +25,14 @@ import {
   type RestoreClassWork,
 } from '../types';
 
-
 import type { useRoomSocket } from './useRoomSocket';
 type Setter<T> = React.Dispatch<React.SetStateAction<T>>;
-type RoomPrompt = { source: 'lobby' | 'switch'; availability: RoomAvailability; userName?: string; teacherPin?: string };
+type RoomPrompt = {
+  source: 'lobby' | 'switch';
+  availability: RoomAvailability;
+  userName?: string;
+  teacherPin?: string;
+};
 type PurgePrompt = { targetUserId: string; targetName: string; mode: 'kick' | 'ban' };
 
 interface Options {
@@ -127,10 +131,8 @@ export function useClassroomActions({
   isPurgingContributions,
   pendingPurgePrompt,
   elements,
-  messages
+  messages,
 }: Options) {
-
-
   const handleAuthenticateTeacher = useCallback(
     (pin: string): Promise<{ ok: boolean; error?: string; mode?: string }> => {
       return new Promise((resolve) => {
@@ -138,22 +140,25 @@ export function useClassroomActions({
           resolve({ ok: false, error: 'Not connected to server.' });
           return;
         }
-        socket.emit('teacher:auth', { pin }, (response: { ok: boolean; error?: string; mode?: string; pin?: string }) => {
-          if (response?.ok) {
-            setIsTeacher(true);
-            try {
-              localStorage.setItem(STORAGE_KEYS.TEACHER_PIN_PREFIX + roomId, pin);
-            } catch {
-              // Ignore
+        socket.emit(
+          'teacher:auth',
+          { pin },
+          (response: { ok: boolean; error?: string; mode?: string; pin?: string }) => {
+            if (response?.ok) {
+              setIsTeacher(true);
+              try {
+                localStorage.setItem(STORAGE_KEYS.TEACHER_PIN_PREFIX + roomId, pin);
+              } catch {
+                // Ignore
+              }
             }
+            resolve(response || { ok: false, error: 'No response from server.' });
           }
-          resolve(response || { ok: false, error: 'No response from server.' });
-        });
+        );
       });
     },
     [socket, roomId]
   );
-
 
   const handleStepDownTeacher = useCallback(() => {
     setIsTeacher(false);
@@ -166,7 +171,6 @@ export function useClassroomActions({
       socket.emit('teacher:step-down');
     }
   }, [socket, roomId]);
-
 
   const handleConfigureBreakout = useCallback(
     (payload: ConfigureBreakoutPayload): Promise<{ ok: boolean; error?: string; roundId?: string }> => {
@@ -186,17 +190,18 @@ export function useClassroomActions({
     [socket]
   );
 
-
-  const handleSpotlightBoard = useCallback((payload: SpotlightPayload): Promise<{ ok: boolean; error?: string }> => {
-    return new Promise((resolve) => {
-      if (!socket) return resolve({ ok: false, error: 'Not connected to server.' });
-      socket.emit('teacher:spotlight-board', payload, (result: { ok: boolean; error?: string }) => {
-        if (result?.ok) setTeacherSelectedBoardId('main');
-        resolve(result || { ok: false, error: 'No response from server.' });
+  const handleSpotlightBoard = useCallback(
+    (payload: SpotlightPayload): Promise<{ ok: boolean; error?: string }> => {
+      return new Promise((resolve) => {
+        if (!socket) return resolve({ ok: false, error: 'Not connected to server.' });
+        socket.emit('teacher:spotlight-board', payload, (result: { ok: boolean; error?: string }) => {
+          if (result?.ok) setTeacherSelectedBoardId('main');
+          resolve(result || { ok: false, error: 'No response from server.' });
+        });
       });
-    });
-  }, [socket]);
-
+    },
+    [socket]
+  );
 
   const handleAssignUserToBoard = useCallback(
     (targetBoardId: string, targetUserId?: string) => {
@@ -207,21 +212,17 @@ export function useClassroomActions({
     [socket]
   );
 
-
   // Live Grid "Send worksheet…": one emit per variant; background-sync events update each board.
   const handleTeacherSendWorksheet = useCallback(
     (boardIds: string[], bg: RoomBackground | null, roundTemplateFor?: string) =>
       new Promise<{ ok: boolean; updated?: number; skipped?: string[]; error?: string }>((resolve) => {
         if (!socket) return resolve({ ok: false, error: 'Not connected to server.' });
-        socket.emit(
-          'teacher:set-background-multi',
-          { boardIds, background: bg, roundTemplateFor },
-          (res) => resolve(res || { ok: false, error: 'No response from server.' })
+        socket.emit('teacher:set-background-multi', { boardIds, background: bg, roundTemplateFor }, (res) =>
+          resolve(res || { ok: false, error: 'No response from server.' })
         );
       }),
     [socket]
   );
-
 
   const handleTeacherSetBackground = useCallback(
     (bg: RoomBackground | null): Promise<{ ok: boolean; error?: string }> => {
@@ -251,7 +252,6 @@ export function useClassroomActions({
     [socket, activeBoardId]
   );
 
-
   const handleTeacherUpdateBackground = useCallback(
     (patch: Partial<RoomBackground>) => {
       if (activeBoardId === 'main') {
@@ -273,11 +273,14 @@ export function useClassroomActions({
     [socket, activeBoardId]
   );
 
-
   const handleTeacherImportRoom = useCallback<RestoreClassWork>(
     async (snapshot, mode) => {
       if (!socket?.connected) {
-        return { ok: false, connectionError: true, error: 'Reconnect to send the restore. Your selected file is ready.' };
+        return {
+          ok: false,
+          connectionError: true,
+          error: 'Reconnect to send the restore. Your selected file is ready.',
+        };
       }
       try {
         const response = await socket.timeout(60_000).emitWithAck('teacher:import-room', { ...snapshot, mode });
@@ -286,13 +289,13 @@ export function useClassroomActions({
         // The server may have applied the snapshot before its acknowledgment was lost.
       }
       return {
-        ok: false, connectionError: true,
+        ok: false,
+        connectionError: true,
         error: 'Restore unconfirmed. Check the board after reconnecting before you retry.',
       };
     },
     [socket]
   );
-
 
   const checkRoomAvailability = useCallback(
     (targetRoomId: string): Promise<RoomAvailability | null> => {
@@ -331,7 +334,6 @@ export function useClassroomActions({
     [socket]
   );
 
-
   const generateUnusedRoomCode = useCallback(async (): Promise<string> => {
     for (let attempt = 0; attempt < 5; attempt++) {
       const candidate = generateFreshRoomCode();
@@ -343,28 +345,41 @@ export function useClassroomActions({
     return generateFreshRoomCode();
   }, [checkRoomAvailability]);
 
-
   /** Lesson packs: one ack-style wrapper for lesson and worksheet variant requests. */
   const handleTeacherLessonRequest = useCallback(
-    <E extends LessonRequestEvent>(event: E, payload: Parameters<ClientToServerEvents[E]>[0], timeoutMs = 60_000): Promise<LessonResponse<E>> =>
+    <E extends LessonRequestEvent>(
+      event: E,
+      payload: Parameters<ClientToServerEvents[E]>[0],
+      timeoutMs = 60_000
+    ): Promise<LessonResponse<E>> =>
       new Promise((resolve) => {
         if (!socket || !socket.connected) {
-          resolve({ ok: false, error: 'Not connected to the server. Check your connection and try again.' } as LessonResponse<E>);
+          resolve({
+            ok: false,
+            error: 'Not connected to the server. Check your connection and try again.',
+          } as LessonResponse<E>);
           return;
         }
         const timer = setTimeout(
           () => resolve({ ok: false, error: 'The server took too long to answer. Try again.' } as LessonResponse<E>),
           timeoutMs
         );
-        const emit = socket.emit as (event: E, payload: Parameters<ClientToServerEvents[E]>[0], callback: (res: LessonResponse<E>) => void) => unknown;
+        const emit = socket.emit as (
+          event: E,
+          payload: Parameters<ClientToServerEvents[E]>[0],
+          callback: (res: LessonResponse<E>) => void
+        ) => unknown;
         emit.call(socket, event, payload, (res) => {
           clearTimeout(timer);
-          resolve(res && typeof res === 'object' ? res : { ok: false, error: 'No answer from the server.' } as LessonResponse<E>);
+          resolve(
+            res && typeof res === 'object'
+              ? res
+              : ({ ok: false, error: 'No answer from the server.' } as LessonResponse<E>)
+          );
         });
       }),
     [socket]
   );
-
 
   const performSwitchRoom = useCallback((cleanedRoomId: string) => {
     setRemoteCursors({});
@@ -384,7 +399,6 @@ export function useClassroomActions({
     }
   }, []);
 
-
   /** This room's Teacher PIN as this browser saved it, to prefill the PIN for a new room. */
   const getSavedTeacherPin = useCallback((): string => {
     try {
@@ -394,7 +408,6 @@ export function useClassroomActions({
     }
   }, [effectiveRoomId]);
 
-
   // "Something not working?" (issue #57, docs/REPORTS.md). Purely local until the reporter presses Send: it emits
   // nothing on the socket and changes no room state, so a class keeps going while someone fills it in.
   const [showProblemReport, setShowProblemReport] = useState<boolean>(false);
@@ -402,7 +415,6 @@ export function useClassroomActions({
   const openProblemReport = useCallback(() => setShowProblemReport(true), []);
 
   const closeProblemReport = useCallback(() => setShowProblemReport(false), []);
-
 
   /** Only facts about the app and this device. Never names, room codes, PINs, chat, ink or worksheets. */
   const getReportDiagnostics = useCallback((): ReportDiagnostics => {
@@ -443,7 +455,6 @@ export function useClassroomActions({
     isChatHidden,
   ]);
 
-
   /** Scrubbed out of the description before it's previewed or sent. The values themselves never leave the browser. */
   const reportRedactions = useMemo(() => {
     let savedPin = '';
@@ -465,15 +476,9 @@ export function useClassroomActions({
     // Recomputed when the dialog opens (showProblemReport), so a PIN saved since then is included.
   }, [roomId, effectiveRoomId, userName, initialTeacherPin, users, roomSettings.bannedUsers, showProblemReport]);
 
-
   const problemReportModal = showProblemReport ? (
-    <ProblemReportModal
-      getDiagnostics={getReportDiagnostics}
-      redact={reportRedactions}
-      onClose={closeProblemReport}
-    />
+    <ProblemReportModal getDiagnostics={getReportDiagnostics} redact={reportRedactions} onClose={closeProblemReport} />
   ) : null;
-
 
   /** After a lesson loads into a new room: remember its PIN (so the join makes us teacher there) and go there. */
   const handleOpenLoadedLessonRoom = useCallback(
@@ -489,7 +494,6 @@ export function useClassroomActions({
     [performSwitchRoom]
   );
 
-
   const handleLeaveRoom = useCallback(() => {
     setIsJoined(false);
     setIsTeacher(false);
@@ -501,7 +505,6 @@ export function useClassroomActions({
       // Ignore
     }
   }, []);
-
 
   const performLobbyJoin = useCallback(
     (targetRoomId: string, trimmedName: string, cleanPin: string) => {
@@ -543,7 +546,6 @@ export function useClassroomActions({
     [roomId, liveRoomId, socket, userId, userKey, userColor]
   );
 
-
   const handleSwitchRoom = useCallback(
     async (nextRoomRaw: string) => {
       const cleaned = normalizeRoomCode(nextRoomRaw);
@@ -568,7 +570,6 @@ export function useClassroomActions({
     [effectiveRoomId, isCheckingRoom, checkRoomAvailability, performSwitchRoom]
   );
 
-
   const handleCreateNewRoom = useCallback(async () => {
     if (isCheckingRoom) return;
     setIsCheckingRoom(true);
@@ -580,7 +581,6 @@ export function useClassroomActions({
       setIsCheckingRoom(false);
     }
   }, [isCheckingRoom, generateUnusedRoomCode, performSwitchRoom]);
-
 
   const handleJoin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -615,7 +615,6 @@ export function useClassroomActions({
 
     performLobbyJoin(targetRoomId, trimmed, cleanPin);
   };
-
 
   /**
    * Lobby "New Room": make the room typed in the Room Code box (a random unused code when it's empty) and join it.
@@ -654,13 +653,11 @@ export function useClassroomActions({
     }
   };
 
-
   const handleCancelRoomPrompt = useCallback(() => {
     if (!isCheckingRoom) {
       setPendingRoomPrompt(null);
     }
   }, [isCheckingRoom]);
-
 
   const handleConfirmJoinAnyway = useCallback(() => {
     if (!pendingRoomPrompt || isCheckingRoom) return;
@@ -669,14 +666,9 @@ export function useClassroomActions({
     if (prompt.source === 'switch') {
       performSwitchRoom(prompt.availability.roomId);
     } else {
-      performLobbyJoin(
-        prompt.availability.roomId,
-        prompt.userName || userName.trim(),
-        prompt.teacherPin || ''
-      );
+      performLobbyJoin(prompt.availability.roomId, prompt.userName || userName.trim(), prompt.teacherPin || '');
     }
   }, [pendingRoomPrompt, isCheckingRoom, performSwitchRoom, performLobbyJoin, userName]);
-
 
   const handleConfirmCreateFreshRoom = useCallback(async () => {
     if (!pendingRoomPrompt || isCheckingRoom) return;
@@ -695,7 +687,6 @@ export function useClassroomActions({
       setIsCheckingRoom(false);
     }
   }, [pendingRoomPrompt, isCheckingRoom, generateUnusedRoomCode, performSwitchRoom, performLobbyJoin, userName]);
-
 
   const handleCustomRoomFromModal = useCallback(
     async (customRoomRaw: string) => {
@@ -726,7 +717,6 @@ export function useClassroomActions({
     [pendingRoomPrompt, isCheckingRoom, checkRoomAvailability, performSwitchRoom, performLobbyJoin, userName]
   );
 
-
   const handleUpdateName = useCallback(
     (newName: string) => {
       if (isNameLocked && !isTeacher) return;
@@ -747,7 +737,6 @@ export function useClassroomActions({
     [socket, userId, userColor, isNameLocked, isTeacher]
   );
 
-
   const handleTeacherRenameUser = useCallback(
     (targetUserId: string, newName: string) => {
       const cleanName = newName.trim();
@@ -757,17 +746,14 @@ export function useClassroomActions({
     [socket]
   );
 
-
   const handleTeacherDeleteMessage = useCallback(
     (messageId: string) => {
       if (!socket || !messageId) return;
-      const targetBoardId =
-        breakoutConfig.chatScope === 'board' ? activeBoardId : 'main';
+      const targetBoardId = breakoutConfig.chatScope === 'board' ? activeBoardId : 'main';
       socket.emit('teacher:delete-message', { messageId, boardId: targetBoardId });
     },
     [socket, breakoutConfig.chatScope, activeBoardId]
   );
-
 
   const handleTeacherKickUser = useCallback(
     (targetUserId: string, mode: 'kick' | 'ban', targetName?: string) => {
@@ -777,28 +763,20 @@ export function useClassroomActions({
         targetName: targetName || 'Student',
         mode,
       });
-      socket.emit(
-        'teacher:kick-user',
-        { targetUserId, mode, targetName },
-        (res?: { ok?: boolean }) => {
-          if (res && res.ok === false) {
-            setPendingPurgePrompt((prev) =>
-              prev?.targetUserId === targetUserId ? null : prev
-            );
-          }
+      socket.emit('teacher:kick-user', { targetUserId, mode, targetName }, (res?: { ok?: boolean }) => {
+        if (res && res.ok === false) {
+          setPendingPurgePrompt((prev) => (prev?.targetUserId === targetUserId ? null : prev));
         }
-      );
+      });
     },
     [socket]
   );
-
 
   const handleCancelPurgeContributions = useCallback(() => {
     if (!isPurgingContributions) {
       setPendingPurgePrompt(null);
     }
   }, [isPurgingContributions]);
-
 
   const handleConfirmPurgeContributions = useCallback(() => {
     if (!socket || !pendingPurgePrompt || isPurgingContributions) return;
@@ -808,17 +786,11 @@ export function useClassroomActions({
       return;
     }
     setIsPurgingContributions(true);
-    emitDrawing(
-      socket,
-      'teacher:purge-user-contributions',
-      { targetUserId },
-      () => {
-        setIsPurgingContributions(false);
-        setPendingPurgePrompt(null);
-      }
-    );
+    emitDrawing(socket, 'teacher:purge-user-contributions', { targetUserId }, () => {
+      setIsPurgingContributions(false);
+      setPendingPurgePrompt(null);
+    });
   }, [socket, pendingPurgePrompt, isPurgingContributions]);
-
 
   const purgeContributionCounts = useMemo(() => {
     if (!pendingPurgePrompt) {
@@ -834,7 +806,6 @@ export function useClassroomActions({
     return { drawingCount, messageCount };
   }, [pendingPurgePrompt, elements, messages, subBoards]);
 
-
   const handleTeacherUnbanUser = useCallback(
     (targetUserId: string) => {
       if (!socket || !targetUserId) return;
@@ -843,12 +814,10 @@ export function useClassroomActions({
     [socket]
   );
 
-
   const sendMessage = useCallback(
     (text: string) => {
       if (socket) {
-        const targetBoardId =
-          breakoutConfig.chatScope === 'board' ? activeBoardId : 'main';
+        const targetBoardId = breakoutConfig.chatScope === 'board' ? activeBoardId : 'main';
         socket.emit('chat-message', {
           boardId: targetBoardId,
           userId,
@@ -862,7 +831,6 @@ export function useClassroomActions({
     [socket, breakoutConfig.chatScope, activeBoardId, userId, userName, userColor, isTeacher]
   );
 
-
   const handleTeacherToggleLock = useCallback(
     (locked: boolean) => {
       if (socket) {
@@ -872,32 +840,39 @@ export function useClassroomActions({
     [socket]
   );
 
+  const handleTeacherToggleHideCursors = useCallback(
+    (hide: boolean) => {
+      socket?.emit('teacher:set-hide-cursors', hide);
+    },
+    [socket]
+  );
 
-  const handleTeacherToggleHideCursors = useCallback((hide: boolean) => {
-    socket?.emit('teacher:set-hide-cursors', hide);
-  }, [socket]);
+  const handleTeacherToggleOneNameStamp = useCallback(
+    (enabled: boolean) => {
+      socket?.emit('teacher:set-one-name-stamp', enabled);
+    },
+    [socket]
+  );
 
+  const handleSetStatus = useCallback(
+    (status: StudentStatus) => {
+      socket?.emit('user:set-status', { status });
+    },
+    [socket]
+  );
 
-  const handleTeacherToggleOneNameStamp = useCallback((enabled: boolean) => {
-    socket?.emit('teacher:set-one-name-stamp', enabled);
-  }, [socket]);
-
-
-  const handleSetStatus = useCallback((status: StudentStatus) => {
-    socket?.emit('user:set-status', { status });
-  }, [socket]);
-
-  const handleClearStatus = useCallback((targetUserId?: string) => {
-    socket?.emit('teacher:clear-status', { targetUserId });
-  }, [socket]);
-
+  const handleClearStatus = useCallback(
+    (targetUserId?: string) => {
+      socket?.emit('teacher:clear-status', { targetUserId });
+    },
+    [socket]
+  );
 
   const handleTeacherClearAll = useCallback(() => {
     if (socket) {
       emitDrawing(socket, 'teacher:clear-all', { boardId: activeBoardId });
     }
   }, [socket, activeBoardId]);
-
 
   const handleTeacherTimerControl = useCallback(
     (payload: TimerControlPayload) => {
@@ -947,6 +922,6 @@ export function useClassroomActions({
     handleSetStatus,
     handleClearStatus,
     handleTeacherClearAll,
-    handleTeacherTimerControl
+    handleTeacherTimerControl,
   };
 }

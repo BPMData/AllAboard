@@ -1,13 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Group, Image as KonvaImage, Layer, Line, Rect, Shape } from 'react-konva';
-import {
-  drawHollowElementCached,
-  traceSmoothStrokePath
-} from '../../lib/inkCore';
-import {
-  HollowShapeKind
-} from '../../types';
-
+import { drawHollowElementCached, traceSmoothStrokePath } from '../../lib/inkCore';
+import { HollowShapeKind } from '../../types';
 
 export function SmoothStrokeShape({
   points,
@@ -80,7 +74,15 @@ export function HollowStrokeShape({
   return <Shape listening={false} perfectDrawEnabled={false} sceneFunc={sceneFunc} />;
 }
 
-export function SprayStrokeLine({ points, color, strokeWidth }: { points: number[]; color: string; strokeWidth: number }) {
+export function SprayStrokeLine({
+  points,
+  color,
+  strokeWidth,
+}: {
+  points: number[];
+  color: string;
+  strokeWidth: number;
+}) {
   const dash = useMemo(() => [1, Math.max(6, Math.round(strokeWidth * 0.9))], [strokeWidth]);
   return (
     <Line

@@ -1,16 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import {
-  getElementBounds
-} from '../../lib/inkCore';
+import { getElementBounds } from '../../lib/inkCore';
 import { layoutPages } from '../../lib/worksheetLayout';
-import {
-  CanvasElement,
-  RoomBackground
-} from '../../types';
+import { CanvasElement, RoomBackground } from '../../types';
 import { MAX_SCALE, MIN_SCALE, PAGE_GAP } from './canvasHelpers';
-
-
-
 
 type Options = { elements: CanvasElement[]; background: RoomBackground | null; allGoneNoteIds: Set<string> };
 export function useStageViewport({ elements, background, allGoneNoteIds }: Options) {
@@ -172,5 +164,20 @@ export function useStageViewport({ elements, background, allGoneNoteIds }: Optio
       y: clientY - rect.top,
     };
   }, []);
-  return { stageScale, setStageScale, stagePos, setStagePos, stageRef, containerRef, dimensions, screenToWorld, resetView, fitElementsAndBackgroundInView, fitAllContent, handleWheel, zoomStep, getLocalPosFromEvent };
+  return {
+    stageScale,
+    setStageScale,
+    stagePos,
+    setStagePos,
+    stageRef,
+    containerRef,
+    dimensions,
+    screenToWorld,
+    resetView,
+    fitElementsAndBackgroundInView,
+    fitAllContent,
+    handleWheel,
+    zoomStep,
+    getLocalPosFromEvent,
+  };
 }

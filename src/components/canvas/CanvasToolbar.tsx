@@ -19,28 +19,21 @@ import {
   Square,
   Stamp,
   Type,
-  Undo2
+  Undo2,
 } from 'lucide-react';
 import React from 'react';
-import {
-  getPaletteColors,
-  hlInk
-} from '../../lib/inkCore';
-import {
-  STAMP_OPTIONS,
-  TEACHER_STAMP_OPTIONS
-} from '../../lib/stamps';
+import { getPaletteColors, hlInk } from '../../lib/inkCore';
+import { STAMP_OPTIONS, TEACHER_STAMP_OPTIONS } from '../../lib/stamps';
 import { cn } from '../../lib/utils';
-import {
-  CanvasElement,
-  HollowShapeKind,
-  StampKind,
-  StudentStatus,
-  ToolType
-} from '../../types';
+import { CanvasElement, HollowShapeKind, StampKind, StudentStatus, ToolType } from '../../types';
 import { useClassWorkFiles } from '../useClassWorkFiles';
-import { HOLLOW_SHAPE_OPTIONS, HollowShapeIcon, STATUS_RADIAL_OPTIONS, TEXT_SIZE_DROPDOWN_PRESETS, saveLocal } from './canvasHelpers';
-
+import {
+  HOLLOW_SHAPE_OPTIONS,
+  HollowShapeIcon,
+  STATUS_RADIAL_OPTIONS,
+  TEXT_SIZE_DROPDOWN_PRESETS,
+  saveLocal,
+} from './canvasHelpers';
 
 import type { HistoryAction } from './canvasHelpers';
 interface Props {
@@ -57,7 +50,16 @@ interface Props {
   color: string;
   toolbarCollapsed: boolean;
   canDraw: boolean;
-  editingNote: { existingId: string | null; worldX: number; worldY: number; value: string; color: string; strokeWidth: number; fontSize: number; openedAt: number; };
+  editingNote: {
+    existingId: string | null;
+    worldX: number;
+    worldY: number;
+    value: string;
+    color: string;
+    strokeWidth: number;
+    fontSize: number;
+    openedAt: number;
+  };
   commitEditingNote: () => void;
   performUndo: () => void;
   setTool: React.Dispatch<React.SetStateAction<ToolType>>;
@@ -82,7 +84,18 @@ interface Props {
   canRedo: boolean;
   performRedo: () => void;
   confirmClearMine: boolean;
-  setEditingNote: React.Dispatch<React.SetStateAction<{ existingId: string | null; worldX: number; worldY: number; value: string; color: string; strokeWidth: number; fontSize: number; openedAt: number; }>>;
+  setEditingNote: React.Dispatch<
+    React.SetStateAction<{
+      existingId: string | null;
+      worldX: number;
+      worldY: number;
+      value: string;
+      color: string;
+      strokeWidth: number;
+      fontSize: number;
+      openedAt: number;
+    }>
+  >;
   elements: CanvasElement[];
   userId: string;
   allGoneNoteIds: Set<string>;
@@ -95,7 +108,10 @@ interface Props {
   statusMenuRef: React.RefObject<HTMLDivElement>;
   setShowStatusMenu: React.Dispatch<React.SetStateAction<boolean>>;
   showStatusMenu: boolean;
-  myStatusOption: { readonly label: "Need Help"; readonly className: "bg-amber-100 text-amber-800 border-amber-300"; } | { readonly label: "Got It"; readonly className: "bg-emerald-100 text-emerald-800 border-emerald-300"; } | { readonly label: "Done"; readonly className: "bg-purple-100 text-purple-800 border-purple-300"; };
+  myStatusOption:
+    | { readonly label: 'Need Help'; readonly className: 'bg-amber-100 text-amber-800 border-amber-300' }
+    | { readonly label: 'Got It'; readonly className: 'bg-emerald-100 text-emerald-800 border-emerald-300' }
+    | { readonly label: 'Done'; readonly className: 'bg-purple-100 text-purple-800 border-purple-300' };
   myStatus: StudentStatus;
   onSetStatus: (status: StudentStatus) => void;
   setStampKind: React.Dispatch<React.SetStateAction<StampKind>>;
@@ -104,8 +120,8 @@ interface Props {
   userName: string;
   customTeacherStampText: string;
   setCustomTeacherStampText: React.Dispatch<React.SetStateAction<string>>;
-  activeSwatches: { color: string; label: string; }[];
-  paletteMode: "pen" | "hl" | "cover";
+  activeSwatches: { color: string; label: string }[];
+  paletteMode: 'pen' | 'hl' | 'cover';
   handleSelectColor: (nextColor: string) => void;
   customColorInputRef: React.RefObject<HTMLInputElement>;
   handleSelectStrokeWidth: (nextWidth: number) => void;
@@ -116,7 +132,12 @@ interface Props {
   setShowTextSizeMenu: React.Dispatch<React.SetStateAction<boolean>>;
   showTextSizeMenu: boolean;
   selectedTextElements: CanvasElement[];
-  activeTextPreset: { readonly label: "S"; readonly size: 18; readonly title: "Small text (18px)"; } | { readonly label: "M"; readonly size: 26; readonly title: "Medium text (26px)"; } | { readonly label: "L"; readonly size: 38; readonly title: "Large text (38px)"; } | { readonly label: "XL"; readonly size: 54; readonly title: "Extra-large title text (54px)"; } | { readonly label: "XXL"; readonly size: 72; readonly title: "Extra-extra-large text (72px)"; };
+  activeTextPreset:
+    | { readonly label: 'S'; readonly size: 18; readonly title: 'Small text (18px)' }
+    | { readonly label: 'M'; readonly size: 26; readonly title: 'Medium text (26px)' }
+    | { readonly label: 'L'; readonly size: 38; readonly title: 'Large text (38px)' }
+    | { readonly label: 'XL'; readonly size: 54; readonly title: 'Extra-large title text (54px)' }
+    | { readonly label: 'XXL'; readonly size: 72; readonly title: 'Extra-extra-large text (72px)' };
   activeTextSize: number;
   handleSelectTextFontSize: (nextSize: number, applyToSelection?: boolean) => void;
   smoothLevel: number;
@@ -203,7 +224,7 @@ export function CanvasToolbar({
   smoothLevel,
   setSmoothLevel,
   fingerScrolls,
-  setFingerScrolls
+  setFingerScrolls,
 }: Props) {
   return (
     <>
@@ -268,9 +289,7 @@ export function CanvasToolbar({
                 aria-label={phoneToolsOpen ? 'Hide tools' : 'Show tools'}
                 className={cn(
                   'flex items-center gap-1.5 px-2.5 py-1.5 rounded-[2px] text-xs font-semibold border transition-colors cursor-pointer',
-                  phoneToolsOpen
-                    ? 'oh-btn text-slate-700'
-                    : 'oh-btn-primary text-white'
+                  phoneToolsOpen ? 'oh-btn text-slate-700' : 'oh-btn-primary text-white'
                 )}
               >
                 {phoneToolsOpen ? <ChevronUp size={15} /> : <SlidersHorizontal size={15} />}
@@ -307,17 +326,16 @@ export function CanvasToolbar({
 
           {/* Everything below folds away on phones until "Tools" is tapped. `contents` keeps the wrapping layout as is. */}
           <div className={toolbarCollapsed ? 'hidden' : 'contents'}>
-
             {/* Navigation & Brush Tools (wraps on narrow screens instead of cutting tools off) */}
             <div className="flex flex-wrap items-center gap-0.5 bg-slate-100 p-0.5 rounded-[3px] border border-[#CBD5E1]">
               <button
                 type="button"
                 onClick={() => setTool('pan')}
                 className={cn(
-                  "p-1.5 rounded-[2px] border transition-colors cursor-pointer",
+                  'p-1.5 rounded-[2px] border transition-colors cursor-pointer',
                   effectiveTool === 'pan'
-                    ? "oh-btn-active text-brand-700"
-                    : "border-transparent text-slate-600 hover:text-slate-900 hover:bg-white/70"
+                    ? 'oh-btn-active text-brand-700'
+                    : 'border-transparent text-slate-600 hover:text-slate-900 hover:bg-white/70'
                 )}
                 title="Pan Tool [H] (or hold Spacebar + Drag, or use Arrow Keys)"
               >
@@ -330,10 +348,10 @@ export function CanvasToolbar({
                 onClick={() => setTool('select')}
                 aria-label="Select"
                 className={cn(
-                  "p-1.5 2xl:px-2 rounded-[2px] border transition-colors cursor-pointer disabled:opacity-40 flex items-center gap-1 text-xs font-semibold",
+                  'p-1.5 2xl:px-2 rounded-[2px] border transition-colors cursor-pointer disabled:opacity-40 flex items-center gap-1 text-xs font-semibold',
                   effectiveTool === 'select'
-                    ? "oh-btn-active text-indigo-700"
-                    : "border-transparent text-slate-600 hover:text-slate-900 hover:bg-white/70"
+                    ? 'oh-btn-active text-indigo-700'
+                    : 'border-transparent text-slate-600 hover:text-slate-900 hover:bg-white/70'
                 )}
                 title="Select & Lasso Tool [V]: Tap or circle annotations and text to move, resize, restyle, copy, duplicate, or delete"
               >
@@ -342,9 +360,19 @@ export function CanvasToolbar({
               </button>
 
               {isTeacher && (
-                <button type="button" title="Laser pointer" aria-label="Laser pointer" aria-pressed={effectiveTool === 'laser'}
+                <button
+                  type="button"
+                  title="Laser pointer"
+                  aria-label="Laser pointer"
+                  aria-pressed={effectiveTool === 'laser'}
                   onClick={() => setTool('laser')}
-                  className={cn("p-1.5 rounded-[2px] border transition-colors cursor-pointer", effectiveTool === 'laser' ? "oh-btn-active text-red-600" : "border-transparent text-slate-600 hover:text-red-600 hover:bg-white/70")}>
+                  className={cn(
+                    'p-1.5 rounded-[2px] border transition-colors cursor-pointer',
+                    effectiveTool === 'laser'
+                      ? 'oh-btn-active text-red-600'
+                      : 'border-transparent text-slate-600 hover:text-red-600 hover:bg-white/70'
+                  )}
+                >
                   <Crosshair size={17} />
                 </button>
               )}
@@ -356,10 +384,10 @@ export function CanvasToolbar({
                 disabled={!canDraw}
                 onClick={() => setTool('solid')}
                 className={cn(
-                  "p-1.5 rounded-[2px] border transition-colors cursor-pointer disabled:opacity-40",
+                  'p-1.5 rounded-[2px] border transition-colors cursor-pointer disabled:opacity-40',
                   tool === 'solid' && effectiveTool !== 'pan'
-                    ? "oh-btn-active text-brand-700"
-                    : "border-transparent text-slate-600 hover:text-slate-900 hover:bg-white/70"
+                    ? 'oh-btn-active text-brand-700'
+                    : 'border-transparent text-slate-600 hover:text-slate-900 hover:bg-white/70'
                 )}
                 title="Pen [P]"
                 aria-label="Pen"
@@ -378,10 +406,10 @@ export function CanvasToolbar({
                   aria-haspopup="true"
                   aria-expanded={showHollowMenu}
                   className={cn(
-                    "p-1.5 rounded-[2px] border transition-colors cursor-pointer disabled:opacity-40 flex items-center justify-center",
+                    'p-1.5 rounded-[2px] border transition-colors cursor-pointer disabled:opacity-40 flex items-center justify-center',
                     tool === 'hollow' && effectiveTool !== 'pan'
-                      ? "oh-btn-active text-brand-700"
-                      : "border-transparent text-slate-600 hover:text-slate-900 hover:bg-white/70"
+                      ? 'oh-btn-active text-brand-700'
+                      : 'border-transparent text-slate-600 hover:text-slate-900 hover:bg-white/70'
                   )}
                   title={`Hollow ${hollowShape.charAt(0).toUpperCase() + hollowShape.slice(1)} Brush (Click to stamp, drag to draw hollow stroke — click to pick shape)`}
                 >
@@ -440,10 +468,10 @@ export function CanvasToolbar({
                             transform: 'translate(-50%, -50%)',
                           }}
                           className={cn(
-                            "pointer-events-auto w-8 h-8 rounded-full flex items-center justify-center transition-all cursor-pointer border",
+                            'pointer-events-auto w-8 h-8 rounded-full flex items-center justify-center transition-all cursor-pointer border',
                             isActive
-                              ? "bg-brand-600 text-white border-white scale-110 ring-2 ring-brand-300"
-                              : "bg-slate-900 text-slate-200 border-slate-600 hover:bg-slate-800 hover:text-white hover:scale-110"
+                              ? 'bg-brand-600 text-white border-white scale-110 ring-2 ring-brand-300'
+                              : 'bg-slate-900 text-slate-200 border-slate-600 hover:bg-slate-800 hover:text-white hover:scale-110'
                           )}
                           title={`Hollow ${opt.label}`}
                         >
@@ -459,10 +487,10 @@ export function CanvasToolbar({
                 disabled={!canDraw}
                 onClick={() => setTool('spray')}
                 className={cn(
-                  "p-1.5 rounded-[2px] border transition-colors cursor-pointer disabled:opacity-40",
+                  'p-1.5 rounded-[2px] border transition-colors cursor-pointer disabled:opacity-40',
                   tool === 'spray' && effectiveTool !== 'pan'
-                    ? "oh-btn-active text-brand-700"
-                    : "border-transparent text-slate-600 hover:text-slate-900 hover:bg-white/70"
+                    ? 'oh-btn-active text-brand-700'
+                    : 'border-transparent text-slate-600 hover:text-slate-900 hover:bg-white/70'
                 )}
                 title="Spray Paint"
               >
@@ -476,17 +504,17 @@ export function CanvasToolbar({
                   disabled={!canDraw}
                   onClick={() => setTool('highlighter')}
                   className={cn(
-                    "px-2 py-1.5 rounded-l-[2px] border-y border-l transition-colors cursor-pointer disabled:opacity-40 flex items-center gap-1 text-xs font-semibold",
+                    'px-2 py-1.5 rounded-l-[2px] border-y border-l transition-colors cursor-pointer disabled:opacity-40 flex items-center gap-1 text-xs font-semibold',
                     tool === 'highlighter' && effectiveTool !== 'pan'
                       ? isCoverMode
-                        ? "bg-slate-800 border-slate-900 text-white"
-                        : "bg-amber-200 border-amber-400 text-slate-900"
-                      : "border-transparent text-slate-600 hover:text-slate-900 hover:bg-white/70"
+                        ? 'bg-slate-800 border-slate-900 text-white'
+                        : 'bg-amber-200 border-amber-400 text-slate-900'
+                      : 'border-transparent text-slate-600 hover:text-slate-900 hover:bg-white/70'
                   )}
                   title={
                     isCoverMode
-                      ? "Cover Mode: opaque cover bar that hides text/answers until erased"
-                      : "Highlighter Mode: see-through multiply highlight under pen ink (never dulls black worksheet text)"
+                      ? 'Cover Mode: opaque cover bar that hides text/answers until erased'
+                      : 'Highlighter Mode: see-through multiply highlight under pen ink (never dulls black worksheet text)'
                   }
                 >
                   <Highlighter size={16} />
@@ -502,12 +530,12 @@ export function CanvasToolbar({
                   aria-haspopup="true"
                   aria-expanded={showHlMenu}
                   className={cn(
-                    "px-1 py-1.5 rounded-r-[2px] border transition-colors cursor-pointer disabled:opacity-40",
+                    'px-1 py-1.5 rounded-r-[2px] border transition-colors cursor-pointer disabled:opacity-40',
                     showHlMenu || (tool === 'highlighter' && effectiveTool !== 'pan')
                       ? isCoverMode
-                        ? "bg-slate-700 border-slate-900 text-white"
-                        : "bg-amber-300/80 border-amber-400 text-slate-900"
-                      : "border-transparent border-l-slate-300/70 text-slate-500 hover:text-slate-900 hover:bg-white/70"
+                        ? 'bg-slate-700 border-slate-900 text-white'
+                        : 'bg-amber-300/80 border-amber-400 text-slate-900'
+                      : 'border-transparent border-l-slate-300/70 text-slate-500 hover:text-slate-900 hover:bg-white/70'
                   )}
                   title="Switch between See-Through Highlight & Opaque Cover Mode"
                 >
@@ -529,10 +557,8 @@ export function CanvasToolbar({
                           setTool('highlighter');
                         }}
                         className={cn(
-                          "px-2 py-1.5 rounded-[2px] text-xs font-semibold transition-colors cursor-pointer",
-                          !isCoverMode
-                            ? "bg-amber-400 text-slate-950"
-                            : "text-slate-300 hover:text-white"
+                          'px-2 py-1.5 rounded-[2px] text-xs font-semibold transition-colors cursor-pointer',
+                          !isCoverMode ? 'bg-amber-400 text-slate-950' : 'text-slate-300 hover:text-white'
                         )}
                       >
                         Highlight
@@ -544,10 +570,8 @@ export function CanvasToolbar({
                           setTool('highlighter');
                         }}
                         className={cn(
-                          "px-2 py-1.5 rounded-[2px] text-xs font-semibold transition-colors cursor-pointer",
-                          isCoverMode
-                            ? "bg-white text-slate-950"
-                            : "text-slate-300 hover:text-white"
+                          'px-2 py-1.5 rounded-[2px] text-xs font-semibold transition-colors cursor-pointer',
+                          isCoverMode ? 'bg-white text-slate-950' : 'text-slate-300 hover:text-white'
                         )}
                       >
                         Cover (Opaque)
@@ -614,9 +638,9 @@ export function CanvasToolbar({
                                 setTool('highlighter');
                               }}
                               className={cn(
-                                "w-5 h-5 rounded-full border border-slate-500 cursor-pointer transition-transform hover:scale-110",
+                                'w-5 h-5 rounded-full border border-slate-500 cursor-pointer transition-transform hover:scale-110',
                                 coverColor.toLowerCase() === sw.color.toLowerCase() &&
-                                "ring-2 ring-amber-400 ring-offset-1 ring-offset-slate-900 scale-110"
+                                  'ring-2 ring-amber-400 ring-offset-1 ring-offset-slate-900 scale-110'
                               )}
                               style={{ backgroundColor: sw.color }}
                               title={sw.label}
@@ -634,10 +658,8 @@ export function CanvasToolbar({
                 disabled={!canDraw}
                 onClick={() => setTool('eraser')}
                 className={cn(
-                  "p-1.5 rounded-[2px] border transition-colors cursor-pointer disabled:opacity-40",
-                  tool === 'eraser' && effectiveTool !== 'pan'
-                    ? "oh-btn-eraser-active"
-                    : "oh-btn-eraser"
+                  'p-1.5 rounded-[2px] border transition-colors cursor-pointer disabled:opacity-40',
+                  tool === 'eraser' && effectiveTool !== 'pan' ? 'oh-btn-eraser-active' : 'oh-btn-eraser'
                 )}
                 title="Personal Eraser [E] (Erases your own ink, highlights, and whole text notes — SMART Board palm always erases)"
               >
@@ -652,10 +674,10 @@ export function CanvasToolbar({
                 disabled={!canDraw}
                 onClick={() => setTool('line')}
                 className={cn(
-                  "p-1.5 rounded-[2px] border transition-colors cursor-pointer disabled:opacity-40",
+                  'p-1.5 rounded-[2px] border transition-colors cursor-pointer disabled:opacity-40',
                   tool === 'line' && effectiveTool !== 'pan'
-                    ? "oh-btn-active text-brand-700"
-                    : "border-transparent text-slate-600 hover:text-slate-900 hover:bg-white/70"
+                    ? 'oh-btn-active text-brand-700'
+                    : 'border-transparent text-slate-600 hover:text-slate-900 hover:bg-white/70'
                 )}
                 title="Straight Line [L]"
               >
@@ -666,10 +688,10 @@ export function CanvasToolbar({
                 disabled={!canDraw}
                 onClick={() => setTool('rect')}
                 className={cn(
-                  "p-1.5 rounded-[2px] border transition-colors cursor-pointer disabled:opacity-40",
+                  'p-1.5 rounded-[2px] border transition-colors cursor-pointer disabled:opacity-40',
                   tool === 'rect' && effectiveTool !== 'pan'
-                    ? "oh-btn-active text-brand-700"
-                    : "border-transparent text-slate-600 hover:text-slate-900 hover:bg-white/70"
+                    ? 'oh-btn-active text-brand-700'
+                    : 'border-transparent text-slate-600 hover:text-slate-900 hover:bg-white/70'
                 )}
                 title="Rectangle [R]"
               >
@@ -680,10 +702,10 @@ export function CanvasToolbar({
                 disabled={!canDraw}
                 onClick={() => setTool('circle')}
                 className={cn(
-                  "p-1.5 rounded-[2px] border transition-colors cursor-pointer disabled:opacity-40",
+                  'p-1.5 rounded-[2px] border transition-colors cursor-pointer disabled:opacity-40',
                   tool === 'circle' && effectiveTool !== 'pan'
-                    ? "oh-btn-active text-brand-700"
-                    : "border-transparent text-slate-600 hover:text-slate-900 hover:bg-white/70"
+                    ? 'oh-btn-active text-brand-700'
+                    : 'border-transparent text-slate-600 hover:text-slate-900 hover:bg-white/70'
                 )}
                 title="Circle [C]"
               >
@@ -695,10 +717,10 @@ export function CanvasToolbar({
                 onClick={() => setTool('text')}
                 aria-label="Type"
                 className={cn(
-                  "p-1.5 2xl:px-2 rounded-[2px] border transition-colors cursor-pointer disabled:opacity-40 flex items-center gap-1 text-xs font-semibold",
+                  'p-1.5 2xl:px-2 rounded-[2px] border transition-colors cursor-pointer disabled:opacity-40 flex items-center gap-1 text-xs font-semibold',
                   tool === 'text' && effectiveTool !== 'pan'
-                    ? "oh-btn-active text-brand-700"
-                    : "border-transparent text-slate-600 hover:text-slate-900 hover:bg-white/70"
+                    ? 'oh-btn-active text-brand-700'
+                    : 'border-transparent text-slate-600 hover:text-slate-900 hover:bg-white/70'
                 )}
                 title="Type Note [T]: Tap canvas to type, drag any note to move it, or tap/double-click a note to re-type it"
               >
@@ -710,10 +732,10 @@ export function CanvasToolbar({
                 disabled={!canDraw}
                 onClick={() => setTool('stamp')}
                 className={cn(
-                  "p-1.5 rounded-[2px] border transition-colors cursor-pointer disabled:opacity-40",
+                  'p-1.5 rounded-[2px] border transition-colors cursor-pointer disabled:opacity-40',
                   tool === 'stamp' && effectiveTool !== 'pan'
-                    ? "oh-btn-active text-brand-700"
-                    : "border-transparent text-slate-600 hover:text-slate-900 hover:bg-white/70"
+                    ? 'oh-btn-active text-brand-700'
+                    : 'border-transparent text-slate-600 hover:text-slate-900 hover:bg-white/70'
                 )}
                 title="Quick Stamp Tool [S] (Checkmark, Question Mark, Star, Thumbs Up, Heart, or Your Username)"
               >
@@ -733,7 +755,7 @@ export function CanvasToolbar({
                   performUndo();
                 }}
                 className="flex items-center gap-1 px-2 py-1 text-xs font-medium oh-btn border text-slate-700 rounded-[2px] transition-colors whitespace-nowrap shrink-0 cursor-pointer disabled:opacity-40"
-                title={canLocalUndo ? "Undo last action (Ctrl+Z)" : "Undo last stroke (Ctrl+Z)"}
+                title={canLocalUndo ? 'Undo last action (Ctrl+Z)' : 'Undo last stroke (Ctrl+Z)'}
               >
                 <Undo2 size={15} />
                 <span>Undo</span>
@@ -760,9 +782,7 @@ export function CanvasToolbar({
                     type="button"
                     onClick={() => {
                       if (editingNote) setEditingNote(null);
-                      const myItems = elements.filter(
-                        (el) => el.userId === userId && !allGoneNoteIds.has(el.id)
-                      );
+                      const myItems = elements.filter((el) => el.userId === userId && !allGoneNoteIds.has(el.id));
                       if (myItems.length > 0) {
                         recordUndo({ kind: 'remove', items: myItems });
                       }
@@ -822,7 +842,7 @@ export function CanvasToolbar({
         </div>
 
         {/* Row 2: Student Status Radial, Colors, Ink Size, Text Size Dropdown, Smoothing & Smartboard Finger Mode */}
-        <div className={cn("flex flex-wrap items-center gap-2", toolbarCollapsed && "hidden")}>
+        <div className={cn('flex flex-wrap items-center gap-2', toolbarCollapsed && 'hidden')}>
           {!isTeacher && (
             <div ref={statusMenuRef} className="relative flex items-center shrink-0">
               <button
@@ -831,10 +851,10 @@ export function CanvasToolbar({
                 aria-haspopup="true"
                 aria-expanded={showStatusMenu}
                 className={cn(
-                  "flex items-center gap-1 px-2 py-1 rounded-[2px] border text-xs font-medium transition-colors cursor-pointer whitespace-nowrap",
+                  'flex items-center gap-1 px-2 py-1 rounded-[2px] border text-xs font-medium transition-colors cursor-pointer whitespace-nowrap',
                   myStatusOption
-                    ? cn(myStatusOption.className, "font-semibold")
-                    : "oh-btn text-slate-700 hover:text-slate-900"
+                    ? cn(myStatusOption.className, 'font-semibold')
+                    : 'oh-btn text-slate-700 hover:text-slate-900'
                 )}
                 title="Set your live classroom status for your teacher"
               >
@@ -894,9 +914,9 @@ export function CanvasToolbar({
                           transform: 'translate(-50%, -50%)',
                         }}
                         className={cn(
-                          "pointer-events-auto px-2.5 py-1 rounded-full text-[11px] font-bold border whitespace-nowrap transition-transform hover:scale-105 cursor-pointer shadow-sm",
+                          'pointer-events-auto px-2.5 py-1 rounded-full text-[11px] font-bold border whitespace-nowrap transition-transform hover:scale-105 cursor-pointer shadow-sm',
                           opt.pillClass,
-                          isSelected && "ring-2 ring-white ring-offset-1 ring-offset-slate-900 scale-105"
+                          isSelected && 'ring-2 ring-white ring-offset-1 ring-offset-slate-900 scale-105'
                         )}
                       >
                         {opt.label}
@@ -920,10 +940,8 @@ export function CanvasToolbar({
                     onClick={() => setStampKind(st.kind)}
                     disabled={st.kind === 'username' && nameStampTaken}
                     className={cn(
-                      "px-2 h-6 rounded-[2px] border flex items-center justify-center text-xs font-bold transition-colors cursor-pointer whitespace-nowrap disabled:opacity-40 disabled:cursor-not-allowed",
-                      stampKind === st.kind
-                        ? "oh-btn-primary text-white"
-                        : "oh-btn text-slate-700"
+                      'px-2 h-6 rounded-[2px] border flex items-center justify-center text-xs font-bold transition-colors cursor-pointer whitespace-nowrap disabled:opacity-40 disabled:cursor-not-allowed',
+                      stampKind === st.kind ? 'oh-btn-primary text-white' : 'oh-btn text-slate-700'
                     )}
                     title={
                       st.kind === 'username' && nameStampTaken
@@ -955,8 +973,8 @@ export function CanvasToolbar({
                             : { color: st.color, borderColor: st.color }
                         }
                         className={cn(
-                          "px-2 h-6 rounded-[2px] border text-[11px] font-extrabold tracking-wide transition-colors cursor-pointer whitespace-nowrap",
-                          isSelected ? "" : "bg-white hover:bg-slate-50"
+                          'px-2 h-6 rounded-[2px] border text-[11px] font-extrabold tracking-wide transition-colors cursor-pointer whitespace-nowrap',
+                          isSelected ? '' : 'bg-white hover:bg-slate-50'
                         )}
                         title={
                           st.kind === 'teacher-custom'
@@ -988,16 +1006,15 @@ export function CanvasToolbar({
           <div className="flex items-center gap-1">
             {activeSwatches.map((sw) => {
               const activeTargetColor = editingNote ? editingNote.color : color;
-              const isSelected =
-                activeTargetColor.toLowerCase() === sw.color.toLowerCase() && tool !== 'eraser';
+              const isSelected = activeTargetColor.toLowerCase() === sw.color.toLowerCase() && tool !== 'eraser';
               return (
                 <button
                   key={`${paletteMode}_${sw.color}`}
                   type="button"
                   onClick={() => handleSelectColor(sw.color)}
                   className={cn(
-                    "w-[18px] h-[18px] rounded-full border border-slate-300 transition-transform hover:scale-110 cursor-pointer",
-                    isSelected && "ring-2 ring-brand-600 ring-offset-2 scale-110"
+                    'w-[18px] h-[18px] rounded-full border border-slate-300 transition-transform hover:scale-110 cursor-pointer',
+                    isSelected && 'ring-2 ring-brand-600 ring-offset-2 scale-110'
                   )}
                   style={{ backgroundColor: sw.color }}
                   title={sw.label}
@@ -1012,8 +1029,7 @@ export function CanvasToolbar({
                 onClick={() => customColorInputRef.current?.click()}
                 className="w-[18px] h-[18px] rounded-full border border-slate-300 flex items-center justify-center transition-transform hover:scale-110 cursor-pointer"
                 style={{
-                  background:
-                    'conic-gradient(#f44336,#ffeb3b,#4caf50,#00bcd4,#3f51b5,#e91e63,#f44336)',
+                  background: 'conic-gradient(#f44336,#ffeb3b,#4caf50,#00bcd4,#3f51b5,#e91e63,#f44336)',
                 }}
                 title="Pick any custom color"
               >
@@ -1050,7 +1066,11 @@ export function CanvasToolbar({
                     ? 'Brush size:'
                     : 'Pen size:'}
             </label>
-            <span className="flex items-center justify-center w-6 h-6 shrink-0" aria-hidden="true" data-testid="ink-size-preview">
+            <span
+              className="flex items-center justify-center w-6 h-6 shrink-0"
+              aria-hidden="true"
+              data-testid="ink-size-preview"
+            >
               <span
                 // White ring keeps the dot visible on the green box whatever the ink color (green ink included).
                 className={cn('rounded-full ring-2 ring-white', tool === 'eraser' && 'bg-white ring-white/60')}
@@ -1067,22 +1087,12 @@ export function CanvasToolbar({
               id="brush-size-slider"
               type="range"
               min={tool === 'eraser' ? 8 : tool === 'highlighter' || tool === 'hollow' ? 4 : 1}
-              max={
-                tool === 'eraser'
-                  ? 400
-                  : tool === 'hollow'
-                    ? 120
-                    : tool === 'highlighter'
-                      ? 60
-                      : 50
-              }
+              max={tool === 'eraser' ? 400 : tool === 'hollow' ? 120 : tool === 'highlighter' ? 60 : 50}
               value={strokeWidth}
               onChange={(e) => handleSelectStrokeWidth(parseInt(e.target.value, 10))}
               className="w-16 h-1.5 bg-brand-300 rounded-full appearance-none cursor-pointer accent-white"
             />
-            <span className="text-xs font-mono tabular-nums text-white w-7 text-right">
-              {strokeWidth}
-            </span>
+            <span className="text-xs font-mono tabular-nums text-white w-7 text-right">{strokeWidth}</span>
           </div>
 
           {/* Dedicated Line Weight Slider when Hollow Shape Brush is Active */}
@@ -1119,10 +1129,10 @@ export function CanvasToolbar({
               aria-haspopup="true"
               aria-expanded={showTextSizeMenu}
               className={cn(
-                "flex items-center gap-1 px-2 py-1 rounded-[2px] border text-xs font-medium transition-colors cursor-pointer whitespace-nowrap disabled:opacity-40",
+                'flex items-center gap-1 px-2 py-1 rounded-[2px] border text-xs font-medium transition-colors cursor-pointer whitespace-nowrap disabled:opacity-40',
                 showTextSizeMenu || tool === 'text' || Boolean(editingNote) || selectedTextElements.length > 0
-                  ? "oh-btn-active text-brand-800"
-                  : "oh-btn text-slate-700 hover:text-slate-900"
+                  ? 'oh-btn-active text-brand-800'
+                  : 'oh-btn text-slate-700 hover:text-slate-900'
               )}
               title="Text font size (click to pick S, M, L, XL, XXL or custom pixel size)"
             >
@@ -1157,10 +1167,10 @@ export function CanvasToolbar({
                         setShowTextSizeMenu(false);
                       }}
                       className={cn(
-                        "px-1.5 py-1.5 rounded-[2px] border text-xs font-bold transition-colors cursor-pointer disabled:opacity-40 text-center",
+                        'px-1.5 py-1.5 rounded-[2px] border text-xs font-bold transition-colors cursor-pointer disabled:opacity-40 text-center',
                         activeTextSize === preset.size
-                          ? "oh-btn-primary text-white"
-                          : "bg-slate-800 border-[#243044] text-slate-200 hover:bg-slate-700 hover:text-white"
+                          ? 'oh-btn-primary text-white'
+                          : 'bg-slate-800 border-[#243044] text-slate-200 hover:bg-slate-700 hover:text-white'
                       )}
                       title={preset.title}
                     >
@@ -1214,7 +1224,10 @@ export function CanvasToolbar({
 
           {/* OverBoard Smoothing Control (0..8) & Smartboard Finger Mode Toggle */}
           <div className="flex items-center gap-1 bg-slate-100 px-1.5 py-0.5 rounded-[2px] border border-[#CBD5E1] text-xs">
-            <span className="text-[11px] text-slate-500 font-medium" title="OverBoard exponential stroke smoothing (0 = off, 8 = max)">
+            <span
+              className="text-[11px] text-slate-500 font-medium"
+              title="OverBoard exponential stroke smoothing (0 = off, 8 = max)"
+            >
               Smooth:
             </span>
             <button
@@ -1256,10 +1269,10 @@ export function CanvasToolbar({
               saveLocal('allaboard-finger-scrolls', next ? '1' : '0');
             }}
             className={cn(
-              "px-2 py-1 rounded-[2px] text-[11px] font-medium border transition-colors cursor-pointer whitespace-nowrap",
+              'px-2 py-1 rounded-[2px] text-[11px] font-medium border transition-colors cursor-pointer whitespace-nowrap',
               fingerScrolls
-                ? "bg-amber-50 text-amber-900 border-amber-300"
-                : "oh-btn text-slate-700 hover:text-slate-900"
+                ? 'bg-amber-50 text-amber-900 border-amber-300'
+                : 'oh-btn text-slate-700 hover:text-slate-900'
             )}
             title="Smartboard / Tablet mode: Choose whether finger/mouse drags pan the board (while stylus writes & palm erases) or draw directly"
           >

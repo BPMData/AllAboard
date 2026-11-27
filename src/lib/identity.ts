@@ -66,4 +66,3 @@ export function generateFreshRoomCode(): string {
   const suffix = Math.random().toString(36).substring(2, 4);
   return `class-${num}${suffix}`;
 }
-

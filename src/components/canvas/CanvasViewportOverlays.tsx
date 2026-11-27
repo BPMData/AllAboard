@@ -1,44 +1,19 @@
-import {
-  Check,
-  Copy,
-  Edit3,
-  Keyboard,
-  Maximize2,
-  MousePointer2,
-  Move,
-  Trash2,
-  X,
-  ZoomIn,
-  ZoomOut
-} from 'lucide-react';
+import { Check, Copy, Edit3, Keyboard, Maximize2, MousePointer2, Move, Trash2, X, ZoomIn, ZoomOut } from 'lucide-react';
 import React from 'react';
-import {
-  NOTE_FONT,
-  NOTE_LH,
-  TEXT_SIZE_PRESETS
-} from '../../lib/inkCore';
+import { NOTE_FONT, NOTE_LH, TEXT_SIZE_PRESETS } from '../../lib/inkCore';
 import type { SelectionAuthor } from '../../lib/selectionAuthors';
-import {
-  describeSelectionAuthors,
-  formatSelectionAuthors
-} from '../../lib/selectionAuthors';
+import { describeSelectionAuthors, formatSelectionAuthors } from '../../lib/selectionAuthors';
 import { cn } from '../../lib/utils';
-import {
-  CanvasElement,
-  GridMode,
-  SubBoardData,
-  ToolType
-} from '../../types';
+import { CanvasElement, GridMode, SubBoardData, ToolType } from '../../types';
 import { GRID_MODE_OPTIONS, GridModeIcon, saveLocal } from './canvasHelpers';
-
 
 interface Props {
   selectedElements: CanvasElement[];
   selectionBounds: [number, number, number, number];
-  selectionDragOffset: { dx: number; dy: number; };
+  selectionDragOffset: { dx: number; dy: number };
   canDraw: boolean;
-  dimensions: { width: number; height: number; };
-  stagePos: { x: number; y: number; };
+  dimensions: { width: number; height: number };
+  stagePos: { x: number; y: number };
   stageScale: number;
   selectionAuthors: SelectionAuthor[];
   selectedTextElements: CanvasElement[];
@@ -55,16 +30,36 @@ interface Props {
   activeRoundBoards: SubBoardData[];
   handleSendSelectionToBoard: (targetBoardId: string) => void;
   sentFeedback: string;
-  pastePrompt: { worldX: number; worldY: number; };
+  pastePrompt: { worldX: number; worldY: number };
   clipboardElements: CanvasElement[];
-  handlePasteElements: (targetWorldPos?: { x: number; y: number; } | null) => void;
-  setPastePrompt: React.Dispatch<React.SetStateAction<{ worldX: number; worldY: number; }>>;
-  editingNote: { existingId: string | null; worldX: number; worldY: number; value: string; color: string; strokeWidth: number; fontSize: number; openedAt: number; };
-  setEditingNote: React.Dispatch<React.SetStateAction<{ existingId: string | null; worldX: number; worldY: number; value: string; color: string; strokeWidth: number; fontSize: number; openedAt: number; }>>;
+  handlePasteElements: (targetWorldPos?: { x: number; y: number } | null) => void;
+  setPastePrompt: React.Dispatch<React.SetStateAction<{ worldX: number; worldY: number }>>;
+  editingNote: {
+    existingId: string | null;
+    worldX: number;
+    worldY: number;
+    value: string;
+    color: string;
+    strokeWidth: number;
+    fontSize: number;
+    openedAt: number;
+  };
+  setEditingNote: React.Dispatch<
+    React.SetStateAction<{
+      existingId: string | null;
+      worldX: number;
+      worldY: number;
+      value: string;
+      color: string;
+      strokeWidth: number;
+      fontSize: number;
+      openedAt: number;
+    }>
+  >;
   noteTextareaRef: React.RefObject<HTMLTextAreaElement>;
   commitEditingNote: () => void;
   effectiveTool: ToolType;
-  screenPos: { x: number; y: number; };
+  screenPos: { x: number; y: number };
   userColor: string;
   userName: string;
   gridMenuRef: React.RefObject<HTMLDivElement>;
@@ -122,7 +117,7 @@ export function CanvasViewportOverlays({
   resetView,
   fitAllContent,
   setShowHotkeysModal,
-  showHotkeysModal
+  showHotkeysModal,
 }: Props) {
   return (
     <>
@@ -144,10 +139,7 @@ export function CanvasViewportOverlays({
             ),
             top: Math.max(
               10,
-              Math.min(
-                Math.max(10, dimensions.height - 64),
-                stagePos.y + selectionBounds[1] * stageScale - 52
-              )
+              Math.min(Math.max(10, dimensions.height - 64), stagePos.y + selectionBounds[1] * stageScale - 52)
             ),
           }}
         >
@@ -256,9 +248,7 @@ export function CanvasViewportOverlays({
                 Send Copy
               </button>
               {sentFeedback && (
-                <span className="text-[11px] text-emerald-300 font-medium whitespace-nowrap">
-                  {sentFeedback}
-                </span>
+                <span className="text-[11px] text-emerald-300 font-medium whitespace-nowrap">{sentFeedback}</span>
               )}
             </>
           )}
@@ -336,10 +326,10 @@ export function CanvasViewportOverlays({
                   setEditingNote((prev) =>
                     prev
                       ? {
-                        ...prev,
-                        worldX: Math.round((origWorldX + dx) * 10) / 10,
-                        worldY: Math.round((origWorldY + dy) * 10) / 10,
-                      }
+                          ...prev,
+                          worldX: Math.round((origWorldX + dx) * 10) / 10,
+                          worldY: Math.round((origWorldY + dy) * 10) / 10,
+                        }
                       : null
                   );
                 };
@@ -368,10 +358,10 @@ export function CanvasViewportOverlays({
                 onPointerDown={(e) => e.preventDefault()}
                 onClick={() => handleSelectTextFontSize(preset.size)}
                 className={cn(
-                  "px-1 py-0.5 rounded-[2px] border font-bold cursor-pointer",
+                  'px-1 py-0.5 rounded-[2px] border font-bold cursor-pointer',
                   editingNote.fontSize === preset.size
-                    ? "oh-btn-primary text-white"
-                    : "border-transparent text-slate-300 hover:bg-slate-800"
+                    ? 'oh-btn-primary text-white'
+                    : 'border-transparent text-slate-300 hover:bg-slate-800'
                 )}
                 title={preset.title}
               >
@@ -458,26 +448,29 @@ export function CanvasViewportOverlays({
         </div>
       )}
       {/* Custom Precision Cursor Overlay when Drawing */}
-      {effectiveTool !== 'pan' && effectiveTool !== 'move-bg' && effectiveTool !== 'select' && effectiveTool !== 'text' && (
-        <div
-          className="pointer-events-none absolute z-30 flex items-center justify-center"
-          style={{
-            left: screenPos.x,
-            top: screenPos.y,
-            transform: 'translate(-50%, -50%)',
-          }}
-        >
-          <div className="relative">
-            <MousePointer2 size={15} className="text-slate-900 fill-white drop-shadow-xs" />
-            <div
-              className="absolute -top-4 left-4 text-white text-[10px] font-medium px-1.5 py-0.5 rounded whitespace-nowrap shadow-xs"
-              style={{ backgroundColor: userColor }}
-            >
-              {userName}
+      {effectiveTool !== 'pan' &&
+        effectiveTool !== 'move-bg' &&
+        effectiveTool !== 'select' &&
+        effectiveTool !== 'text' && (
+          <div
+            className="pointer-events-none absolute z-30 flex items-center justify-center"
+            style={{
+              left: screenPos.x,
+              top: screenPos.y,
+              transform: 'translate(-50%, -50%)',
+            }}
+          >
+            <div className="relative">
+              <MousePointer2 size={15} className="text-slate-900 fill-white drop-shadow-xs" />
+              <div
+                className="absolute -top-4 left-4 text-white text-[10px] font-medium px-1.5 py-0.5 rounded whitespace-nowrap shadow-xs"
+                style={{ backgroundColor: userColor }}
+              >
+                {userName}
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        )}
       {/* Floating Bottom-Right Infinite Canvas Zoom & Navigation HUD */}
       <div
         data-hud="true"
@@ -495,10 +488,10 @@ export function CanvasViewportOverlays({
             aria-haspopup="true"
             aria-expanded={showGridMenu}
             className={cn(
-              "p-1.5 rounded-[2px] border transition-colors cursor-pointer",
+              'p-1.5 rounded-[2px] border transition-colors cursor-pointer',
               gridMode !== 'blank' || showGridMenu
-                ? "oh-btn-active text-brand-700"
-                : "border-transparent text-slate-500 hover:bg-white/80 hover:text-slate-800"
+                ? 'oh-btn-active text-brand-700'
+                : 'border-transparent text-slate-500 hover:bg-white/80 hover:text-slate-800'
             )}
             title={`Background Grid: ${GRID_MODE_OPTIONS.find((o) => o.mode === gridMode)?.label || gridMode} (click to choose Blank, Dots, Graph Paper, or Isometric 3D)`}
           >
@@ -513,12 +506,7 @@ export function CanvasViewportOverlays({
               style={{ width: 0, height: 0 }}
             >
               {/* Subtle SVG radial guide arc curving upward */}
-              <svg
-                width="156"
-                height="88"
-                viewBox="-78 -80 156 88"
-                className="overflow-visible pointer-events-none"
-              >
+              <svg width="156" height="88" viewBox="-78 -80 156 88" className="overflow-visible pointer-events-none">
                 <path
                   d="M -54 -26 Q 0 -76 54 -26"
                   fill="none"
@@ -549,10 +537,10 @@ export function CanvasViewportOverlays({
                       transform: 'translate(-50%, -50%)',
                     }}
                     className={cn(
-                      "pointer-events-auto absolute w-8 h-8 rounded-full flex items-center justify-center border transition-transform hover:scale-110 cursor-pointer",
+                      'pointer-events-auto absolute w-8 h-8 rounded-full flex items-center justify-center border transition-transform hover:scale-110 cursor-pointer',
                       isSelected
-                        ? "bg-brand-600 text-white border-white ring-2 ring-brand-500/50"
-                        : "bg-slate-900 text-slate-200 border-[#243044] hover:bg-slate-800 hover:text-white"
+                        ? 'bg-brand-600 text-white border-white ring-2 ring-brand-500/50'
+                        : 'bg-slate-900 text-slate-200 border-[#243044] hover:bg-slate-800 hover:text-white'
                     )}
                     title={opt.label}
                   >
@@ -611,10 +599,8 @@ export function CanvasViewportOverlays({
           type="button"
           onClick={() => setShowHotkeysModal((prev) => !prev)}
           className={cn(
-            "flex items-center gap-1 px-2 py-1 rounded-[2px] border font-medium whitespace-nowrap cursor-pointer transition-colors",
-            showHotkeysModal
-              ? "oh-btn-primary text-white"
-              : "oh-btn text-slate-700"
+            'flex items-center gap-1 px-2 py-1 rounded-[2px] border font-medium whitespace-nowrap cursor-pointer transition-colors',
+            showHotkeysModal ? 'oh-btn-primary text-white' : 'oh-btn text-slate-700'
           )}
           title="Keyboard Shortcuts & Navigation [?]"
         >
@@ -637,9 +623,7 @@ export function CanvasViewportOverlays({
             <div className="oh-panel-header flex items-center justify-between px-5 py-3.5 border-b border-[#CBD5E1]">
               <div className="flex items-center gap-2">
                 <Keyboard size={17} className="text-brand-600" />
-                <h2 className="font-display font-bold text-sm text-slate-900">
-                  Keyboard Shortcuts &amp; Navigation
-                </h2>
+                <h2 className="font-display font-bold text-sm text-slate-900">Keyboard Shortcuts &amp; Navigation</h2>
               </div>
               <button
                 type="button"
@@ -697,9 +681,7 @@ export function CanvasViewportOverlays({
               </div>
 
               <div className="space-y-2.5">
-                <div className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
-                  Drawing Tools
-                </div>
+                <div className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Drawing Tools</div>
                 <div className="space-y-1.5">
                   <div className="flex items-center justify-between gap-2">
                     <span className="text-slate-700 font-medium">Solid Pen</span>

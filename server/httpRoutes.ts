@@ -4,7 +4,20 @@ import { createReportHandler, reportBodyParser } from '../problemReportRoute.ts'
 import { isValidAssetHash, type RoomStore } from '../roomStore.ts';
 import type { StartServerOptions } from './types.ts';
 
-export function registerHttpRoutes(app: Express, { store, backup, options, getRoomAvailability }: { store: RoomStore; backup: BackupMirror | null; options: StartServerOptions; getRoomAvailability: (roomId?: string) => unknown }) {
+export function registerHttpRoutes(
+  app: Express,
+  {
+    store,
+    backup,
+    options,
+    getRoomAvailability,
+  }: {
+    store: RoomStore;
+    backup: BackupMirror | null;
+    options: StartServerOptions;
+    getRoomAvailability: (roomId?: string) => unknown;
+  }
+) {
   app.get('/healthz', (_req, res) => {
     res.status(200).json({ status: 'ok' });
   });
@@ -18,7 +31,7 @@ export function registerHttpRoutes(app: Express, { store, backup, options, getRo
       relayToken: options.reportRelayToken ?? process.env.REPORT_RELAY_TOKEN,
       appVersion: process.env.K_REVISION,
       fetchImpl: options.reportFetch,
-    }),
+    })
   );
 
   app.get('/api/rooms/:roomId', (req, res) => {
@@ -53,5 +66,4 @@ export function registerHttpRoutes(app: Express, { store, backup, options, getRo
       res.status(500).end();
     }
   });
-
 }

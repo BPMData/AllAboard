@@ -1,19 +1,35 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import {
-  getNoteFontSize,
-  noteSize
-} from '../../lib/inkCore';
-import {
-  CanvasElement
-} from '../../types';
+import { getNoteFontSize, noteSize } from '../../lib/inkCore';
+import { CanvasElement } from '../../types';
 import type { HistoryAction } from './canvasHelpers';
 
-
-
-
 import type { CanvasProps } from '../Canvas';
-type Options = Pick<CanvasProps, 'laserSocket' | 'activeBoardId' | 'onUndo' | 'onElementsBatchRemove' | 'onElementsBatchAdd' | 'onElementsBatchUpdate' | 'onElementsReplace'> & { canDraw: boolean; setSelectedIds: React.Dispatch<React.SetStateAction<string[]>>; setEditingNote: (value: null) => void };
-export function useCanvasHistory({ laserSocket, activeBoardId, onUndo, onElementsBatchRemove, onElementsBatchAdd, onElementsBatchUpdate, onElementsReplace, canDraw, setSelectedIds, setEditingNote }: Options) {
+type Options = Pick<
+  CanvasProps,
+  | 'laserSocket'
+  | 'activeBoardId'
+  | 'onUndo'
+  | 'onElementsBatchRemove'
+  | 'onElementsBatchAdd'
+  | 'onElementsBatchUpdate'
+  | 'onElementsReplace'
+> & {
+  canDraw: boolean;
+  setSelectedIds: React.Dispatch<React.SetStateAction<string[]>>;
+  setEditingNote: (value: null) => void;
+};
+export function useCanvasHistory({
+  laserSocket,
+  activeBoardId,
+  onUndo,
+  onElementsBatchRemove,
+  onElementsBatchAdd,
+  onElementsBatchUpdate,
+  onElementsReplace,
+  canDraw,
+  setSelectedIds,
+  setEditingNote,
+}: Options) {
   const historyByBoardRef = useRef<Record<string, { undo: HistoryAction[]; redo: HistoryAction[] }>>({});
 
   const [historyTick, setHistoryTick] = useState(0);
@@ -29,7 +45,9 @@ export function useCanvasHistory({ laserSocket, activeBoardId, onUndo, onElement
       }
     };
     laserSocket.on('board-replaced', resetHistory);
-    return () => { laserSocket.off('board-replaced', resetHistory); };
+    return () => {
+      laserSocket.off('board-replaced', resetHistory);
+    };
   }, [laserSocket, activeBoardId]);
 
   const getBoardHistory = useCallback((boardId: string) => {

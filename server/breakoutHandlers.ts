@@ -1,375 +1,382 @@
 import { randomUUID } from 'node:crypto';
-import { MAX_BOARD_ELEMENTS } from '../socketGuards.ts';
-import { buildRoundTitle, getActiveRound, getBoardsInRound, getNextRoundNumber, getRoundById, getRounds, isPreparedRound, makeGroupBoardId, makeIndividualBoardId, makeRoundId, uniqueStrings } from '../src/lib/breakoutRounds.ts';
-import { filterMainInk } from '../src/lib/lessonPack.ts';
-import { availableLetters, byStudentName, pickVariant, variantBackground } from '../src/lib/roundVariants.ts';
-import type { BreakoutRoundMeta, ConfigureBreakoutPayload } from '../src/types.ts';
-import type { createBoardChannels } from './boardChannels.ts';
-import type { createRoomSerialization } from './roomSerialization.ts';
-import { MAX_GROUPS_PER_ROUND, cleanRoundTitle, payloadWorksheet } from './roomSerialization.ts';
-import type { RoomState, ServerUserRecord, TypedIo } from './types.ts';
+import { internBackground } from '../roomStore.ts';
+import { makeAnonymousAuthorId } from '../src/lib/anonymousInk.ts';
+import {
+  getActiveRound,
+  getBoardsInRound,
+  getRoundById,
+  getRounds,
+  isPreparedRound,
+  resolveBreakoutAction,
+  uniqueStrings,
+} from '../src/lib/breakoutRounds.ts';
+import type { ConfigureBreakoutPayload } from '../src/types.ts';
 
-export function createBreakoutHelpers({ io, cloneBackground, cleanRoundVariants, noteChange }: { io: TypedIo; cloneBackground: ReturnType<typeof createRoomSerialization>['cloneBackground']; cleanRoundVariants: ReturnType<typeof createRoomSerialization>['cleanRoundVariants']; noteChange: ReturnType<typeof createBoardChannels>['noteChange'] }) {
-
-
-  type RoundResult = { ok: true; roundId: string } | { ok: false; error: string };
-
-  /** Sets or clears a round's variants. Group rounds never have any. */
-  function setRoundVariants(room: RoomState, roundId: string, mode: string, raw: unknown) {
-    const v = mode === 'individual' ? cleanRoundVariants(raw) : null;
-    if (v) room.roundVariants[roundId] = v;
-    else delete room.roundVariants[roundId];
-  }
-
-
-  // ---------- Template ink (PLANS_LESSON_PACKS.md, phase 3) ----------
-
-  /** Teacher-owned Main ink without name stamps: what "Also copy my ink from Main" puts on a round's boards. */
-  function mainTemplateInk(room: RoomState, callerId: string): any[] {
-    return filterMainInk(room.elements, 'teacher', teacherIdsOf(room, callerId))
-      .slice(0, MAX_BOARD_ELEMENTS)
-      .map((el) => structuredClone(el));
-  }
-
-
-  /** Sets or clears a round's template ink from a payload. `copyInk` counts only with `copyWorksheet` (same board). */
-  function setRoundTemplateInk(room: RoomState, roundId: string, payload: ConfigureBreakoutPayload, callerId: string) {
-    const ink = payload.copyInk === true && payload.copyWorksheet === true ? mainTemplateInk(room, callerId) : [];
-    if (ink.length > 0) room.roundTemplateInk[roundId] = ink;
-    else delete room.roundTemplateInk[roundId];
-  }
-
-
-  /** Fresh copies of a round's template ink for one board: new ids, that board, the teacher still the author. */
-  function templateInkForBoard(room: RoomState, roundId: string, boardId: string): any[] {
-    const ink = room.roundTemplateInk[roundId];
-    if (!Array.isArray(ink) || ink.length === 0) return [];
-    const now = Date.now();
-    return ink.map((el) => ({ ...structuredClone(el), id: randomUUID(), boardId, timestamp: now }));
-  }
-
-
-  /** Puts a round's template ink under whatever is already on each of its group boards. */
-  function stampTemplateInkOnGroupBoards(room: RoomState, roundId: string) {
-    if (!room.roundTemplateInk[roundId]?.length) return;
-    for (const sb of getBoardsInRound(room.subBoards, roundId)) {
-      if (sb.kind !== 'group') continue;
-      sb.elements = [...templateInkForBoard(room, roundId, sb.id), ...sb.elements].slice(0, MAX_BOARD_ELEMENTS);
-      noteChange(room, sb.id, { full: true });
+import type { ServerContext, TypedSocket } from './types.ts';
+export function registerBreakoutHandlers(socket: TypedSocket, ctx: ServerContext) {
+  const {
+    io,
+    rooms,
+    socketMeta,
+    store,
+    cloneBackground,
+    launchPreparedRound,
+    applyRoundEdits,
+    studentsInDealOrder,
+    provisionIndividualBoard,
+    editPreparedRound,
+    createRound,
+    scheduleSaveToDisk,
+    broadcastRoomSettings,
+    broadcastBreakoutSync,
+    noteChange,
+    boardAudience,
+    placeSocket,
+    teacherChannel,
+    teacherTemplatesPayload,
+    setRoundVariants,
+  } = ctx;
+  socket.on('teacher:configure-breakout', (payload: ConfigureBreakoutPayload, callback) => {
+    const meta = socketMeta.get(socket.id);
+    if (!meta) {
+      callback?.({ ok: false, error: 'Not in a room.' });
+      return;
     }
-  }
-
-
-  // ---------- Lesson packs (PLANS_LESSON_PACKS.md, phase 2) ----------
-
-  /** Everyone this room counts as a teacher, for "teacher ink only". */
-  function teacherIdsOf(room: RoomState, callerId: string): Set<string> {
-    const ids = new Set<string>([callerId]);
-    for (const [uid, record] of room.usersByUserId) if (record.isTeacher) ids.add(uid);
-    return ids;
-  }
-
-
-  /** Students who should receive breakout boards. */
-  function getBreakoutStudents(room: RoomState): ServerUserRecord[] {
-    return Array.from(room.usersByUserId.values()).filter((u) => !u.isTeacher);
-  }
-
-
-  /** Background used when the round was launched; falls back to any individual board's background in that round. */
-  function getRoundTemplate(room: RoomState, roundId: string): any | null {
-    if (Object.prototype.hasOwnProperty.call(room.roundTemplates, roundId)) {
-      return room.roundTemplates[roundId];
+    const room = rooms.get(meta.roomId);
+    if (!room) {
+      callback?.({ ok: false, error: 'Room not found.' });
+      return;
     }
-    const sample = getBoardsInRound(room.subBoards, roundId).find((sb) => sb.kind === 'individual');
-    return sample ? sample.background : null;
-  }
-
-
-  /** Creates `<roundId>_ind_<userId>` if this user has no individual board in that round. Returns true if created. */
-  function provisionIndividualBoard(
-    room: RoomState,
-    roundId: string,
-    user: { userId: string; name: string },
-    late = true
-  ): boolean {
-    const existing = getBoardsInRound(room.subBoards, roundId).find(
-      (sb) => sb.kind === 'individual' && sb.assignedUserIds.includes(user.userId)
-    );
-    if (existing) {
-      existing.title = `${user.name}'s Board`;
-      return false;
+    const callerRecord = room.usersByUserId.get(meta.userId);
+    if (!callerRecord?.isTeacher) {
+      callback?.({ ok: false, error: 'Only a verified Teacher can configure breakout boards.' });
+      return;
     }
-    const id = makeIndividualBoardId(roundId, user.userId);
-    room.subBoards.set(id, {
-      id,
-      roundId,
-      kind: 'individual',
-      title: `${user.name}'s Board`,
-      assignedUserIds: [user.userId],
-      elements: templateInkForBoard(room, roundId, id),
-      background: cloneBackground(variantWorksheetFor(room, roundId, user, late)),
-      messages: [],
-    });
-    return true;
-  }
 
+    const safePayload: ConfigureBreakoutPayload = payload && typeof payload === 'object' ? payload : {};
+    const cfg = room.breakoutConfig;
+    const action = resolveBreakoutAction(safePayload, cfg);
+    let createdRoundId: string | undefined;
 
-  /** The worksheet a new individual board gets: the round's own, or the student's variant (B–D) by the round's rule. */
-  function variantWorksheetFor(room: RoomState, roundId: string, user: { userId: string; name: string }, late: boolean) {
-    const template = getRoundTemplate(room, roundId);
-    const variants = room.roundVariants[roundId];
-    if (!variants) return template;
-    const before = variants.assigned[user.userId];
-    const index =
-      typeof before === 'number' && availableLetters(variants).includes(before)
-        ? before
-        : pickVariant(variants, {
-          userId: user.userId,
-          name: user.name,
-          late,
-          mainElements: room.elements,
-          mainBackground: room.background,
+    if (action === 'set-auto-individual') {
+      if (room.teacherPinHash === null) {
+        callback?.({
+          ok: false,
+          error: 'Set a Room Teacher PIN before enabling automatic student boards.',
         });
-    variants.assigned[user.userId] = index;
-    return variantBackground(variants, index, template);
-  }
-
-
-  /** Students in the order worksheets are dealt out: alphabetical by name. */
-  function studentsInDealOrder(room: RoomState): ServerUserRecord[] {
-    return getBreakoutStudents(room).sort(byStudentName);
-  }
-
-
-  /** Applies group titles/assignments + allowSelfSelect + chatScope to a round. NEVER touches elements/background/messages. */
-  function applyRoundEdits(room: RoomState, round: BreakoutRoundMeta, payload: ConfigureBreakoutPayload) {
-    const cfg = room.breakoutConfig;
-    if (typeof payload.allowSelfSelect === 'boolean') cfg.allowSelfSelect = payload.allowSelfSelect;
-    if (payload.chatScope === 'board' || payload.chatScope === 'unified') cfg.chatScope = payload.chatScope;
-
-    if (round.mode === 'groups' && Array.isArray(payload.groups)) {
-      const seen = new Set<string>();
-      for (const g of payload.groups) {
-        if (!g || typeof g.id !== 'string') continue;
-        const board = room.subBoards.get(g.id);
-        if (!board || board.roundId !== round.id || board.kind !== 'group') continue; // ignore unknown ids
-        if (typeof g.title === 'string' && g.title.trim()) board.title = g.title.trim().slice(0, 40);
-        board.assignedUserIds = uniqueStrings(g.assignedUserIds).filter((uid) => !seen.has(uid));
-        board.assignedUserIds.forEach((uid) => seen.add(uid));
+        return;
       }
-    }
-  }
-
-
-  /** The worksheet a 'new-round' / 'edit-prepared' payload asks for. `undefined` means "not specified". */
-
-  /** Creates group boards `first..last` (0-based) for a round, each with its own copy of the worksheet. */
-  function createGroupBoards(
-    room: RoomState,
-    roundId: string,
-    groups: { title?: unknown; assignedUserIds?: unknown }[],
-    templateBg: any | null,
-    firstIndex = 0
-  ) {
-    const seen = new Set<string>();
-    for (const sb of getBoardsInRound(room.subBoards, roundId)) sb.assignedUserIds.forEach((uid) => seen.add(uid));
-    groups.forEach((g, offset) => {
-      const i = firstIndex + offset;
-      const id = makeGroupBoardId(roundId, i);
-      const assigned = uniqueStrings(g.assignedUserIds).filter((uid) => !seen.has(uid));
-      assigned.forEach((uid) => seen.add(uid));
-      room.subBoards.set(id, {
-        id,
-        roundId,
-        kind: 'group',
-        title: cleanRoundTitle(g.title) || `Group ${i + 1}`,
-        assignedUserIds: assigned,
-        elements: [],
-        background: cloneBackground(templateBg),
-        messages: [],
-      });
-    });
-  }
-
-
-  /**
-   * 'new-round'. When `prepared` is false this launches the round at once (moves every student), exactly as before.
-   * When true it only saves the round: no individual boards, and mode / activeRoundId / room settings are untouched.
-   */
-  function createRound(
-    room: RoomState,
-    payload: ConfigureBreakoutPayload,
-    prepared: boolean,
-    callerId: string
-  ): RoundResult {
-    const cfg = room.breakoutConfig;
-    const mode: 'individual' | 'groups' = payload.mode === 'groups' ? 'groups' : 'individual';
-    const groups = Array.isArray(payload.groups) ? payload.groups.filter(Boolean) : [];
-    if (mode === 'groups' && groups.length === 0) {
-      return { ok: false, error: 'Add at least one group before launching a group round.' };
-    }
-    if (groups.length > MAX_GROUPS_PER_ROUND) {
-      return { ok: false, error: `A round can have at most ${MAX_GROUPS_PER_ROUND} groups.` };
-    }
-
-    const roundNumber = getNextRoundNumber(cfg);
-    const roundId = makeRoundId(roundNumber);
-    const templateBg = payloadWorksheet(room, payload) ?? null;
-    room.roundTemplates[roundId] = cloneBackground(templateBg);
-    setRoundTemplateInk(room, roundId, payload, callerId);
-    setRoundVariants(room, roundId, mode, payload.variants);
-
-    const chatScope: 'unified' | 'board' = payload.chatScope === 'board' ? 'board' : 'unified';
-    const allowSelfSelect = Boolean(payload.allowSelfSelect);
-    const roundMeta: BreakoutRoundMeta = {
-      id: roundId,
-      number: roundNumber,
-      title: buildRoundTitle(roundNumber, mode, cleanRoundTitle(payload.title) ?? payload.templateLabel),
-      mode,
-      createdAt: Date.now(),
-      ...(prepared ? { prepared: true, allowSelfSelect, chatScope } : {}),
-    };
-
-    if (mode === 'individual') {
-      if (!prepared) for (const u of studentsInDealOrder(room)) provisionIndividualBoard(room, roundId, u, false);
+      cfg.autoIndividual = Boolean(safePayload.autoIndividual);
+      if (safePayload.customBackground !== undefined) {
+        cfg.autoIndividualBackground = cloneBackground(safePayload.customBackground);
+      } else if (safePayload.autoIndividualBackground !== undefined) {
+        cfg.autoIndividualBackground = cloneBackground(safePayload.autoIndividualBackground);
+      } else if (safePayload.copyWorksheet) {
+        cfg.autoIndividualBackground = cloneBackground(room.background);
+      }
+      if (typeof safePayload.templateLabel === 'string' && safePayload.templateLabel.trim()) {
+        cfg.autoIndividualTemplateLabel = safePayload.templateLabel.trim().slice(0, 40);
+      } else if (safePayload.customBackground === null && !safePayload.copyWorksheet) {
+        cfg.autoIndividualTemplateLabel = 'Blank';
+      }
+      if (safePayload.chatScope === 'board' || safePayload.chatScope === 'unified') {
+        cfg.chatScope = safePayload.chatScope;
+      }
+    } else if (action === 'return-to-main') {
+      cfg.mode = 'main';
+      cfg.autoIndividual = false;
+      delete cfg.userBoardOverrides;
+    } else if (action === 'resume' || action === 'update-current') {
+      const targetId = safePayload.roundId || safePayload.targetRoundId;
+      const round = getRoundById(cfg, targetId || cfg.activeRoundId);
+      if (!round) {
+        callback?.({ ok: false, error: 'There is no breakout round to resume or edit yet.' });
+        return;
+      }
+      const launchingNow = isPreparedRound(round);
+      if (launchingNow) {
+        if (action !== 'resume') {
+          callback?.({ ok: false, error: 'Launch this prepared round first, or edit it with Edit.' });
+          return;
+        }
+        launchPreparedRound(room, round);
+      }
+      applyRoundEdits(room, round, safePayload);
+      if (action === 'resume' || targetId) {
+        cfg.activeRoundId = round.id;
+        cfg.mode = round.mode;
+        delete cfg.userBoardOverrides;
+      }
+      if (round.mode === 'individual' && cfg.mode === 'individual' && cfg.activeRoundId === round.id) {
+        for (const u of studentsInDealOrder(room)) provisionIndividualBoard(room, round.id, u, !launchingNow);
+      }
+    } else if (action === 'edit-prepared') {
+      const result = editPreparedRound(room, safePayload, meta.userId);
+      if (!result.ok) {
+        callback?.(result);
+        return;
+      }
+      createdRoundId = result.roundId;
+    } else if (action === 'delete-prepared') {
+      const round = getRoundById(cfg, safePayload.roundId);
+      if (!round || !isPreparedRound(round)) {
+        callback?.({ ok: false, error: 'Only a prepared round that has not been launched can be deleted.' });
+        return;
+      }
+      cfg.rounds = getRounds(cfg).filter((r) => r.id !== round.id);
+      for (const sb of getBoardsInRound(room.subBoards, round.id)) room.subBoards.delete(sb.id);
+      delete room.roundTemplates[round.id];
+      delete room.roundTemplateInk[round.id];
+      delete room.roundVariants[round.id];
     } else {
-      createGroupBoards(room, roundId, groups, templateBg);
-      // A prepared round's group boards get the template ink when it's launched (launchPreparedRound).
-      if (!prepared) stampTemplateInkOnGroupBoards(room, roundId);
+      // 'new-round' (prepare: true creates it without moving anyone)
+      const result = createRound(room, safePayload, safePayload.prepare === true, meta.userId);
+      if (!result.ok) {
+        callback?.(result);
+        return;
+      }
+      createdRoundId = result.roundId;
     }
 
-    if (prepared) {
-      cfg.rounds = [...getRounds(cfg), roundMeta];
-      return { ok: true, roundId };
-    }
+    room.lastActiveAt = Date.now();
+    scheduleSaveToDisk(room, true);
+    broadcastRoomSettings(room);
+    broadcastBreakoutSync(room);
+    callback?.({
+      ok: true,
+      action,
+      activeRoundId: room.breakoutConfig.activeRoundId,
+      mode: room.breakoutConfig.mode,
+      ...(createdRoundId ? { roundId: createdRoundId } : {}),
+    });
+  });
 
-    room.breakoutConfig = {
-      mode,
-      activeRoundId: roundId,
-      rounds: [...getRounds(cfg), roundMeta],
-      allowSelfSelect,
-      ...(cfg.autoIndividual !== undefined ? { autoIndividual: cfg.autoIndividual } : {}),
-      ...(cfg.autoIndividualBackground !== undefined
-        ? { autoIndividualBackground: cfg.autoIndividualBackground }
-        : {}),
-      ...(cfg.autoIndividualTemplateLabel ? { autoIndividualTemplateLabel: cfg.autoIndividualTemplateLabel } : {}),
-      chatScope,
+  socket.on('teacher:spotlight-board', (payload, callback) => {
+    const meta = socketMeta.get(socket.id);
+    const room = meta && rooms.get(meta.roomId);
+    if (!meta || !room || !room.usersByUserId.get(meta.userId)?.isTeacher) {
+      callback?.({ ok: false, error: 'Only a verified Teacher can share a board.' });
+      return;
+    }
+    const source = typeof payload?.sourceBoardId === 'string' ? room.subBoards.get(payload.sourceBoardId) : undefined;
+    if (!source) {
+      callback?.({ ok: false, error: 'Board not found.' });
+      return;
+    }
+    const anonymize = payload.anonymize !== false;
+    const anonymousAuthorIds = new Map<string, string>();
+    const anonymousAuthorFor = (authorId: string) => {
+      let anonymousId = anonymousAuthorIds.get(authorId);
+      if (!anonymousId) {
+        anonymousId = makeAnonymousAuthorId(randomUUID());
+        anonymousAuthorIds.set(authorId, anonymousId);
+      }
+      return anonymousId;
     };
-    return { ok: true, roundId };
-  }
-
-
-  /** Turns a prepared round into a launched one and applies its stored settings. The caller then activates it. */
-  function launchPreparedRound(room: RoomState, round: BreakoutRoundMeta) {
-    const cfg = room.breakoutConfig;
-    const launched: BreakoutRoundMeta = { ...round, launchedAt: Date.now() };
-    delete launched.prepared;
-    delete launched.allowSelfSelect;
-    delete launched.chatScope;
-    cfg.rounds = getRounds(cfg).map((r) => (r.id === round.id ? launched : r));
-    // Individual boards get the template ink as they're made; group boards already exist, so they get it now.
-    if (round.mode === 'groups') stampTemplateInkOnGroupBoards(room, round.id);
-    if (typeof round.allowSelfSelect === 'boolean') cfg.allowSelfSelect = round.allowSelfSelect;
-    if (round.chatScope === 'board' || round.chatScope === 'unified') cfg.chatScope = round.chatScope;
-  }
-
-
-  /** 'edit-prepared': title, worksheet, stored settings, and (group rounds) group titles, members and count. */
-  function editPreparedRound(room: RoomState, payload: ConfigureBreakoutPayload, callerId: string): RoundResult {
-    const cfg = room.breakoutConfig;
-    const round = getRoundById(cfg, payload.roundId);
-    if (!round || !isPreparedRound(round)) {
-      return { ok: false, error: 'Only a prepared round that has not been launched can be edited here.' };
+    room.elements = source.elements
+      .filter((element) => !anonymize || element.stamp !== 'username')
+      .map((element) => ({
+        ...structuredClone(element),
+        id: randomUUID(),
+        boardId: 'main',
+        ...(anonymize ? { userId: anonymousAuthorFor(element.userId), userName: 'Class Example' } : {}),
+      }));
+    if (payload.copyBackground === true) {
+      room.background = cloneBackground(source.background);
+      io.to(room.id).emit('background-sync', { boardId: 'main', background: room.background });
     }
-    if (payload.mode && payload.mode !== round.mode) {
-      return { ok: false, error: "A prepared round's mode can't change. Delete it and make a new one." };
+    // Invalidate old Main undo histories before distributing the replacement.
+    io.to(room.id).emit('board-replaced', { boardId: 'main' });
+    noteChange(room, 'main', { full: true });
+    io.to(boardAudience(room.id, 'main')).emit('state-sync', { boardId: 'main', elements: room.elements });
+    if (payload.returnToMain === true) {
+      room.breakoutConfig.mode = 'main';
+      room.breakoutConfig.autoIndividual = false;
+      delete room.breakoutConfig.userBoardOverrides;
+      broadcastRoomSettings(room);
+      broadcastBreakoutSync(room);
     }
-    const next: BreakoutRoundMeta = { ...round };
-    const title = cleanRoundTitle(payload.title);
-    if (title !== undefined || typeof payload.templateLabel === 'string') {
-      next.title = buildRoundTitle(round.number, round.mode, title ?? payload.templateLabel);
-    }
-    if (typeof payload.allowSelfSelect === 'boolean') next.allowSelfSelect = payload.allowSelfSelect;
-    if (payload.chatScope === 'board' || payload.chatScope === 'unified') next.chatScope = payload.chatScope;
+    room.lastActiveAt = Date.now();
+    scheduleSaveToDisk(room, true);
+    callback?.({ ok: true });
+  });
 
-    const worksheet = payloadWorksheet(room, payload);
-    if (worksheet !== undefined) {
-      room.roundTemplates[round.id] = cloneBackground(worksheet);
-      setRoundTemplateInk(room, round.id, payload, callerId);
-      for (const sb of getBoardsInRound(room.subBoards, round.id)) {
-        sb.background = cloneBackground(room.roundTemplates[round.id]);
-        io.to(room.id).emit('background-sync', { boardId: sb.id, background: sb.background });
+  socket.on('teacher:view-board', (payload: { boardId?: string } | undefined) => {
+    const meta = socketMeta.get(socket.id);
+    if (!meta) return;
+    meta.viewBoardId = typeof payload?.boardId === 'string' ? payload.boardId : 'main';
+    const room = rooms.get(meta.roomId);
+    if (room) placeSocket(socket.id, room, true);
+  });
+
+  socket.on('breakout:join-board', ({ targetBoardId, targetUserId }) => {
+    const meta = socketMeta.get(socket.id);
+    if (!meta || !targetBoardId) return;
+    const room = rooms.get(meta.roomId);
+    if (!room) return;
+
+    const callerRecord = room.usersByUserId.get(meta.userId);
+    const userToMove = targetUserId || meta.userId;
+
+    // Only allow moving another user if caller is teacher; only allow self-move if allowSelfSelect is true or caller is teacher
+    if (userToMove !== meta.userId && !callerRecord?.isTeacher) return;
+    if (userToMove === meta.userId && !callerRecord?.isTeacher && !room.breakoutConfig.allowSelfSelect) {
+      return;
+    }
+
+    const activeRound = getActiveRound(room.breakoutConfig);
+    const targetBoard = room.subBoards.get(targetBoardId);
+    // Only group boards in the ACTIVE round can be joined. Archived rounds are never edited here.
+    if (!activeRound || !targetBoard || targetBoard.roundId !== activeRound.id || targetBoard.kind !== 'group') {
+      return;
+    }
+
+    for (const sb of getBoardsInRound(room.subBoards, activeRound.id)) {
+      if (sb.kind === 'group') {
+        sb.assignedUserIds = sb.assignedUserIds.filter((id) => id !== userToMove);
       }
     }
-    if (payload.variants !== undefined) {
-      // The form doesn't edit per-student picks: keep the ones already on the round (e.g. from a lesson pack).
-      const keep = room.roundVariants[round.id]?.overrides;
-      const raw: Record<string, unknown> | null =
-        payload.variants && typeof payload.variants === 'object' ? (payload.variants as unknown as Record<string, unknown>) : null;
-      setRoundVariants(room, round.id, round.mode, raw && !('overrides' in raw) && keep ? { ...raw, overrides: keep } : raw);
+    targetBoard.assignedUserIds.push(userToMove);
+
+    room.lastActiveAt = Date.now();
+    scheduleSaveToDisk(room);
+    broadcastBreakoutSync(room);
+  });
+
+  socket.on('teacher:set-background', (payload, callback) => {
+    const meta = socketMeta.get(socket.id);
+    if (!meta) {
+      callback?.({ ok: false, error: 'Not in a room.' });
+      return;
+    }
+    const room = rooms.get(meta.roomId);
+    if (!room) {
+      callback?.({ ok: false, error: 'Room not found.' });
+      return;
     }
 
-    if (round.mode === 'groups' && Array.isArray(payload.groups)) {
-      const wanted = payload.groups.filter(Boolean).slice(0, MAX_GROUPS_PER_ROUND);
-      if (wanted.length === 0) return { ok: false, error: 'A group round needs at least one group.' };
-      const existing = getBoardsInRound(room.subBoards, round.id).filter((sb) => sb.kind === 'group');
-      // Keep boards 1..min(old,new) with their ink; delete the rest; create new ones after them.
-      existing.slice(wanted.length).forEach((sb) => room.subBoards.delete(sb.id));
-      const kept = existing.slice(0, wanted.length);
-      const seen = new Set<string>();
-      kept.forEach((board, i) => {
-        const g = wanted[i];
-        board.title = cleanRoundTitle(g.title) || board.title;
-        board.assignedUserIds = uniqueStrings(g.assignedUserIds).filter((uid) => !seen.has(uid));
-        board.assignedUserIds.forEach((uid) => seen.add(uid));
-      });
-      if (wanted.length > kept.length) {
-        createGroupBoards(room, round.id, wanted.slice(kept.length), getRoundTemplate(room, round.id), kept.length);
+    const callerRecord = room.usersByUserId.get(meta.userId);
+    if (!callerRecord?.isTeacher) {
+      callback?.({ ok: false, error: 'Only a verified Teacher can change the background worksheet.' });
+      return;
+    }
+
+    const boardId = payload?.boardId || 'main';
+    const bgData = internBackground(store, payload && 'background' in payload ? payload.background : payload);
+
+    if (boardId === 'main') {
+      room.background = bgData || null;
+      io.to(room.id).emit('background-sync', { boardId: 'main', background: room.background });
+    } else {
+      const sb = room.subBoards.get(boardId);
+      if (sb) {
+        sb.background = bgData || null;
+        io.to(room.id).emit('background-sync', { boardId, background: sb.background });
       }
     }
 
-    cfg.rounds = getRounds(cfg).map((r) => (r.id === round.id ? next : r));
-    return { ok: true, roundId: round.id };
-  }
+    room.lastActiveAt = Date.now();
+    scheduleSaveToDisk(room, true);
+    callback?.({ ok: true });
+  });
 
-
-  // If the room is in 'individual' mode and a student joins, make sure they have a board in the ACTIVE round.
-  function ensureIndividualBoardForUser(room: RoomState, userId: string, userName: string, isTeacher: boolean) {
-    if (room.breakoutConfig.mode !== 'individual' || isTeacher) return false;
-    const round = getActiveRound(room.breakoutConfig);
-    if (!round || round.mode !== 'individual') return false;
-    return provisionIndividualBoard(room, round.id, { userId, name: userName });
-  }
-
-
-  /**
-   * When a room is in 'main' mode with autoIndividual armed and a student joins,
-   * immediately open a new Individual round using autoIndividualBackground so the
-   * student enters straight onto their own board without flashing Main.
-   */
-  function startAutoIndividualRound(room: RoomState): boolean {
-    const cfg = room.breakoutConfig;
-    if (!cfg.autoIndividual || cfg.mode !== 'main') return false;
-    const roundNumber = getNextRoundNumber(cfg);
-    const roundId = makeRoundId(roundNumber);
-    room.roundTemplates[roundId] = cloneBackground(cfg.autoIndividualBackground ?? null);
-    delete room.roundTemplateInk[roundId];
-    delete room.roundVariants[roundId];
-    const roundMeta: BreakoutRoundMeta = {
-      id: roundId,
-      number: roundNumber,
-      title: buildRoundTitle(roundNumber, 'individual', cfg.autoIndividualTemplateLabel),
-      mode: 'individual',
-      createdAt: Date.now(),
-    };
-    cfg.mode = 'individual';
-    cfg.activeRoundId = roundId;
-    cfg.rounds = [...getRounds(cfg), roundMeta];
-    for (const u of getBreakoutStudents(room)) {
-      provisionIndividualBoard(room, roundId, u);
+  socket.on('teacher:set-background-multi', (payload, callback) => {
+    const meta = socketMeta.get(socket.id);
+    if (!meta) {
+      callback?.({ ok: false, error: 'Not in a room.' });
+      return;
     }
-    return true;
-  }
-  return { setRoundVariants, mainTemplateInk, setRoundTemplateInk, templateInkForBoard, stampTemplateInkOnGroupBoards, teacherIdsOf, getBreakoutStudents, getRoundTemplate, provisionIndividualBoard, variantWorksheetFor, studentsInDealOrder, applyRoundEdits, createGroupBoards, createRound, launchPreparedRound, editPreparedRound, ensureIndividualBoardForUser, startAutoIndividualRound };
+    const room = rooms.get(meta.roomId);
+    if (!room) {
+      callback?.({ ok: false, error: 'Room not found.' });
+      return;
+    }
+
+    const callerRecord = room.usersByUserId.get(meta.userId);
+    if (!callerRecord?.isTeacher) {
+      callback?.({ ok: false, error: 'Only a verified Teacher can change the background worksheet.' });
+      return;
+    }
+
+    if (!payload || !Array.isArray(payload.boardIds)) {
+      callback?.({ ok: false, error: 'boardIds must be an array.' });
+      return;
+    }
+
+    const ids = uniqueStrings(payload.boardIds).slice(0, 500);
+    const interned = internBackground(store, payload.background ?? null) || null;
+    const copyOf = () => (interned ? JSON.parse(JSON.stringify(interned)) : null);
+    const skipped: string[] = [];
+    let updated = 0;
+
+    for (const boardId of ids) {
+      if (boardId === 'main') {
+        room.background = copyOf();
+        io.to(room.id).emit('background-sync', { boardId: 'main', background: room.background });
+        updated++;
+        continue;
+      }
+      const sb = room.subBoards.get(boardId);
+      if (!sb) {
+        skipped.push(boardId);
+        continue;
+      }
+      sb.background = copyOf();
+      io.to(room.id).emit('background-sync', { boardId, background: sb.background });
+      updated++;
+    }
+
+    const templateRound = payload.roundTemplateFor;
+    if (typeof templateRound === 'string' && getRounds(room.breakoutConfig).some((r) => r.id === templateRound)) {
+      room.roundTemplates[templateRound] = cloneBackground(interned);
+      io.to(teacherChannel(room.id)).emit('round-templates-sync', teacherTemplatesPayload(room));
+    }
+
+    room.lastActiveAt = Date.now();
+    scheduleSaveToDisk(room, true);
+    callback?.({ ok: true, updated, skipped });
+  });
+
+  socket.on('teacher:set-round-variants', (payload, callback) => {
+    const meta = socketMeta.get(socket.id);
+    const room = meta && rooms.get(meta.roomId);
+    if (!meta || !room || !room.usersByUserId.get(meta.userId)?.isTeacher) {
+      callback?.({ ok: false, error: 'Only a verified Teacher can change worksheet variants.' });
+      return;
+    }
+    const round = getRoundById(room.breakoutConfig, payload?.roundId);
+    if (!round || round.mode !== 'individual') {
+      callback?.({ ok: false, error: 'Worksheet variants are for individual rounds only.' });
+      return;
+    }
+    setRoundVariants(room, round.id, round.mode, payload?.variants ?? null);
+    room.lastActiveAt = Date.now();
+    scheduleSaveToDisk(room, true);
+    io.to(teacherChannel(room.id)).emit('round-templates-sync', teacherTemplatesPayload(room));
+    callback?.({ ok: true });
+  });
+
+  socket.on('teacher:update-background', ({ boardId = 'main', patch }) => {
+    const meta = socketMeta.get(socket.id);
+    if (!meta || !patch) return;
+    const room = rooms.get(meta.roomId);
+    if (!room) return;
+
+    const callerRecord = room.usersByUserId.get(meta.userId);
+    if (!callerRecord?.isTeacher) return;
+
+    if (boardId === 'main') {
+      if (!room.background) return;
+      room.background = internBackground(store, { ...room.background, ...patch });
+      io.to(room.id).emit('background-sync', { boardId: 'main', background: room.background });
+    } else {
+      const sb = room.subBoards.get(boardId);
+      if (!sb || !sb.background) return;
+      sb.background = internBackground(store, { ...sb.background, ...patch });
+      io.to(room.id).emit('background-sync', { boardId, background: sb.background });
+    }
+
+    room.lastActiveAt = Date.now();
+    scheduleSaveToDisk(room);
+  });
 }

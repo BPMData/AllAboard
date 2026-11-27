@@ -4,11 +4,27 @@ import { applyDigest, type BoardDigest } from '../lib/boardDigest';
 import { POINT_FLUSH_MS } from '../lib/drawThrottle';
 import { applyElementGroups, type ElementGroup } from '../lib/elementGroups';
 import { STORAGE_KEYS } from '../lib/identity';
-import { appendPointBatches, createPointQueue, frameScheduler, timeoutScheduler, type PointBatch, type PointQueue } from '../lib/pointBatcher';
+import {
+  appendPointBatches,
+  createPointQueue,
+  frameScheduler,
+  timeoutScheduler,
+  type PointBatch,
+  type PointQueue,
+} from '../lib/pointBatcher';
 import { recordRoomHistory } from '../lib/roomHistory';
 import type { RoundVariants } from '../lib/roundVariants';
 import type { ClientToServerEvents, ServerToClientEvents } from '../lib/socketContract';
-import type { BreakoutConfig, CanvasElement, ChatMessage, RemoteCursor, RoomBackground, RoomSettings, SubBoardData, User } from '../types';
+import type {
+  BreakoutConfig,
+  CanvasElement,
+  ChatMessage,
+  RemoteCursor,
+  RoomBackground,
+  RoomSettings,
+  SubBoardData,
+  User,
+} from '../types';
 
 type AppSocket = Socket<ServerToClientEvents, ClientToServerEvents>;
 type Setter<T> = React.Dispatch<React.SetStateAction<T>>;
@@ -75,7 +91,7 @@ export function useRoomSocket({
   setKickNotice,
   setIsJoined,
   setPendingPurgePrompt,
-  setRemoteCursors
+  setRemoteCursors,
 }: RoomSocketOptions) {
   const [socket, setSocket] = useState<AppSocket | null>(null);
   const outgoingInkRef = useRef<PointQueue | null>(null);
@@ -174,7 +190,9 @@ export function useRoomSocket({
         isNameLocked: initNameLocked,
       }) => {
         setRoundTemplates(initRoundTemplates && typeof initRoundTemplates === 'object' ? initRoundTemplates : {});
-        setRoundTemplateInk(initRoundTemplateInk && typeof initRoundTemplateInk === 'object' ? initRoundTemplateInk : {});
+        setRoundTemplateInk(
+          initRoundTemplateInk && typeof initRoundTemplateInk === 'object' ? initRoundTemplateInk : {}
+        );
         setRoundVariants(initRoundVariants && typeof initRoundVariants === 'object' ? initRoundVariants : {});
         const nextSeen = new Set<string>();
         if (Array.isArray(initMsgs)) {
@@ -329,24 +347,17 @@ export function useRoomSocket({
         isNameLocked?: boolean;
       }) => {
         if (!renamedUserId || !newName) return;
-        setMessages((prev) =>
-          prev.map((m) => (m.userId === renamedUserId ? { ...m, userName: newName } : m))
-        );
-        setElements((prev) =>
-          prev.map((el) => (el.userId === renamedUserId ? { ...el, userName: newName } : el))
-        );
+        setMessages((prev) => prev.map((m) => (m.userId === renamedUserId ? { ...m, userName: newName } : m)));
+        setElements((prev) => prev.map((el) => (el.userId === renamedUserId ? { ...el, userName: newName } : el)));
         setSubBoards((prev) => {
           const next: Record<string, SubBoardData> = {};
           for (const [k, sb] of Object.entries(prev) as Array<[string, SubBoardData]>) {
             next[k] = {
               ...sb,
-              title: sb.kind === 'individual' && sb.assignedUserIds[0] === renamedUserId ? `${newName}'s Board` : sb.title,
-              messages: sb.messages.map((m) =>
-                m.userId === renamedUserId ? { ...m, userName: newName } : m
-              ),
-              elements: sb.elements.map((el) =>
-                el.userId === renamedUserId ? { ...el, userName: newName } : el
-              ),
+              title:
+                sb.kind === 'individual' && sb.assignedUserIds[0] === renamedUserId ? `${newName}'s Board` : sb.title,
+              messages: sb.messages.map((m) => (m.userId === renamedUserId ? { ...m, userName: newName } : m)),
+              elements: sb.elements.map((el) => (el.userId === renamedUserId ? { ...el, userName: newName } : el)),
             };
           }
           return next;
@@ -480,10 +491,7 @@ export function useRoomSocket({
       }
     );
 
-    const applyBoardElementsTransform = (
-      boardId: string,
-      transform: (list: CanvasElement[]) => CanvasElement[]
-    ) => {
+    const applyBoardElementsTransform = (boardId: string, transform: (list: CanvasElement[]) => CanvasElement[]) => {
       if (boardId === 'main') {
         setElements(transform);
       } else {
@@ -562,14 +570,11 @@ export function useRoomSocket({
       }
     );
 
-    newSocket.on(
-      'elements-batch-removed',
-      ({ boardId = 'main', ids }: { boardId?: string; ids: string[] }) => {
-        if (!Array.isArray(ids) || ids.length === 0) return;
-        const idSet = new Set(ids);
-        applyBoardElementsTransform(boardId, (list) => list.filter((el) => !idSet.has(el.id)));
-      }
-    );
+    newSocket.on('elements-batch-removed', ({ boardId = 'main', ids }: { boardId?: string; ids: string[] }) => {
+      if (!Array.isArray(ids) || ids.length === 0) return;
+      const idSet = new Set(ids);
+      applyBoardElementsTransform(boardId, (list) => list.filter((el) => !idSet.has(el.id)));
+    });
 
     newSocket.on(
       'elements-replaced',
@@ -603,7 +608,11 @@ export function useRoomSocket({
         boardId = 'main',
         elements: syncedElements,
         messages: syncedMessages,
-      }: { boardId?: string; elements: CanvasElement[]; messages?: ChatMessage[] }) => {
+      }: {
+        boardId?: string;
+        elements: CanvasElement[];
+        messages?: ChatMessage[];
+      }) => {
         if (!Array.isArray(syncedElements)) return;
         if (boardId === 'main') {
           setElements(syncedElements);
@@ -690,10 +699,17 @@ export function useRoomSocket({
   }, [socket, isTeacher, activeBoardId]);
 
   /** Emit a drawing event after any of our queued ink, so the server sees our actions in order. */
-  const emitDrawing = useCallback(<E extends keyof ClientToServerEvents,>(target: AppSocket, event: E, ...args: Parameters<ClientToServerEvents[E]>) => {
-    outgoingInkRef.current?.flush();
-    target.emit(event, ...args);
-  }, []);
+  const emitDrawing = useCallback(
+    <E extends keyof ClientToServerEvents>(
+      target: AppSocket,
+      event: E,
+      ...args: Parameters<ClientToServerEvents[E]>
+    ) => {
+      outgoingInkRef.current?.flush();
+      target.emit(event, ...args);
+    },
+    []
+  );
 
   const enqueueOutgoingPoints = useCallback((boardId: string, id: string, points: number[]) => {
     outgoingInkRef.current?.add(boardId, id, points);

@@ -3,15 +3,29 @@ import { BackupMirror, DirBackend, GcsBackend, type BackupBackend } from '../bac
 import { RoomStore, internBackground } from '../roomStore.ts';
 import { isHashedPin } from '../socketGuards.ts';
 import { migrateLegacyBreakout, normalizeBreakoutConfig } from '../src/lib/breakoutRounds.ts';
-import { IDLE_UNLOAD_MS, ROOM_TTL_MS, deserializeSubBoards, getRosterPayload, isRoomEmpty, normalizeRoomId, serializeSubBoards, storedPinHash, storedRoundVariants, storedTemplateInk } from './roomSerialization.ts';
+import {
+  IDLE_UNLOAD_MS,
+  ROOM_TTL_MS,
+  deserializeSubBoards,
+  getRosterPayload,
+  isRoomEmpty,
+  normalizeRoomId,
+  serializeSubBoards,
+  storedPinHash,
+  storedRoundVariants,
+  storedTemplateInk,
+} from './roomSerialization.ts';
 import type { RoomState, SerializedRoom, StartServerOptions } from './types.ts';
 
+/**
+ * Production backup bucket. It lives in code, not in an env var or volume mount, because AI Studio's
+ * Deploy button replaces the Cloud Run service config (env vars, volumes) on every publish.
+ */
 const DEFAULT_BACKUP_BUCKET = 'allaboard-data';
 
 export function isProductionRuntime(): boolean {
   return (
-    process.env.NODE_ENV === 'production' ||
-    (process.env.NODE_ENV !== 'development' && Boolean(process.env.K_SERVICE))
+    process.env.NODE_ENV === 'production' || (process.env.NODE_ENV !== 'development' && Boolean(process.env.K_SERVICE))
   );
 }
 
@@ -51,10 +65,20 @@ export async function openBackupMirror(store: RoomStore, options: StartServerOpt
   return null;
 }
 
-
-export function createRoomPersistence({ store, backup, rooms, legacyStoreFile }: { store: RoomStore; backup: BackupMirror | null; rooms: Map<string, RoomState>; legacyStoreFile: string }) {
+export function createRoomPersistence({
+  store,
+  backup,
+  rooms,
+  legacyStoreFile,
+}: {
+  store: RoomStore;
+  backup: BackupMirror | null;
+  rooms: Map<string, RoomState>;
+  legacyStoreFile: string;
+}) {
   const dirtyRooms = new Set<string>();
   let saveTimeout: NodeJS.Timeout | null = null;
+  /** SerializedRoom → in-memory RoomState. Returns null if missing/expired. */
   function hydrateRoom(item: SerializedRoom, now = Date.now()): RoomState | null {
     if (!item || !item.id) return null;
     const lastActive = item.lastActiveAt || now;
@@ -126,6 +150,7 @@ export function createRoomPersistence({ store, backup, rooms, legacyStoreFile }:
     return false;
   }
 
+  /** Safety net: converts any remaining base64 worksheet pages in a room to asset URLs. */
   function internRoomAssets(room: RoomState) {
     room.background = internBackground(store, room.background);
     for (const sb of room.subBoards.values()) {
@@ -145,6 +170,7 @@ export function createRoomPersistence({ store, backup, rooms, legacyStoreFile }:
     }
   }
 
+  /** Imports an old rooms-store.json (if present) into SQLite, then renames it. */
   function migrateLegacyJsonStore() {
     if (!fs.existsSync(legacyStoreFile)) return;
     try {
@@ -166,6 +192,7 @@ export function createRoomPersistence({ store, backup, rooms, legacyStoreFile }:
     }
   }
 
+  /** Cold start: copy rooms from the backup into the local SQLite store. */
   async function restoreFromBackup() {
     if (!backup) return;
     try {
@@ -177,7 +204,8 @@ export function createRoomPersistence({ store, backup, rooms, legacyStoreFile }:
           continue;
         }
         // A plain-text PIN in the bucket copy: rewrite it there too (hydrateRoom already hashed it).
-        const legacyPin = typeof state?.teacherPin === 'string' && Boolean(state.teacherPin) && !isHashedPin(state.teacherPin);
+        const legacyPin =
+          typeof state?.teacherPin === 'string' && Boolean(state.teacherPin) && !isHashedPin(state.teacherPin);
         const local = store.loadRoom<SerializedRoom>(roomId);
         if (local && local.lastActiveAt >= room.lastActiveAt) {
           if (legacyPin) backupRoom(roomId);
@@ -193,6 +221,7 @@ export function createRoomPersistence({ store, backup, rooms, legacyStoreFile }:
     }
   }
 
+  /** Queue a room for the backup. Reads the latest state when the write happens; null deletes it. */
   function backupRoom(roomId: string) {
     backup?.scheduleRoom(roomId, () => {
       const live = rooms.get(roomId);
@@ -201,6 +230,7 @@ export function createRoomPersistence({ store, backup, rooms, legacyStoreFile }:
     });
   }
 
+  /** Writes ONLY rooms that changed since the last flush. Synchronous (node:sqlite is sync). */
   function flushRoomsToDisk() {
     if (saveTimeout) {
       clearTimeout(saveTimeout);
@@ -226,6 +256,7 @@ export function createRoomPersistence({ store, backup, rooms, legacyStoreFile }:
     }
   }
 
+  /** Kept for the test suite / callers that await it. */
   async function flushRoomsToDiskAsync(): Promise<void> {
     flushRoomsToDisk();
   }
@@ -240,6 +271,7 @@ export function createRoomPersistence({ store, backup, rooms, legacyStoreFile }:
     saveTimeout = setTimeout(flushRoomsToDisk, 2000);
   }
 
+  /** Every 5 min: flush, unload idle rooms from RAM, expire old rooms, GC unreferenced assets. */
   function runHousekeeping() {
     flushRoomsToDisk();
     const now = Date.now();
@@ -255,6 +287,7 @@ export function createRoomPersistence({ store, backup, rooms, legacyStoreFile }:
     }
   }
 
+  /** In-memory room, else hydrate it from SQLite (and cache it). Never creates a new room. */
   function findRoom(roomId: string): RoomState | null {
     const inMemory = rooms.get(roomId);
     if (inMemory) return inMemory;
@@ -280,7 +313,13 @@ export function createRoomPersistence({ store, backup, rooms, legacyStoreFile }:
         elements: [],
         background: null,
         subBoards: new Map(),
-        breakoutConfig: { mode: 'main', activeRoundId: undefined, rounds: [], allowSelfSelect: false, chatScope: 'unified' },
+        breakoutConfig: {
+          mode: 'main',
+          activeRoundId: undefined,
+          rounds: [],
+          allowSelfSelect: false,
+          chatScope: 'unified',
+        },
         roundTemplates: {},
         roundTemplateInk: {},
         roundVariants: {},
@@ -320,10 +359,7 @@ export function createRoomPersistence({ store, backup, rooms, legacyStoreFile }:
     }
     const activeUserCount = getRosterPayload(room).length;
     const hasContent =
-      room.elements.length > 0 ||
-      room.messages.length > 0 ||
-      room.background !== null ||
-      room.subBoards.size > 0;
+      room.elements.length > 0 || room.messages.length > 0 || room.background !== null || room.subBoards.size > 0;
     const hasTeacherPin = room.teacherPinHash !== null;
     return {
       roomId: normalizedId,
@@ -333,6 +369,23 @@ export function createRoomPersistence({ store, backup, rooms, legacyStoreFile }:
       hasContent,
     };
   }
-  function cancelPendingSave() { if (saveTimeout) { clearTimeout(saveTimeout); saveTimeout = null; } }
-  return { internRoomAssets, migrateLegacyJsonStore, restoreFromBackup, runHousekeeping, findRoom, getOrCreateRoom, getRoomAvailability, scheduleSaveToDisk, flushRoomsToDisk, flushRoomsToDiskAsync, cancelPendingSave };
+  function cancelPendingSave() {
+    if (saveTimeout) {
+      clearTimeout(saveTimeout);
+      saveTimeout = null;
+    }
+  }
+  return {
+    internRoomAssets,
+    migrateLegacyJsonStore,
+    restoreFromBackup,
+    runHousekeeping,
+    findRoom,
+    getOrCreateRoom,
+    getRoomAvailability,
+    scheduleSaveToDisk,
+    flushRoomsToDisk,
+    flushRoomsToDiskAsync,
+    cancelPendingSave,
+  };
 }

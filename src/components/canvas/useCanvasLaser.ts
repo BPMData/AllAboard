@@ -2,7 +2,9 @@ import type { MutableRefObject } from 'react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { CanvasProps } from '../Canvas';
 
-type Options = Pick<CanvasProps, 'laserSocket' | 'activeBoardId' | 'isTeacher' | 'userId'> & { activePointerIdRef: MutableRefObject<number | null> };
+type Options = Pick<CanvasProps, 'laserSocket' | 'activeBoardId' | 'isTeacher' | 'userId'> & {
+  activePointerIdRef: MutableRefObject<number | null>;
+};
 
 export function useCanvasLaser({ laserSocket, activeBoardId, isTeacher, userId, activePointerIdRef }: Options) {
   type LaserPoint = { x: number; y: number; userId: string; strokeId: string; time: number; id: number };
@@ -26,7 +28,9 @@ export function useCanvasLaser({ laserSocket, activeBoardId, isTeacher, userId, 
       if (point.boardId === activeBoardId) addLaserPoint(point);
     };
     laserSocket.on('laser-pulse', receive);
-    return () => { laserSocket.off('laser-pulse', receive); };
+    return () => {
+      laserSocket.off('laser-pulse', receive);
+    };
   }, [laserSocket, activeBoardId, addLaserPoint]);
   useEffect(() => {
     if (!laserPoints.length) return;
@@ -49,7 +53,6 @@ export function useCanvasLaser({ laserSocket, activeBoardId, isTeacher, userId, 
     addLaserPoint({ ...point, userId });
     laserSocket?.emit('laser-pulse', point);
   };
-
 
   return { laserPoints, laserNow, laserStrokeRef, sendLaserPoint };
 }

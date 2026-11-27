@@ -7,15 +7,20 @@ import { fileURLToPath } from 'url';
 import { createServer as createViteServer } from 'vite';
 import { RoomStore } from './roomStore.ts';
 import { createBoardChannels } from './server/boardChannels.ts';
-import { createBreakoutHelpers } from './server/breakoutHandlers.ts';
+import { createBreakoutHelpers } from './server/breakoutHelpers.ts';
 import { registerHttpRoutes } from './server/httpRoutes.ts';
-import { createLessonPackHelpers } from './server/lessonPackHandlers.ts';
-import { registerBreakoutHandlers } from './server/registerBreakoutHandlers.ts';
+import { createLessonPackHelpers } from './server/lessonPackHelpers.ts';
+import { registerBreakoutHandlers } from './server/breakoutHandlers.ts';
 import { registerDrawingHandlers } from './server/drawingHandlers.ts';
-import { registerLessonHandlers } from './server/registerLessonHandlers.ts';
+import { registerLessonPackHandlers } from './server/lessonPackHandlers.ts';
 import { registerModerationHandlers } from './server/moderationHandlers.ts';
 import { createRoomPersistence,isProductionRuntime,openBackupMirror } from './server/roomPersistence.ts';
-import { HOUSEKEEPING_INTERVAL_MS,PIN_FAILURES_PER_WINDOW,PIN_FAILURE_WINDOW_MS,createRoomSerialization } from './server/roomSerialization.ts';
+import {
+  HOUSEKEEPING_INTERVAL_MS,
+  PIN_FAILURES_PER_WINDOW,
+  PIN_FAILURE_WINDOW_MS,
+  createRoomSerialization,
+} from './server/roomSerialization.ts';
 import type { RoomState,StartServerOptions } from './server/types.ts';
 import {
 MAX_BOARD_ELEMENTS,
@@ -55,13 +60,26 @@ export async function startServer(options: StartServerOptions = {}) {
    * `channel` = the board channel this socket gets live drawing traffic from (see placeSocket).
    * `viewBoardId` = the board a teacher says they're looking at (`teacher:view-board`); ignored for students.
    */
+  /**
+   * `channel` = the board channel this socket gets live drawing traffic from (see placeSocket).
+   * `viewBoardId` = the board a teacher says they're looking at (`teacher:view-board`); ignored for students.
+   */
   const socketMeta: Map<
     string,
     { roomId: string; userId: string; channel?: string; viewBoardId?: string; inTeachers?: boolean }
   > = new Map();
 
   const persistence = createRoomPersistence({ store, backup, rooms, legacyStoreFile });
-  const { migrateLegacyJsonStore, restoreFromBackup, runHousekeeping, getRoomAvailability, scheduleSaveToDisk, flushRoomsToDisk, flushRoomsToDiskAsync, cancelPendingSave } = persistence;
+  const {
+    migrateLegacyJsonStore,
+    restoreFromBackup,
+    runHousekeeping,
+    getRoomAvailability,
+    scheduleSaveToDisk,
+    flushRoomsToDisk,
+    flushRoomsToDiskAsync,
+    cancelPendingSave,
+  } = persistence;
   registerHttpRoutes(app, { store, backup, options, getRoomAvailability });
 
   migrateLegacyJsonStore();
@@ -147,7 +165,19 @@ export async function startServer(options: StartServerOptions = {}) {
 
   /** Wrong Teacher PINs per room (across all sockets: a school shares one IP, and sockets are free to open). */
   const pinFailures = createFailureLimiter(PIN_FAILURES_PER_WINDOW, PIN_FAILURE_WINDOW_MS);
-  const ctx = { io, store, backup, rooms, socketMeta, pinFailures, ...serialization, ...persistence, ...channels, ...breakout, ...lesson };
+  const ctx = {
+    io,
+    store,
+    backup,
+    rooms,
+    socketMeta,
+    pinFailures,
+    ...serialization,
+    ...persistence,
+    ...channels,
+    ...breakout,
+    ...lesson,
+  };
   let rateLimitedEvents = 0;
 
   io.on('connection', (socket) => {
@@ -187,7 +217,7 @@ export async function startServer(options: StartServerOptions = {}) {
     }
     registerModerationHandlers(socket, ctx);
     registerBreakoutHandlers(socket, ctx);
-    registerLessonHandlers(socket, ctx);
+    registerLessonPackHandlers(socket, ctx);
     registerDrawingHandlers(socket, ctx, boardFull);
   });
 

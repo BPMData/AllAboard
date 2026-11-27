@@ -1,18 +1,7 @@
 import { Circle, Group, Text as KonvaText, Line, Rect } from 'react-konva';
-import {
-  NOTE_FONT,
-  NOTE_LH,
-  getNoteFontSize
-} from '../../lib/inkCore';
-import {
-  STAMP_OPTIONS,
-  getTeacherStampAppearance,
-  getTeacherStampDimensions
-} from '../../lib/stamps';
-import {
-  CanvasElement
-} from '../../types';
-
+import { NOTE_FONT, NOTE_LH, getNoteFontSize } from '../../lib/inkCore';
+import { STAMP_OPTIONS, getTeacherStampAppearance, getTeacherStampDimensions } from '../../lib/stamps';
+import { CanvasElement } from '../../types';
 
 import { HollowStrokeShape, SmoothStrokeShape, SprayStrokeLine } from './KonvaLayers';
 
@@ -22,7 +11,12 @@ interface RendererOptions {
   selectedIds: string[];
   draggingNotePreview: { id: string; dx: number; dy: number } | null;
 }
-export function createCanvasElementRenderer({ editingNote, selectionDragOffset, selectedIds, draggingNotePreview }: RendererOptions) {
+export function createCanvasElementRenderer({
+  editingNote,
+  selectionDragOffset,
+  selectedIds,
+  draggingNotePreview,
+}: RendererOptions) {
   const renderElement = (el: CanvasElement, goneNoteIds?: Set<string>) => {
     if (el.tool === 'text') {
       // Hide note if an eraser stroke touched it (`notesGone`) or if it is currently open in the inline note editor
@@ -180,15 +174,7 @@ export function createCanvasElementRenderer({ editingNote, selectionDragOffset, 
         const radius = Math.max(radiusX, radiusY);
         const centerX = (el.x || 0) + (el.width || 0) / 2;
         const centerY = (el.y || 0) + (el.height || 0) / 2;
-        return (
-          <Circle
-            x={centerX}
-            y={centerY}
-            radius={radius}
-            stroke={el.color}
-            strokeWidth={el.strokeWidth}
-          />
-        );
+        return <Circle x={centerX} y={centerY} radius={radius} stroke={el.color} strokeWidth={el.strokeWidth} />;
       }
 
       if (el.tool === 'text') {
@@ -226,14 +212,7 @@ export function createCanvasElementRenderer({ editingNote, selectionDragOffset, 
       }
 
       if (el.tool === 'highlighter') {
-        return (
-          <SmoothStrokeShape
-            points={pts}
-            color={el.color}
-            strokeWidth={el.strokeWidth}
-            opacity={1}
-          />
-        );
+        return <SmoothStrokeShape points={pts} color={el.color} strokeWidth={el.strokeWidth} opacity={1} />;
       }
 
       if (el.tool === 'hollow') {
@@ -249,24 +228,10 @@ export function createCanvasElementRenderer({ editingNote, selectionDragOffset, 
       }
 
       if (el.tool === 'line') {
-        return (
-          <Line
-            points={pts}
-            stroke={el.color}
-            strokeWidth={el.strokeWidth}
-            lineCap="round"
-            lineJoin="round"
-          />
-        );
+        return <Line points={pts} stroke={el.color} strokeWidth={el.strokeWidth} lineCap="round" lineJoin="round" />;
       }
 
-      return (
-        <SmoothStrokeShape
-          points={pts}
-          color={el.color}
-          strokeWidth={el.strokeWidth}
-        />
-      );
+      return <SmoothStrokeShape points={pts} color={el.color} strokeWidth={el.strokeWidth} />;
     };
 
     const node = renderBase();
