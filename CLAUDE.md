@@ -27,6 +27,6 @@ storage, env vars, Cloud Run settings, or server startup code, read [`docs/DEPLO
    scope not on the allowed list, check its category in Google's scope list and ask the owner.
    `tests/googleScopes.test.ts` enforces the allowed list.
 
-Commands: `npm ci`, `npm run lint` (tsc), `npm test` (node:test via tsx), `npm run test:e2e` (Playwright).
+Commands: `npm ci`, `npm run lint` (tsc + oxlint React hooks rules), `npm test` (node:test via tsx), `npm run test:e2e` (Playwright).
 
 **Formatting:** run `npx prettier --write` on changed files before committing (CI runs `prettier --check .`).

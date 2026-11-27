@@ -38,7 +38,7 @@ Teachers are identified by a per-room **PIN**, not a login.
 | Server  | One Node process: Express + **Socket.IO 4** (`server.ts`). In dev it serves Vite as middleware; in prod it serves `dist/`.                                                                                   |
 | Storage | **SQLite via built-in `node:sqlite`** (`roomStore.ts`), plus a **write-behind backup to Cloud Storage** (`backupMirror.ts`)                                                                                  |
 | Hosting | **Cloud Run**, deployed by GitHub Actions (`.github/workflows/deploy.yml`, Buildpacks) on every push to `main` (see DEPLOYMENT.md). Prod start is **`node server.ts`, with Node's type stripping, not tsx**. |
-| Tests   | `node:test` via `tsx` (`npm test`, ~99 tests), **Playwright** e2e (`npm run test:e2e`, ~20), `tsc --noEmit` (`npm run lint`). CI: `.github/workflows/ci.yml` (Node 22).                                      |
+| Tests   | `node:test` via `tsx` (`npm test`, ~99 tests), **Playwright** e2e (`npm run test:e2e`, ~20), `tsc --noEmit` + oxlint React hooks rules (`npm run lint`). CI: `.github/workflows/ci.yml` (Node 22).           |
 
 ## 3. Repo map
 
