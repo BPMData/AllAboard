@@ -21,6 +21,7 @@
       ]
     },
     "allowImportingTsExtensions": true,
+    "erasableSyntaxOnly": true,
     "noEmit": true
   }
 }
