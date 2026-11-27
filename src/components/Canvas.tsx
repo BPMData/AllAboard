@@ -95,6 +95,50 @@ import { LoadLessonModal, SaveLessonModal, type LessonRequest } from './LessonPa
 import { STATUS_OPTIONS } from './StudentStatusBadge';
 import { useClassWorkFiles } from './useClassWorkFiles';
 
+/** Board writes, from `useDrawingActions`. */
+export interface CanvasDrawingActions {
+  onElementStart: (element: CanvasElement) => void;
+  onElementAppendPoints: (id: string, newPoints: number[]) => void;
+  onElementUpdate: (patch: Partial<CanvasElement> & { id: string; bringToFront?: boolean }) => void;
+  onElementRemove: (id: string) => void;
+  onElementsBatchUpdate: (updates: Array<Partial<CanvasElement> & { id: string }>, bringToFront?: boolean) => void;
+  onElementsBatchAdd: (elements: CanvasElement[], targetBoardId?: string) => void;
+  onElementsBatchRemove: (ids: string[]) => void;
+  /** Edits that keep stacking order (eraser). Missing in old callers: the eraser then stays an eraser stroke. */
+  onElementsReplace?: (groups: ElementGroup<CanvasElement>[]) => void;
+  onCursorMove: (cursor: Omit<RemoteCursor, 'updatedAt'>) => void;
+  onUndo: () => void;
+  onClearMine: () => void;
+}
+
+/** Teacher room actions, from `useClassroomActions`. */
+export interface CanvasTeacherActions {
+  onConfigureBreakout: (
+    payload: ConfigureBreakoutPayload
+  ) => Promise<{ ok: boolean; error?: string; roundId?: string }>;
+  onSpotlightBoard: (payload: SpotlightPayload) => Promise<{ ok: boolean; error?: string }>;
+  onAssignUserToBoard: (targetBoardId: string, targetUserId?: string) => void;
+  onTeacherToggleLock: (locked: boolean) => void;
+  onTeacherToggleHideCursors: (hide: boolean) => void;
+  onTeacherToggleOneNameStamp: (enabled: boolean) => void;
+  onTeacherClearAll: () => void;
+  onTeacherSetBackground: (bg: RoomBackground | null) => Promise<{ ok: boolean; error?: string }>;
+  onTeacherSendWorksheet?: (
+    boardIds: string[],
+    bg: RoomBackground | null,
+    roundTemplateFor?: string
+  ) => Promise<{ ok: boolean; updated?: number; skipped?: string[]; error?: string }>;
+  onTeacherUpdateBackground: (patch: Partial<RoomBackground>) => void;
+  onTeacherImportRoom: RestoreClassWork;
+  /** Lesson packs: the four teacher-only socket events. */
+  onTeacherLessonRequest?: LessonRequest;
+  onOpenLoadedLessonRoom?: (roomId: string, pin: string) => void;
+  getSavedTeacherPin?: () => string;
+  generateUnusedRoomCode?: () => Promise<string>;
+  onTeacherTimerControl: (payload: TimerControlPayload) => void;
+  onTeacherClearStatus: (targetUserId?: string) => void;
+}
+
 export interface CanvasProps {
   roomId: string;
   activeBoardId: string;
@@ -114,7 +158,6 @@ export interface CanvasProps {
   remoteCursors: Record<string, RemoteCursor>;
   laserSocket: Socket<ServerToClientEvents, ClientToServerEvents> | null;
   onSetStatus: (status: StudentStatus) => void;
-  onTeacherClearStatus: (targetUserId?: string) => void;
   isCanvasLocked: boolean;
   hideStudentCursors: boolean;
   oneNameStamp: boolean;
@@ -124,42 +167,7 @@ export interface CanvasProps {
   userName: string;
   userColor: string;
   onSelectBoard: (boardId: string) => void;
-  onConfigureBreakout: (
-    payload: ConfigureBreakoutPayload
-  ) => Promise<{ ok: boolean; error?: string; roundId?: string }>;
-  onSpotlightBoard: (payload: SpotlightPayload) => Promise<{ ok: boolean; error?: string }>;
-  onAssignUserToBoard: (targetBoardId: string, targetUserId?: string) => void;
-  onElementStart: (element: CanvasElement) => void;
-  onElementAppendPoints: (id: string, newPoints: number[]) => void;
-  onElementUpdate: (patch: Partial<CanvasElement> & { id: string; bringToFront?: boolean }) => void;
-  onElementRemove: (id: string) => void;
-  onElementsBatchUpdate: (updates: Array<Partial<CanvasElement> & { id: string }>, bringToFront?: boolean) => void;
-  onElementsBatchAdd: (elements: CanvasElement[], targetBoardId?: string) => void;
-  onElementsBatchRemove: (ids: string[]) => void;
-  /** Edits that keep stacking order (eraser). Missing in old callers: the eraser then stays an eraser stroke. */
-  onElementsReplace?: (groups: ElementGroup<CanvasElement>[]) => void;
-  onCursorMove: (cursor: Omit<RemoteCursor, 'updatedAt'>) => void;
-  onUndo: () => void;
-  onClearMine: () => void;
-  onTeacherToggleLock: (locked: boolean) => void;
-  onTeacherToggleHideCursors: (hide: boolean) => void;
-  onTeacherToggleOneNameStamp: (enabled: boolean) => void;
-  onTeacherClearAll: () => void;
-  onTeacherSetBackground: (bg: RoomBackground | null) => Promise<{ ok: boolean; error?: string }>;
-  onTeacherSendWorksheet?: (
-    boardIds: string[],
-    bg: RoomBackground | null,
-    roundTemplateFor?: string
-  ) => Promise<{ ok: boolean; updated?: number; skipped?: string[]; error?: string }>;
-  onTeacherUpdateBackground: (patch: Partial<RoomBackground>) => void;
-  onTeacherImportRoom: RestoreClassWork;
-  /** Lesson packs: the four teacher-only socket events. */
-  onTeacherLessonRequest?: LessonRequest;
-  onOpenLoadedLessonRoom?: (roomId: string, pin: string) => void;
-  generateUnusedRoomCode?: () => Promise<string>;
-  getSavedTeacherPin?: () => string;
   timer?: ClassroomTimerState;
-  onTeacherTimerControl: (payload: TimerControlPayload) => void;
   fullMainElements: CanvasElement[];
   fullMainMessages: ChatMessage[];
   fullMainBackground: RoomBackground | null;
@@ -168,6 +176,8 @@ export interface CanvasProps {
   onShowChat?: () => void;
   /** Opens "Something not working?" (shown here only while the chat sidebar, which has the main link, is hidden). */
   onReportProblem?: () => void;
+  drawingActions: CanvasDrawingActions;
+  teacherActions: CanvasTeacherActions;
 }
 
 /**
@@ -211,7 +221,6 @@ export default function Canvas({
   remoteCursors,
   laserSocket,
   onSetStatus,
-  onTeacherClearStatus,
   isCanvasLocked,
   hideStudentCursors,
   oneNameStamp,
@@ -221,34 +230,7 @@ export default function Canvas({
   userName,
   userColor,
   onSelectBoard,
-  onConfigureBreakout,
-  onSpotlightBoard,
-  onAssignUserToBoard,
-  onElementStart,
-  onElementAppendPoints,
-  onElementUpdate,
-  onElementRemove,
-  onElementsBatchUpdate,
-  onElementsBatchAdd,
-  onElementsBatchRemove,
-  onElementsReplace,
-  onCursorMove,
-  onUndo,
-  onClearMine,
-  onTeacherToggleLock,
-  onTeacherToggleHideCursors,
-  onTeacherToggleOneNameStamp,
-  onTeacherClearAll,
-  onTeacherSetBackground,
-  onTeacherSendWorksheet,
-  onTeacherUpdateBackground,
-  onTeacherImportRoom,
-  onTeacherLessonRequest,
-  onOpenLoadedLessonRoom,
-  generateUnusedRoomCode,
-  getSavedTeacherPin,
   timer,
-  onTeacherTimerControl,
   fullMainElements,
   fullMainMessages,
   fullMainBackground,
@@ -256,7 +238,41 @@ export default function Canvas({
   unreadChatCount = 0,
   onShowChat,
   onReportProblem,
+  drawingActions,
+  teacherActions,
 }: CanvasProps) {
+  const {
+    onElementStart,
+    onElementAppendPoints,
+    onElementUpdate,
+    onElementRemove,
+    onElementsBatchUpdate,
+    onElementsBatchAdd,
+    onElementsBatchRemove,
+    onElementsReplace,
+    onCursorMove,
+    onUndo,
+    onClearMine,
+  } = drawingActions;
+  const {
+    onConfigureBreakout,
+    onSpotlightBoard,
+    onAssignUserToBoard,
+    onTeacherToggleLock,
+    onTeacherToggleHideCursors,
+    onTeacherToggleOneNameStamp,
+    onTeacherClearAll,
+    onTeacherSetBackground,
+    onTeacherSendWorksheet,
+    onTeacherUpdateBackground,
+    onTeacherImportRoom,
+    onTeacherLessonRequest,
+    onOpenLoadedLessonRoom,
+    getSavedTeacherPin,
+    generateUnusedRoomCode,
+    onTeacherTimerControl,
+    onTeacherClearStatus,
+  } = teacherActions;
   // Per-tool settings (color, widths, highlighter, text size, ...) live in canvas/useToolSettings.
   const [showHollowMenu, setShowHollowMenu] = useState<boolean>(false);
   const hollowMenuRef = useRef<HTMLDivElement>(null);
