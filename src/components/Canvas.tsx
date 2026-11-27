@@ -1,183 +1,101 @@
+import React,{ useCallback,useEffect,useMemo,useRef,useState } from 'react';
+import { Circle,Group,Text as KonvaText,Layer,Line,Rect,Shape,Stage } from 'react-konva';
 import type { Socket } from 'socket.io-client';
-import type { ClientToServerEvents, ServerToClientEvents } from '../lib/socketContract';
-import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import { Stage, Layer, Line, Circle, Rect, Text as KonvaText, Group, Image as KonvaImage, Shape } from 'react-konva';
-import {
-  CanvasElement,
-  ChatMessage,
-  ToolType,
-  StampKind,
-  HollowShapeKind,
-  GridMode,
-  RoomBackground,
-  RemoteCursor,
-  type RestoreClassWork,
-  BreakoutConfig,
-  BreakoutGroupDraft,
-  BreakoutRoundMeta,
-  ConfigureBreakoutPayload,
-  SubBoardData,
-  User,
-  ClassroomTimerState,
-  TimerControlPayload,
-  StudentStatus,
-  SpotlightPayload,
-} from '../types';
-import {
-  getActiveRound,
-  getAllBoardsByRound,
-  getBoardsInRound,
-  getNextRoundNumber,
-  getRoundById,
-  getRounds,
-  getLaunchedRounds,
-  getPreparedRounds,
-  isPreparedRound,
-} from '../lib/breakoutRounds';
-import {
-  processWorksheetFile,
-  getPdfPageCount,
-  isPdfFile,
-  MAX_PDF_PAGES,
-  WORKSHEET_SCALE_OPTIONS,
-  DEFAULT_WORKSHEET_IMPORT_SCALE,
-  WORKSHEET_IMPORT_SCALE_STORAGE_KEY,
-  normalizeWorksheetImportScale,
-  BUILT_IN_TEMPLATES,
-  buildWorksheetBackground,
-  BuiltInTemplateId,
-} from '../lib/worksheetLoader';
-import type { PageRange } from '../lib/pageRange';
-import {
-  STAMP_OPTIONS,
-  TEACHER_STAMP_OPTIONS,
-  getTeacherStampAppearance,
-  getTeacherStampDimensions,
-  isTeacherStampKind,
-} from '../lib/stamps';
-import { DEFAULT_PAGE_GAP, layoutPages } from '../lib/worksheetLayout';
-import { useClassWorkFiles } from './useClassWorkFiles';
-import { isGoogleDriveConfigured } from '../lib/googleConfig';
-import { GoogleError, downloadDriveFile, formatDownloadProgress, friendlyGoogleError, isWorksheetMime, pickDriveFile } from '../lib/googleDrive';
 import { exportAllBoardsToPdf } from '../lib/batchPdfExport';
 import {
-  LiveGridOverview,
-  BreakoutManagerModal,
-  WorksheetTemplateModal,
-  RestoreSnapshotModal,
-  PdfPageRangeModal,
-  DriveSaveModal,
-  type RoundWorksheetChoice,
-} from './CanvasModals';
-import {
-  NOTE_FONT,
-  NOTE_LH,
-  LiveSmoothState,
-  hlInk,
-  isSeeThroughHighlight,
-  getPaletteColors,
-  pointerKind,
-  liveStart,
-  liveAddPoint,
-  liveLiftPoint,
-  traceSmoothStrokePath,
-  traceHollowTipShape,
-  drawHollowElementCached,
-  getNoteFontSize,
-  noteSize,
-  computeNotesGone,
-  TEXT_SIZE_PRESETS,
-  hitEditableNote,
-  getElementBounds,
-  getSelectionBounds,
-  canUserModifyElement,
-  expandElementVisiblePieces,
-  hasSubsequentOverlappingEraser,
-  stampsHitByEraser,
-  hitElementAtPoint,
-  lassoSelectElements,
-  translateElement,
-} from '../lib/inkCore';
-import {
-  authorKeyOf,
-  describeSelectionAuthors,
-  formatSelectionAuthors,
-  summarizeSelectionAuthors,
-} from '../lib/selectionAuthors';
-import { hasNameStamp } from '../lib/stamps';
-import {
-  Eraser,
-  Undo2,
-  Redo2,
-  MousePointer2,
-  PenLine,
-  SlidersHorizontal,
-  ChevronUp,
-  SprayCan,
-  Circle as CircleIcon,
-  Highlighter,
-  Square,
-  Triangle,
-  Diamond,
-  Star,
-  Minus,
-  Type,
-  Hand,
-  Lasso,
-  Copy,
-  Edit3,
-  Download,
-  FileJson,
-  Upload,
-  Lock,
-  Unlock,
-  Trash2,
-  ZoomIn,
-  ZoomOut,
-  Maximize2,
-  Grid,
-  X,
-  Check,
-  Stamp,
-  ImagePlus,
-  LayoutTemplate,
-  Move,
-  Columns,
-  Rows,
-  Users,
-  LayoutGrid,
-  ChevronDown,
-  Timer,
-  Play,
-  Pause,
-  RotateCcw,
-  FileSpreadsheet,
-  PanelLeftOpen,
-  LifeBuoy,
-  HardDrive,
-  Keyboard,
-  Crosshair,
-  BookMarked,
-  BookOpen,
-} from 'lucide-react';
-import { cn } from '../lib/utils';
-import { CURSOR_EMIT_MS } from '../lib/drawThrottle';
+getActiveRound,
+getAllBoardsByRound,
+getBoardsInRound,
+getLaunchedRounds,
+getNextRoundNumber,
+getPreparedRounds,
+getRoundById,
+getRounds,
+isPreparedRound,
+} from '../lib/breakoutRounds';
 import { isPhoneViewport } from '../lib/compactLayout';
-import { STATUS_OPTIONS } from './StudentStatusBadge';
-import { LoadLessonModal, SaveLessonModal, type LessonRequest } from './LessonPackModals';
-import type { RoundVariants } from '../lib/roundVariants';
-import { eraseGroups, eraseWithStroke } from '../lib/eraserEdits';
 import type { ElementGroup } from '../lib/elementGroups';
+import { isGoogleDriveConfigured } from '../lib/googleConfig';
+import { GoogleError,downloadDriveFile,formatDownloadProgress,friendlyGoogleError,isWorksheetMime,pickDriveFile } from '../lib/googleDrive';
+import {
+computeNotesGone,
+getNoteFontSize,
+getPaletteColors,
+getSelectionBounds,
+hlInk,
+isSeeThroughHighlight,
+noteSize,
+traceHollowTipShape
+} from '../lib/inkCore';
+import type { PageRange } from '../lib/pageRange';
+import type { RoundVariants } from '../lib/roundVariants';
+import {
+authorKeyOf,
+summarizeSelectionAuthors
+} from '../lib/selectionAuthors';
+import type { ClientToServerEvents,ServerToClientEvents } from '../lib/socketContract';
+import {
+hasNameStamp
+} from '../lib/stamps';
+import { cn } from '../lib/utils';
+import { layoutPages } from '../lib/worksheetLayout';
+import {
+BUILT_IN_TEMPLATES,
+BuiltInTemplateId,
+DEFAULT_WORKSHEET_IMPORT_SCALE,
+MAX_PDF_PAGES,
+WORKSHEET_IMPORT_SCALE_STORAGE_KEY,
+buildWorksheetBackground,
+getPdfPageCount,
+isPdfFile,
+normalizeWorksheetImportScale,
+processWorksheetFile
+} from '../lib/worksheetLoader';
+import {
+BreakoutConfig,
+BreakoutGroupDraft,
+CanvasElement,
+ChatMessage,
+ClassroomTimerState,
+ConfigureBreakoutPayload,
+GridMode,
+HollowShapeKind,
+RemoteCursor,
+RoomBackground,
+SpotlightPayload,
+StampKind,
+StudentStatus,
+SubBoardData,
+TimerControlPayload,
+ToolType,
+User,
+type RestoreClassWork
+} from '../types';
+import { EMPTY_ROUND_TEMPLATES,EMPTY_ROUND_VARIANTS,EMPTY_TEMPLATE_INK,PAGE_GAP,TEXT_SIZE_DROPDOWN_PRESETS,getCanvasGridStyle,readLocalColor,readLocalGridMode,readLocalHollowShape,readLocalNum,saveLocal } from './canvas/canvasHelpers';
+import { CanvasToolbar } from './canvas/CanvasToolbar';
+import { CanvasViewportOverlays } from './canvas/CanvasViewportOverlays';
+import { InkLayer,MultiplyHighlightLayer,UNFOCUSED_INK_OPACITY,WorksheetPageNode } from './canvas/KonvaLayers';
+import { createCanvasElementRenderer } from './canvas/renderCanvasElement';
+import { TeacherClassroomBar } from './canvas/TeacherClassroomBar';
+import { useCanvasHistory } from './canvas/useCanvasHistory';
+import { useCanvasInteractionState } from './canvas/useCanvasInteractionState';
+import { useCanvasLaser } from './canvas/useCanvasLaser';
+import { useCanvasPointerTools } from './canvas/useCanvasPointerTools';
+import { useStageViewport } from './canvas/useStageViewport';
+import {
+BreakoutManagerModal,
+DriveSaveModal,
+LiveGridOverview,
+PdfPageRangeModal,
+RestoreSnapshotModal,
+WorksheetTemplateModal,
+type RoundWorksheetChoice,
+} from './CanvasModals';
+import { LoadLessonModal,SaveLessonModal,type LessonRequest } from './LessonPackModals';
+import { STATUS_OPTIONS } from './StudentStatusBadge';
+import { useClassWorkFiles } from './useClassWorkFiles';
 
-type HistoryAction =
-  | { kind: 'add'; items: CanvasElement[] }
-  | { kind: 'remove'; items: CanvasElement[] }
-  | { kind: 'update'; before: CanvasElement[]; after: CanvasElement[]; bringToFront?: boolean }
-  | { kind: 'replace'; removed: CanvasElement[]; added: CanvasElement[] }
-  /** Order-keeping edits (the eraser): `forward` redoes, `backward` undoes. */
-  | { kind: 'groups'; forward: ElementGroup<CanvasElement>[]; backward: ElementGroup<CanvasElement>[] };
-
-interface CanvasProps {
+export interface CanvasProps {
   roomId: string;
   activeBoardId: string;
   activeBoardTitle: string;
@@ -252,418 +170,30 @@ interface CanvasProps {
   onReportProblem?: () => void;
 }
 
-const MIN_SCALE = 0.1;
-const MAX_SCALE = 5.0;
-const PAGE_GAP = DEFAULT_PAGE_GAP;
-const PALM_ERASER_SCREEN_PX = 56;
-
-function readLocalNum(key: string, fallback: number, min: number, max: number): number {
-  try {
-    const raw = localStorage.getItem(key);
-    if (raw === null) return fallback;
-    const n = Number(raw);
-    return Number.isFinite(n) && n >= min && n <= max ? n : fallback;
-  } catch {
-    return fallback;
-  }
-}
-
-function readLocalColor(key: string, fallback: string): string {
-  try {
-    const raw = localStorage.getItem(key);
-    return raw && /^#[0-9a-f]{6}$/i.test(raw) ? raw : fallback;
-  } catch {
-    return fallback;
-  }
-}
-
-function saveLocal(key: string, value: string) {
-  try {
-    localStorage.setItem(key, value);
-  } catch {
-    // Ignore storage errors
-  }
-}
-
-const HOLLOW_SHAPE_OPTIONS: Array<{
-  kind: HollowShapeKind;
-  label: string;
-  dx: number;
-  dy: number;
-}> = [
-  { kind: 'circle', label: 'Circle', dx: -62, dy: 26 },
-  { kind: 'square', label: 'Square', dx: -35, dy: 50 },
-  { kind: 'triangle', label: 'Triangle', dx: 0, dy: 60 },
-  { kind: 'diamond', label: 'Diamond', dx: 35, dy: 50 },
-  { kind: 'star', label: 'Star', dx: 62, dy: 26 },
-];
-
-const STATUS_RADIAL_OPTIONS: Array<{
-  status: StudentStatus;
-  label: string;
-  pillClass: string;
-  dx: number;
-  dy: number;
-}> = [
-  { status: 'need-help', label: 'Need Help', pillClass: 'bg-amber-100 text-amber-900 border-amber-400', dx: 40, dy: 30 },
-  { status: 'got-it', label: 'Got It', pillClass: 'bg-emerald-100 text-emerald-900 border-emerald-400', dx: 100, dy: 64 },
-  { status: 'done', label: 'Done', pillClass: 'bg-purple-100 text-purple-900 border-purple-400', dx: 158, dy: 60 },
-  { status: 'none', label: 'Clear', pillClass: 'bg-slate-800 text-slate-100 border-slate-500', dx: 214, dy: 28 },
-];
-
-const TEXT_SIZE_DROPDOWN_PRESETS = [
-  ...TEXT_SIZE_PRESETS,
-  { label: 'XXL', size: 72, title: 'Extra-extra-large text (72px)' },
-] as const;
-
-function readLocalHollowShape(key: string, fallback: HollowShapeKind): HollowShapeKind {
-  try {
-    const raw = localStorage.getItem(key);
-    if (
-      raw === 'circle' ||
-      raw === 'square' ||
-      raw === 'triangle' ||
-      raw === 'diamond' ||
-      raw === 'star'
-    ) {
-      return raw;
-    }
-    return fallback;
-  } catch {
-    return fallback;
-  }
-}
-
-function HollowShapeIcon({ kind, size = 17 }: { kind: HollowShapeKind; size?: number }) {
-  if (kind === 'square') return <Square size={size} />;
-  if (kind === 'triangle') return <Triangle size={size} />;
-  if (kind === 'diamond') return <Diamond size={size} />;
-  if (kind === 'star') return <Star size={size} />;
-  return <CircleIcon size={size} />;
-}
-
-const GRID_MODE_OPTIONS: Array<{
-  mode: GridMode;
-  label: string;
-  dx: number;
-  dy: number;
-}> = [
-  { mode: 'blank', label: 'Blank', dx: -54, dy: -26 },
-  { mode: 'dots', label: 'Dot Grid', dx: -20, dy: -54 },
-  { mode: 'graph', label: 'Graph Paper (90°)', dx: 20, dy: -54 },
-  { mode: 'isometric', label: 'Isometric (3D)', dx: 54, dy: -26 },
-];
-
-function readLocalGridMode(key: string, fallback: GridMode): GridMode {
-  try {
-    const raw = localStorage.getItem(key);
-    if (raw === 'blank' || raw === 'dots' || raw === 'graph' || raw === 'isometric') {
-      return raw;
-    }
-    return fallback;
-  } catch {
-    return fallback;
-  }
-}
-
-function GridModeIcon({ mode, size = 15 }: { mode: GridMode; size?: number }) {
-  if (mode === 'blank') {
-    return (
-      <svg width={size} height={size} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
-        <rect x="2.25" y="2.25" width="11.5" height="11.5" rx="2" strokeDasharray="2.5 2" />
-      </svg>
-    );
-  }
-  if (mode === 'dots') {
-    return (
-      <svg width={size} height={size} viewBox="0 0 16 16" fill="currentColor">
-        <circle cx="3.5" cy="3.5" r="1.3" />
-        <circle cx="8" cy="3.5" r="1.3" />
-        <circle cx="12.5" cy="3.5" r="1.3" />
-        <circle cx="3.5" cy="8" r="1.3" />
-        <circle cx="8" cy="8" r="1.3" />
-        <circle cx="12.5" cy="8" r="1.3" />
-        <circle cx="3.5" cy="12.5" r="1.3" />
-        <circle cx="8" cy="12.5" r="1.3" />
-        <circle cx="12.5" cy="12.5" r="1.3" />
-      </svg>
-    );
-  }
-  if (mode === 'graph') {
-    return <Grid size={size} />;
-  }
-  // Isometric 3D lattice icon
-  return (
-    <svg width={size} height={size} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.35" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M8 1.75L13.75 5V11L8 14.25L2.25 11V5L8 1.75Z" />
-      <path d="M2.25 5L8 8.25L13.75 5" />
-      <path d="M8 8.25V14.25" />
-    </svg>
-  );
-}
-
-function getCanvasGridStyle(
-  gridMode: GridMode,
-  gridSpacing: number,
-  stagePos: { x: number; y: number }
-): React.CSSProperties {
-  if (gridMode === 'blank') {
-    return { backgroundColor: '#ffffff' };
-  }
-  if (gridMode === 'dots') {
-    return {
-      backgroundColor: '#ffffff',
-      backgroundImage: `radial-gradient(#cbd5e1 1.25px, transparent 1.25px)`,
-      backgroundSize: `${gridSpacing}px ${gridSpacing}px`,
-      backgroundPosition: `${stagePos.x}px ${stagePos.y}px`,
-    };
-  }
-  if (gridMode === 'graph') {
-    return {
-      backgroundColor: '#ffffff',
-      backgroundImage: `linear-gradient(to right, #e2e8f0 1px, transparent 1px), linear-gradient(to bottom, #e2e8f0 1px, transparent 1px)`,
-      backgroundSize: `${gridSpacing}px ${gridSpacing}px`,
-      backgroundPosition: `${stagePos.x}px ${stagePos.y}px`,
-    };
-  }
-  // Isometric 3D lattice (vertical lines + ±30° isometric axes meeting at every vertex)
-  const isoH = Math.max(24, gridSpacing);
-  const isoW = Math.round(isoH * Math.sqrt(3) * 100) / 100;
-  const halfW = Math.round((isoW / 2) * 100) / 100;
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${isoW}" height="${isoH}" viewBox="0 0 ${isoW} ${isoH}"><path d="M 0 0 L ${isoW} ${isoH} M 0 ${isoH} L ${isoW} 0 M 0 0 L 0 ${isoH} M ${halfW} 0 L ${halfW} ${isoH}" stroke="#dbe4f0" stroke-width="1" fill="none"/></svg>`;
-  return {
-    backgroundColor: '#ffffff',
-    backgroundImage: `url("data:image/svg+xml;utf8,${encodeURIComponent(svg)}")`,
-    backgroundSize: `${isoW}px ${isoH}px`,
-    backgroundPosition: `${stagePos.x}px ${stagePos.y}px`,
-  };
-}
-
 /**
  * OverBoard-style Midpoint Quadratic Curve + Single-Tap Dot Shape for Konva.
  */
-function SmoothStrokeShape({
-  points,
-  color,
-  strokeWidth,
-  globalCompositeOperation = 'source-over',
-  opacity = 1,
-}: {
-  points: number[];
-  color: string;
-  strokeWidth: number;
-  globalCompositeOperation?: GlobalCompositeOperation;
-  opacity?: number;
-}) {
-  // Stable draw function: a new one on every React render would make react-konva repaint the
-  // whole ink layer on every mouse move, cursor update or chat message.
-  const sceneFunc = useCallback(
-    (ctx: any) => {
-      const rawCtx = (ctx as any)._context as CanvasRenderingContext2D;
-      if (!rawCtx || !points || points.length < 2) return;
-      rawCtx.save();
-      rawCtx.strokeStyle = color;
-      rawCtx.fillStyle = color;
-      rawCtx.lineWidth = strokeWidth;
-      rawCtx.lineCap = 'round';
-      rawCtx.lineJoin = 'round';
-      const kind = traceSmoothStrokePath(rawCtx, points, strokeWidth);
-      if (kind === 'dot') {
-        rawCtx.fill();
-      } else if (kind === 'stroke') {
-        rawCtx.stroke();
-      }
-      rawCtx.restore();
-    },
-    [points, color, strokeWidth]
-  );
-  return (
-    <Shape
-      opacity={opacity}
-      globalCompositeOperation={globalCompositeOperation}
-      listening={false}
-      perfectDrawEnabled={false}
-      sceneFunc={sceneFunc}
-    />
-  );
-}
 
 /**
  * Multi-shape Hollow Stamp & Extruded Stroke Shape for Konva (Circle, Square, Triangle, Diamond, Star).
  */
-function HollowStrokeShape({
-  points,
-  color,
-  strokeWidth,
-  hollowWeight = 2,
-  hollowShape = 'circle',
-}: {
-  points: number[];
-  color: string;
-  strokeWidth: number;
-  hollowWeight?: number;
-  hollowShape?: HollowShapeKind;
-}) {
-  // Stable draw function (see SmoothStrokeShape); the swept geometry itself is cached per stroke in inkCore.
-  const sceneFunc = useCallback(
-    (ctx: any) => {
-      const rawCtx = (ctx as any)._context as CanvasRenderingContext2D;
-      if (!rawCtx || !points || points.length < 2) return;
-      drawHollowElementCached(rawCtx, points, strokeWidth, hollowWeight, color, hollowShape);
-    },
-    [points, strokeWidth, hollowWeight, color, hollowShape]
-  );
-  return <Shape listening={false} perfectDrawEnabled={false} sceneFunc={sceneFunc} />;
-}
 
 /**
  * Spray stroke. Its own component so the `dash` array keeps the same identity between renders
  * (a fresh array would repaint the ink layer on every React render).
  */
-function SprayStrokeLine({ points, color, strokeWidth }: { points: number[]; color: string; strokeWidth: number }) {
-  const dash = useMemo(() => [1, Math.max(6, Math.round(strokeWidth * 0.9))], [strokeWidth]);
-  return (
-    <Line
-      points={points}
-      stroke={color}
-      strokeWidth={strokeWidth * 1.4}
-      tension={0.4}
-      lineCap="round"
-      lineJoin="round"
-      opacity={0.45}
-      dash={dash}
-    />
-  );
-}
-
-const UNFOCUSED_INK_OPACITY = 0.12;
 
 /**
  * Dedicated Konva Layer whose underlying HTML5 canvas uses `mix-blend-mode: multiply`,
  * matching OverBoard's `#ink-hl` multiply highlighter layer so printed worksheet text stays crisp black.
  */
-function MultiplyHighlightLayer({
-  x,
-  y,
-  scaleX,
-  scaleY,
-  screenOpacity,
-  children,
-}: {
-  x: number;
-  y: number;
-  scaleX: number;
-  scaleY: number;
-  screenOpacity: number;
-  children: React.ReactNode;
-}) {
-  const layerRef = useRef<any>(null);
-
-  useEffect(() => {
-    const domCanvas: HTMLCanvasElement | undefined = layerRef.current?.getCanvas?.()?._canvas;
-    if (domCanvas) {
-      domCanvas.style.mixBlendMode = 'multiply';
-    }
-  }, []);
-
-  useLayerScreenOpacity(layerRef, screenOpacity);
-
-  return (
-    <Layer ref={layerRef} x={x} y={y} scaleX={scaleX} scaleY={scaleY} listening={false}>
-      {children}
-    </Layer>
-  );
-}
 
 /**
  * Fades a layer's canvas with CSS: no redraw, erasers still work, and exports are unaffected.
  * (Konva's own opacity would make erasers only partly erase.)
  */
-function useLayerScreenOpacity(layerRef: React.RefObject<any>, screenOpacity: number) {
-  useEffect(() => {
-    const domCanvas: HTMLCanvasElement | undefined = layerRef.current?.getCanvas?.()?._canvas;
-    if (domCanvas) {
-      domCanvas.style.opacity = screenOpacity === 1 ? '' : String(screenOpacity);
-    }
-  }, [layerRef, screenOpacity]);
-}
-
-function InkLayer({
-  screenOpacity,
-  children,
-  ...layerProps
-}: {
-  x: number;
-  y: number;
-  scaleX: number;
-  scaleY: number;
-  screenOpacity: number;
-  children: React.ReactNode;
-}) {
-  const layerRef = useRef<any>(null);
-  useLayerScreenOpacity(layerRef, screenOpacity);
-  return (
-    <Layer ref={layerRef} {...layerProps} listening={false}>
-      {children}
-    </Layer>
-  );
-}
 
 // Subcomponent to load and render a single background worksheet page image
-function WorksheetPageNode({
-  dataUrl,
-  x,
-  y,
-  width,
-  height,
-  opacity,
-}: {
-  dataUrl: string;
-  x: number;
-  y: number;
-  width: number;
-  height: number;
-  opacity: number;
-}) {
-  const [img, setImg] = useState<HTMLImageElement | null>(null);
-
-  useEffect(() => {
-    let active = true;
-    const imageObj = new window.Image();
-    imageObj.onload = () => {
-      if (active) setImg(imageObj);
-    };
-    imageObj.src = dataUrl;
-    return () => {
-      active = false;
-    };
-  }, [dataUrl]);
-
-  if (!img) return null;
-
-  return (
-    <Group x={x} y={y}>
-      <Rect
-        x={0}
-        y={0}
-        width={width}
-        height={height}
-        fill="#ffffff"
-        stroke="#cbd5e1"
-        strokeWidth={1.5}
-        shadowColor="#0f172a"
-        shadowBlur={12}
-        shadowOpacity={0.08}
-        shadowOffsetY={4}
-      />
-      <KonvaImage image={img} x={0} y={0} width={width} height={height} opacity={opacity} />
-    </Group>
-  );
-}
-
-const EMPTY_ROUND_TEMPLATES: Record<string, RoomBackground | null> = {};
-const EMPTY_TEMPLATE_INK: Record<string, CanvasElement[]> = {};
-const EMPTY_ROUND_VARIANTS: Record<string, RoundVariants> = {};
 
 export default function Canvas({
   roomId,
@@ -801,94 +331,80 @@ export default function Canvas({
   }, []);
   const toolbarCollapsed = isPhone && !phoneToolsOpen;
 
-  // Infinite Canvas Viewport Transform
-  const [stageScale, setStageScale] = useState(1);
-  const [stagePos, setStagePos] = useState({ x: 0, y: 0 });
-  const [isSpacePressed, setIsSpacePressed] = useState(false);
-  const [isPanning, setIsPanning] = useState(false);
-  const panStartRef = useRef<{
-    x: number;
-    y: number;
-    stageX: number;
-    stageY: number;
-    tapForNote?: boolean;
-  } | null>(null);
+  // Group all elements on the current board by userId so each student's elements live on their own isolated Konva Layer,
+  // and compute OverBoard's `notesGone` set per user so erasers remove whole text notes cleanly (and Undo brings them back!).
+  const elementsGroupedByUser = useMemo(() => {
+    const groups = new Map<string, CanvasElement[]>();
+    for (const el of elements) {
+      const uid = el.userId || 'anon';
+      const list = groups.get(uid);
+      if (list) {
+        list.push(el);
+      } else {
+        groups.set(uid, [el]);
+      }
+    }
+    return Array.from(groups.entries()).map(([uid, userElements]) => ({
+      userId: uid,
+      userElements,
+      goneNoteIds: computeNotesGone(userElements),
+      hasSeeThroughHighlights: userElements.some(isSeeThroughHighlight),
+    }));
+  }, [elements]);
 
-  // Teacher dragging worksheet state
-  const [isMovingBg, setIsMovingBg] = useState(false);
-  const bgMoveStartRef = useRef<{ worldX: number; worldY: number; origX: number; origY: number } | null>(null);
+  const allGoneNoteIds = useMemo(() => {
+    const combined = new Set<string>();
+    for (const g of elementsGroupedByUser) {
+      for (const id of g.goneNoteIds) {
+        combined.add(id);
+      }
+    }
+    return combined;
+  }, [elementsGroupedByUser]);
 
-  // Active Drawing / Shape / Smoothing State
-  const [isDrawing, setIsDrawing] = useState(false);
-  const [currentElementId, setCurrentElementId] = useState<string | null>(null);
-  const activeStrokeToolRef = useRef<Exclude<ToolType, 'pan' | 'select' | 'move-bg' | 'laser'> | null>(null);
-  const activeStrokePointsRef = useRef<number[]>([]);
-  const liveSmoothRef = useRef<LiveSmoothState | null>(null);
-  const downAtRef = useRef<number>(0);
-  const activePointerIdRef = useRef<number | null>(null);
-  const shapeOriginRef = useRef<{ x: number; y: number } | null>(null);
-  const pendingStrokeRef = useRef<CanvasElement | null>(null);
+  const { stageScale, setStageScale, stagePos, setStagePos, stageRef, containerRef, dimensions, screenToWorld, resetView, fitElementsAndBackgroundInView, fitAllContent, handleWheel, zoomStep, getLocalPosFromEvent } = useStageViewport({ elements, background, allGoneNoteIds });
 
-  // Selection / Lasso / Clipboard / Action-Aware History State (OverBoard `makeSelect` + Undo/Redo)
-  const [selectedIds, setSelectedIds] = useState<string[]>([]);
-  const [lassoPoints, setLassoPoints] = useState<number[]>([]);
-  const [selectionDragOffset, setSelectionDragOffset] = useState<{ dx: number; dy: number } | null>(null);
-  const [draggingNotePreview, setDraggingNotePreview] = useState<{ id: string; dx: number; dy: number } | null>(null);
-  const [clipboardElements, setClipboardElements] = useState<CanvasElement[]>([]);
-  const [pastePrompt, setPastePrompt] = useState<{ worldX: number; worldY: number } | null>(null);
-  const [sendToBoardTarget, setSendToBoardTarget] = useState<string>('ALL_SUBBOARDS');
-  const [sentFeedback, setSentFeedback] = useState<string | null>(null);
-
-  const elementsRef = useRef<CanvasElement[]>(elements);
-  elementsRef.current = elements;
-
-  const historyByBoardRef = useRef<Record<string, { undo: HistoryAction[]; redo: HistoryAction[] }>>({});
-  const [historyTick, setHistoryTick] = useState(0);
-
-  const draggingNoteRef = useRef<{
-    note: CanvasElement;
-    startClientX: number;
-    startClientY: number;
-    startWorldX: number;
-    startWorldY: number;
-    moved: boolean;
-  } | null>(null);
-
-  const selectGestureRef = useRef<{
-    mode: 'drag-selection' | 'drag-single' | 'lasso';
-    startClientX: number;
-    startClientY: number;
-    startWorldX: number;
-    startWorldY: number;
-    targetIds: string[];
-    prevSelectedIds: string[];
-    singleEl?: CanvasElement;
-    shiftKey: boolean;
-    moved: boolean;
-    loopPoints: number[];
-  } | null>(null);
-
-  // Pointer position in screen and world coordinates
-  const [screenPos, setScreenPos] = useState({ x: -100, y: -100 });
-  const [worldPos, setWorldPos] = useState({ x: 0, y: 0 });
-  // The brush/stamp preview follows worldPos, which starts at world (0,0). Only draw it once a pointer
-  // is actually over the canvas, or it leaves a stray mark at the top-left corner of every board.
-  const [pointerOverCanvas, setPointerOverCanvas] = useState(false);
-  const [hoveredNoteId, setHoveredNoteId] = useState<string | null>(null);
-
-  // OverBoard v45 Editable Multiline Text Note State (`makeTyping`)
-  const [editingNote, setEditingNote] = useState<{
-    existingId: string | null;
-    worldX: number;
-    worldY: number;
-    value: string;
-    color: string;
-    strokeWidth: number;
-    fontSize: number;
-    openedAt: number;
-  } | null>(null);
-  const noteTextareaRef = useRef<HTMLTextAreaElement>(null);
-  const noteClosedAtRef = useRef<number>(0);
+  const {
+    isSpacePressed,
+    setIsSpacePressed,
+    isPanning,
+    setIsPanning,
+    isMovingBg,
+    setIsMovingBg,
+    isDrawing,
+    setIsDrawing,
+    currentElementId,
+    setCurrentElementId,
+    activePointerIdRef,
+    selectedIds,
+    setSelectedIds,
+    lassoPoints,
+    setLassoPoints,
+    selectionDragOffset,
+    setSelectionDragOffset,
+    draggingNotePreview,
+    setDraggingNotePreview,
+    clipboardElements,
+    setClipboardElements,
+    pastePrompt,
+    setPastePrompt,
+    sendToBoardTarget,
+    setSendToBoardTarget,
+    sentFeedback,
+    setSentFeedback,
+    screenPos,
+    setScreenPos,
+    worldPos,
+    setWorldPos,
+    pointerOverCanvas,
+    setPointerOverCanvas,
+    hoveredNoteId,
+    setHoveredNoteId,
+    editingNote,
+    setEditingNote,
+    noteTextareaRef,
+    noteClosedAtRef
+  } = useCanvasInteractionState();
 
   // Confirmation States
   const [confirmClearAll, setConfirmClearAll] = useState(false);
@@ -1057,36 +573,6 @@ export default function Canvas({
     return () => document.removeEventListener('mousedown', onDocDown);
   }, [showTimerMenu]);
 
-  const formatTimerMs = (ms: number): string => {
-    const totalSecs = Math.max(0, Math.ceil(ms / 1000));
-    const hrs = Math.floor(totalSecs / 3600);
-    const mins = Math.floor((totalSecs % 3600) / 60);
-    const secs = totalSecs % 60;
-    if (hrs > 0) {
-      return `${hrs}:${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
-    }
-    return `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
-  };
-
-  const parseCustomTimeSeconds = (raw: string): number | null => {
-    const trimmed = raw.trim();
-    if (!trimmed) return null;
-    if (trimmed.includes(':')) {
-      const parts = trimmed.split(':').map((p) => Number(p.trim()));
-      if (parts.some((n) => !Number.isFinite(n) || n < 0)) return null;
-      if (parts.length === 2) {
-        return Math.round(parts[0] * 60 + parts[1]);
-      }
-      if (parts.length === 3) {
-        return Math.round(parts[0] * 3600 + parts[1] * 60 + parts[2]);
-      }
-      return null;
-    }
-    const mins = Number(trimmed);
-    if (!Number.isFinite(mins) || mins <= 0) return null;
-    return Math.round(mins * 60);
-  };
-
   const handleBatchExportAllPdf = async () => {
     if (pdfExportProgress) return;
     const allSubBoards: SubBoardData[] =
@@ -1118,79 +604,7 @@ export default function Canvas({
   const [lessonModal, setLessonModal] = useState<'save' | 'load' | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const stageRef = useRef<any>(null);
-  const containerRef = useRef<HTMLDivElement>(null);
-  const lastCursorEmitRef = useRef<number>(0);
-  // Cursor is sent at most every CURSOR_EMIT_MS, plus one trailing send so peers see where the pointer stopped.
-  const pendingCursorRef = useRef<Parameters<typeof onCursorMove>[0] | null>(null);
-  const cursorTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const onCursorMoveRef = useRef(onCursorMove);
-  onCursorMoveRef.current = onCursorMove;
-  useEffect(
-    () => () => {
-      if (cursorTimerRef.current) clearTimeout(cursorTimerRef.current);
-    },
-    []
-  );
-  useEffect(() => {
-    if (!laserSocket) return;
-    const resetHistory = ({ boardId }: { boardId: string }) => {
-      delete historyByBoardRef.current[boardId];
-      setHistoryTick((tick) => tick + 1);
-      if (boardId === activeBoardId) {
-        setSelectedIds([]);
-        setEditingNote(null);
-      }
-    };
-    laserSocket.on('board-replaced', resetHistory);
-    return () => { laserSocket.off('board-replaced', resetHistory); };
-  }, [laserSocket, activeBoardId]);
-  const [dimensions, setDimensions] = useState({ width: 800, height: 600 });
-  type LaserPoint = { x: number; y: number; userId: string; strokeId: string; time: number; id: number };
-  const [laserPoints, setLaserPoints] = useState<LaserPoint[]>([]);
-  const laserIdRef = useRef(0);
-  const laserStrokeRef = useRef<string | null>(null);
-  const lastLaserEmitRef = useRef(0);
-  const [laserNow, setLaserNow] = useState(0);
-  const addLaserPoint = useCallback((point: { x: number; y: number; userId: string; strokeId: string }) => {
-    const time = performance.now();
-    const id = ++laserIdRef.current;
-    setLaserPoints((prev) => [...prev.filter((p) => time - p.time < 1200), { ...point, time, id }]);
-    setLaserNow(time);
-  }, []);
-  useEffect(() => {
-    setLaserPoints([]);
-    if (laserStrokeRef.current) activePointerIdRef.current = null;
-    laserStrokeRef.current = null;
-    if (!laserSocket) return;
-    const receive = (point: { boardId: string; x: number; y: number; userId: string; strokeId: string }) => {
-      if (point.boardId === activeBoardId) addLaserPoint(point);
-    };
-    laserSocket.on('laser-pulse', receive);
-    return () => { laserSocket.off('laser-pulse', receive); };
-  }, [laserSocket, activeBoardId, addLaserPoint]);
-  useEffect(() => {
-    if (!laserPoints.length) return;
-    let frame = 0;
-    const tick = () => {
-      const now = performance.now();
-      setLaserNow(now);
-      setLaserPoints((prev) => prev.filter((p) => now - p.time < 1200));
-      frame = requestAnimationFrame(tick);
-    };
-    frame = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(frame);
-  }, [laserPoints.length > 0]);
-  const sendLaserPoint = (world: { x: number; y: number }, force = false) => {
-    if (!isTeacher || !laserStrokeRef.current) return;
-    const now = performance.now();
-    if (!force && now - lastLaserEmitRef.current < 35) return;
-    lastLaserEmitRef.current = now;
-    const point = { ...world, boardId: activeBoardId, strokeId: laserStrokeRef.current };
-    addLaserPoint({ ...point, userId });
-    laserSocket?.emit('laser-pulse', point);
-  };
-
+  const { laserPoints, laserNow, laserStrokeRef, sendLaserPoint } = useCanvasLaser({ laserSocket, activeBoardId, isTeacher, userId, activePointerIdRef });
 
   const canDraw = !isCanvasLocked || isTeacher;
   const effectiveTool: ToolType = !canDraw
@@ -1202,34 +616,6 @@ export default function Canvas({
     : tool === 'laser' && !isTeacher
     ? 'pan'
     : tool;
-
-  useEffect(() => {
-    const el = containerRef.current;
-    const updateSize = () => {
-      if (containerRef.current) {
-        const w = containerRef.current.offsetWidth;
-        const h = containerRef.current.offsetHeight;
-        if (w > 0 && h > 0) {
-          setDimensions({ width: w, height: h });
-        }
-      }
-    };
-    window.addEventListener('resize', updateSize);
-    updateSize();
-
-    let observer: ResizeObserver | null = null;
-    if (el && typeof ResizeObserver !== 'undefined') {
-      observer = new ResizeObserver(() => {
-        updateSize();
-      });
-      observer.observe(el);
-    }
-
-    return () => {
-      window.removeEventListener('resize', updateSize);
-      observer?.disconnect();
-    };
-  }, []);
 
   // Close Highlighter/Cover, Hollow, Grid, Status, or Text Size popout menu when clicking outside or pressing Escape
   useEffect(() => {
@@ -1267,39 +653,6 @@ export default function Canvas({
       document.removeEventListener('keydown', handleEsc);
     };
   }, [showHlMenu, showHollowMenu, showGridMenu, showStatusMenu, showTextSizeMenu]);
-
-  // Auto-focus and auto-size the multiline note textarea (OverBoard `makeTyping.place` + `open`)
-  const resizeNoteTextarea = useCallback(() => {
-    const el = noteTextareaRef.current;
-    if (!el || !editingNote) return;
-    const scaledFont = editingNote.fontSize * stageScale;
-    el.style.width = '1px';
-    el.style.height = '1px';
-    el.style.width = `${Math.max(el.scrollWidth + 6, scaledFont * 3)}px`;
-    el.style.height = `${Math.max(el.scrollHeight, Math.round(scaledFont * NOTE_LH))}px`;
-  }, [editingNote, stageScale]);
-
-  useEffect(() => {
-    if (editingNote) {
-      resizeNoteTextarea();
-    }
-  }, [editingNote, stageScale, stagePos.x, stagePos.y, resizeNoteTextarea]);
-
-  useEffect(() => {
-    if (!editingNote) return;
-    const id = requestAnimationFrame(() => {
-      const ta = noteTextareaRef.current;
-      if (ta) {
-        ta.focus();
-        const len = ta.value.length;
-        ta.setSelectionRange(len, len);
-        resizeNoteTextarea();
-      }
-    });
-    return () => cancelAnimationFrame(id);
-    // Only run when opening a note or switching which note is being edited
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [editingNote?.openedAt, editingNote?.existingId]);
 
   // Color / stroke / text-size helpers are defined below `allGoneNoteIds` & `selectedElements`
 
@@ -1390,49 +743,6 @@ export default function Canvas({
     setShowBreakoutModal(true);
   };
 
-  // Group all elements on the current board by userId so each student's elements live on their own isolated Konva Layer,
-  // and compute OverBoard's `notesGone` set per user so erasers remove whole text notes cleanly (and Undo brings them back!).
-  const elementsGroupedByUser = useMemo(() => {
-    const groups = new Map<string, CanvasElement[]>();
-    for (const el of elements) {
-      const uid = el.userId || 'anon';
-      const list = groups.get(uid);
-      if (list) {
-        list.push(el);
-      } else {
-        groups.set(uid, [el]);
-      }
-    }
-    return Array.from(groups.entries()).map(([uid, userElements]) => ({
-      userId: uid,
-      userElements,
-      goneNoteIds: computeNotesGone(userElements),
-      hasSeeThroughHighlights: userElements.some(isSeeThroughHighlight),
-    }));
-  }, [elements]);
-
-  const allGoneNoteIds = useMemo(() => {
-    const combined = new Set<string>();
-    for (const g of elementsGroupedByUser) {
-      for (const id of g.goneNoteIds) {
-        combined.add(id);
-      }
-    }
-    return combined;
-  }, [elementsGroupedByUser]);
-
-  // Clear transient selection/lasso/drag/note states when switching breakout boards
-  useEffect(() => {
-    setSelectedIds([]);
-    setLassoPoints([]);
-    setSelectionDragOffset(null);
-    setDraggingNotePreview(null);
-    setPastePrompt(null);
-    setEditingNote(null);
-    draggingNoteRef.current = null;
-    selectGestureRef.current = null;
-  }, [activeBoardId]);
-
   const selectedElements = useMemo(() => {
     if (selectedIds.length === 0) return [];
     const idSet = new Set(selectedIds);
@@ -1486,131 +796,8 @@ export default function Canvas({
     : textFontSize;
 
   // Per-board action-aware Undo & Redo history helpers
-  const getBoardHistory = useCallback((boardId: string) => {
-    if (!historyByBoardRef.current[boardId]) {
-      historyByBoardRef.current[boardId] = { undo: [], redo: [] };
-    }
-    return historyByBoardRef.current[boardId];
-  }, []);
 
-  const recordUndo = useCallback(
-    (action: HistoryAction, boardId = activeBoardId) => {
-      const h = getBoardHistory(boardId);
-      h.undo.push(action);
-      if (h.undo.length > 80) h.undo.shift();
-      h.redo = [];
-      setHistoryTick((t) => t + 1);
-    },
-    [activeBoardId, getBoardHistory]
-  );
-
-  const currentBoardHistory = historyByBoardRef.current[activeBoardId];
-  const canLocalUndo = Boolean(currentBoardHistory && currentBoardHistory.undo.length > 0);
-  const canRedo = Boolean(currentBoardHistory && currentBoardHistory.redo.length > 0);
-  void historyTick;
-
-  const buildElementUpdatePatch = useCallback((el: CanvasElement) => {
-    let fontSize = el.fontSize;
-    let width = el.width;
-    let height = el.height;
-    if (el.tool === 'text') {
-      const resolvedFont = getNoteFontSize(el);
-      const [fallbackW, fallbackH] = noteSize(el.text || '', resolvedFont);
-      fontSize = resolvedFont;
-      if (typeof width !== 'number') width = fallbackW;
-      if (typeof height !== 'number') height = fallbackH;
-    }
-    return {
-      id: el.id,
-      x: el.x,
-      y: el.y,
-      width,
-      height,
-      points: el.points,
-      text: el.text,
-      color: el.color,
-      strokeWidth: el.strokeWidth,
-      hollowShape: el.hollowShape,
-      hollowWeight: el.hollowWeight,
-      fontSize,
-    };
-  }, []);
-
-  const performUndo = useCallback(() => {
-    if (!canDraw) return;
-    const h = getBoardHistory(activeBoardId);
-    const action = h.undo.pop();
-    if (!action) {
-      onUndo();
-      return;
-    }
-    h.redo.push(action);
-    setHistoryTick((t) => t + 1);
-
-    if (action.kind === 'add') {
-      const ids = action.items.map((el) => el.id);
-      onElementsBatchRemove(ids);
-      setSelectedIds((prev) => prev.filter((id) => !ids.includes(id)));
-    } else if (action.kind === 'remove') {
-      onElementsBatchAdd(action.items, activeBoardId);
-      setSelectedIds(action.items.map((el) => el.id));
-    } else if (action.kind === 'update') {
-      onElementsBatchUpdate(action.before.map(buildElementUpdatePatch), false);
-    } else if (action.kind === 'replace') {
-      const addedIds = action.added.map((el) => el.id);
-      onElementsBatchRemove(addedIds);
-      onElementsBatchAdd(action.removed, activeBoardId);
-      setSelectedIds(action.removed.map((el) => el.id));
-    } else if (action.kind === 'groups') {
-      onElementsReplace?.(action.backward);
-    }
-  }, [
-    onElementsReplace,
-    canDraw,
-    activeBoardId,
-    getBoardHistory,
-    onUndo,
-    onElementsBatchRemove,
-    onElementsBatchAdd,
-    onElementsBatchUpdate,
-    buildElementUpdatePatch,
-  ]);
-
-  const performRedo = useCallback(() => {
-    if (!canDraw) return;
-    const h = getBoardHistory(activeBoardId);
-    const action = h.redo.pop();
-    if (!action) return;
-    h.undo.push(action);
-    setHistoryTick((t) => t + 1);
-
-    if (action.kind === 'add') {
-      onElementsBatchAdd(action.items, activeBoardId);
-      setSelectedIds(action.items.map((el) => el.id));
-    } else if (action.kind === 'remove') {
-      const ids = action.items.map((el) => el.id);
-      onElementsBatchRemove(ids);
-      setSelectedIds((prev) => prev.filter((id) => !ids.includes(id)));
-    } else if (action.kind === 'update') {
-      onElementsBatchUpdate(action.after.map(buildElementUpdatePatch), Boolean(action.bringToFront));
-    } else if (action.kind === 'replace') {
-      const removedIds = action.removed.map((el) => el.id);
-      onElementsBatchRemove(removedIds);
-      onElementsBatchAdd(action.added, activeBoardId);
-      setSelectedIds(action.added.map((el) => el.id));
-    } else if (action.kind === 'groups') {
-      onElementsReplace?.(action.forward);
-    }
-  }, [
-    onElementsReplace,
-    canDraw,
-    activeBoardId,
-    getBoardHistory,
-    onElementsBatchAdd,
-    onElementsBatchRemove,
-    onElementsBatchUpdate,
-    buildElementUpdatePatch,
-  ]);
+  const { recordUndo, canLocalUndo, canRedo, performUndo, performRedo } = useCanvasHistory({ laserSocket, activeBoardId, onUndo, onElementsBatchRemove, onElementsBatchAdd, onElementsBatchUpdate, onElementsReplace, canDraw, setSelectedIds, setEditingNote });
 
   // Helper to update active color, open note, or selected elements (`restyle`)
   const handleSelectColor = useCallback(
@@ -1732,99 +919,6 @@ export default function Canvas({
     [editingNote, selectedTextElements, canDraw, recordUndo, onElementsBatchUpdate]
   );
 
-  const handleCopySelection = useCallback(() => {
-    if (selectedElements.length === 0) return;
-    const pieces = selectedElements.flatMap((el) => expandElementVisiblePieces(el, elements));
-    if (pieces.length === 0) return;
-    setClipboardElements(pieces.map((el) => ({ ...el, points: el.points ? [...el.points] : undefined })));
-  }, [selectedElements, elements]);
-
-  const handlePasteElements = useCallback(
-    (targetWorldPos?: { x: number; y: number } | null) => {
-      if (!canDraw || clipboardElements.length === 0) return;
-      const box = getSelectionBounds(clipboardElements);
-      let dx = 28;
-      let dy = 28;
-      if (box && targetWorldPos) {
-        const cx = (box[0] + box[2]) / 2;
-        const cy = (box[1] + box[3]) / 2;
-        dx = targetWorldPos.x - cx;
-        dy = targetWorldPos.y - cy;
-      }
-      const now = Date.now();
-      const clones: CanvasElement[] = clipboardElements.map((el, idx) => {
-        const shifted = translateElement(el, dx, dy);
-        return {
-          ...shifted,
-          id: `${Math.random().toString(36).substring(2, 9)}_${idx}`,
-          boardId: activeBoardId,
-          userId,
-          userName,
-          timestamp: now + idx,
-        };
-      });
-      recordUndo({ kind: 'add', items: clones });
-      onElementsBatchAdd(clones, activeBoardId);
-      setSelectedIds(clones.map((c) => c.id));
-      setPastePrompt(null);
-    },
-    [canDraw, clipboardElements, activeBoardId, userId, userName, recordUndo, onElementsBatchAdd]
-  );
-
-  const handleDuplicateSelection = useCallback(() => {
-    if (!canDraw || selectedElements.length === 0) return;
-    const pieces = selectedElements.flatMap((el) => expandElementVisiblePieces(el, elements));
-    if (pieces.length === 0) return;
-    const now = Date.now();
-    const clones: CanvasElement[] = pieces.map((el, idx) => {
-      const shifted = translateElement(el, 28, 28);
-      return {
-        ...shifted,
-        id: `${Math.random().toString(36).substring(2, 9)}_${idx}`,
-        boardId: activeBoardId,
-        userId,
-        userName,
-        timestamp: now + idx,
-      };
-    });
-    recordUndo({ kind: 'add', items: clones });
-    onElementsBatchAdd(clones, activeBoardId);
-    setSelectedIds(clones.map((c) => c.id));
-  }, [canDraw, selectedElements, elements, activeBoardId, userId, userName, recordUndo, onElementsBatchAdd]);
-
-  const handleDeleteSelection = useCallback(() => {
-    if (!canDraw || selectedElements.length === 0) return;
-    recordUndo({ kind: 'remove', items: selectedElements });
-    onElementsBatchRemove(selectedElements.map((el) => el.id));
-    setSelectedIds([]);
-  }, [canDraw, selectedElements, recordUndo, onElementsBatchRemove]);
-
-  const handleSendSelectionToBoard = useCallback(
-    (targetBoardId: string) => {
-      if (!isTeacher || selectedElements.length === 0) return;
-      const pieces = selectedElements.flatMap((el) => expandElementVisiblePieces(el, elements));
-      if (pieces.length === 0) return;
-      const now = Date.now();
-      const clones: CanvasElement[] = pieces.map((el, idx) => ({
-        ...el,
-        points: el.points ? [...el.points] : undefined,
-        id: `${Math.random().toString(36).substring(2, 9)}_${idx}`,
-        boardId: targetBoardId === 'ALL_SUBBOARDS' ? activeBoardId : targetBoardId,
-        timestamp: now + idx,
-      }));
-      onElementsBatchAdd(clones, targetBoardId);
-      const label =
-        targetBoardId === 'ALL_SUBBOARDS'
-          ? 'All Boards in Current Round'
-          : targetBoardId === 'main'
-          ? 'Main Class Board'
-          : subBoards[targetBoardId]?.title || 'Target Board';
-      setSentFeedback(`Sent to ${label}`);
-      setTimeout(() => setSentFeedback(null), 2200);
-    },
-    [isTeacher, selectedElements, elements, activeBoardId, subBoards, onElementsBatchAdd]
-  );
-
   // Compute positioned geometry for each page of the background worksheet
   const computedBackgroundPages = useMemo(() => {
     if (!background || !Array.isArray(background.pages) || background.pages.length === 0) {
@@ -1842,226 +936,6 @@ export default function Canvas({
     }));
   }, [background]);
 
-  const screenToWorld = useCallback(
-    (sx: number, sy: number) => ({
-      x: Number(((sx - stagePos.x) / stageScale).toFixed(1)),
-      y: Number(((sy - stagePos.y) / stageScale).toFixed(1)),
-    }),
-    [stagePos.x, stagePos.y, stageScale]
-  );
-
-  // OverBoard `makeTyping.close()`: commits a new or edited multiline note (or deletes it if emptied)
-  const commitEditingNote = useCallback(() => {
-    if (!editingNote) return;
-    const note = editingNote;
-    setEditingNote(null);
-    noteClosedAtRef.current = Date.now();
-
-    if (!canDraw) return;
-    const trimmed = note.value.replace(/\s+$/, '');
-
-    if (note.existingId) {
-      const existing = elements.find((el) => el.id === note.existingId);
-      if (!existing) return; // Removed meanwhile (e.g. Undo or Clear)
-      if (!trimmed.trim()) {
-        recordUndo({ kind: 'remove', items: [existing] });
-        onElementRemove(note.existingId);
-        return;
-      }
-      const existingFont = getNoteFontSize(existing);
-      const moved = note.worldX !== (existing.x || 0) || note.worldY !== (existing.y || 0);
-      if (
-        trimmed === existing.text &&
-        note.color === existing.color &&
-        note.fontSize === existingFont &&
-        !moved
-      ) {
-        return;
-      }
-      const [w, h] = noteSize(trimmed, note.fontSize);
-      const afterEl: CanvasElement = {
-        ...existing,
-        text: trimmed,
-        color: note.color,
-        strokeWidth: note.strokeWidth,
-        fontSize: note.fontSize,
-        x: note.worldX,
-        y: note.worldY,
-        width: w,
-        height: h,
-      };
-      recordUndo({ kind: 'update', before: [existing], after: [afterEl], bringToFront: moved });
-      onElementUpdate({
-        id: note.existingId,
-        text: trimmed,
-        color: note.color,
-        strokeWidth: note.strokeWidth,
-        fontSize: note.fontSize,
-        x: note.worldX,
-        y: note.worldY,
-        width: w,
-        height: h,
-        bringToFront: moved,
-      });
-      return;
-    }
-
-    if (!trimmed.trim()) return;
-    const [w, h] = noteSize(trimmed, note.fontSize);
-    const id = Math.random().toString(36).substring(2, 11);
-    const newElement: CanvasElement = {
-      id,
-      boardId: activeBoardId,
-      userId,
-      userName,
-      tool: 'text',
-      color: note.color,
-      strokeWidth: note.strokeWidth,
-      fontSize: note.fontSize,
-      x: note.worldX,
-      y: note.worldY,
-      width: w,
-      height: h,
-      text: trimmed,
-      timestamp: Date.now(),
-    };
-    recordUndo({ kind: 'add', items: [newElement] });
-    onElementStart(newElement);
-  }, [
-    editingNote,
-    canDraw,
-    elements,
-    onElementRemove,
-    onElementUpdate,
-    recordUndo,
-    activeBoardId,
-    userId,
-    userName,
-    onElementStart,
-  ]);
-
-  // Open an existing note for re-typing, or start a new note at (worldX, worldY) (OverBoard `makeTyping.open` / `tap`)
-  const openOrTapNoteAt = useCallback(
-    (worldX: number, worldY: number, forceExisting?: CanvasElement | null) => {
-      if (!canDraw) return;
-      const tol = 8 / stageScale;
-      const targetNote =
-        forceExisting !== undefined
-          ? forceExisting
-          : hitEditableNote(elements, allGoneNoteIds, worldX, worldY, tol, userId, isTeacher);
-      if (editingNote) {
-        const editingSameNote = Boolean(targetNote && editingNote.existingId === targetNote.id);
-        commitEditingNote();
-        if (!targetNote || editingSameNote) {
-          return;
-        }
-      }
-      if (!targetNote && !forceExisting && Date.now() - noteClosedAtRef.current < 450) {
-        return;
-      }
-
-      const safePenColor = penColor === '#ffffff' ? '#0f172a' : penColor;
-
-      if (targetNote) {
-        const f = getNoteFontSize(targetNote);
-        setTextFontSize(f);
-        saveLocal('allaboard-text-size', String(f));
-        setEditingNote({
-          existingId: targetNote.id,
-          worldX: targetNote.x || 0,
-          worldY: targetNote.y || 0,
-          value: targetNote.text || '',
-          color: targetNote.color || safePenColor,
-          strokeWidth: targetNote.strokeWidth || penWidth,
-          fontSize: f,
-          openedAt: Date.now(),
-        });
-      } else {
-        // Lift a new note by half a line height so the tap lands in the middle of its first line (OverBoard `makeTyping.open`)
-        const liftedY = Math.round((worldY - (textFontSize * NOTE_LH) / 2) * 10) / 10;
-        setEditingNote({
-          existingId: null,
-          worldX,
-          worldY: liftedY,
-          value: '',
-          color: safePenColor,
-          strokeWidth: penWidth,
-          fontSize: textFontSize,
-          openedAt: Date.now(),
-        });
-      }
-    },
-    [
-      canDraw,
-      editingNote,
-      commitEditingNote,
-      stageScale,
-      elements,
-      allGoneNoteIds,
-      userId,
-      isTeacher,
-      penWidth,
-      penColor,
-      textFontSize,
-    ]
-  );
-
-  const resetView = useCallback(() => {
-    setStageScale(1);
-    setStagePos({ x: 0, y: 0 });
-  }, []);
-
-  const fitElementsAndBackgroundInView = useCallback(
-    (targetElements: CanvasElement[], targetBg: RoomBackground | null) => {
-      let minX = Infinity;
-      let minY = Infinity;
-      let maxX = -Infinity;
-      let maxY = -Infinity;
-
-      if (targetBg && Array.isArray(targetBg.pages) && targetBg.pages.length > 0) {
-        for (const rect of layoutPages(targetBg, PAGE_GAP)) {
-          if (rect.x < minX) minX = rect.x;
-          if (rect.y < minY) minY = rect.y;
-          if (rect.x + rect.width > maxX) maxX = rect.x + rect.width;
-          if (rect.y + rect.height > maxY) maxY = rect.y + rect.height;
-        }
-      }
-
-      for (const el of targetElements) {
-        if (el.tool === 'eraser' || allGoneNoteIds.has(el.id)) continue;
-        const b = getElementBounds(el);
-        if (!b) continue;
-        const [bx1, by1, bx2, by2] = b;
-        if (bx1 < minX) minX = bx1;
-        if (by1 < minY) minY = by1;
-        if (bx2 > maxX) maxX = bx2;
-        if (by2 > maxY) maxY = by2;
-      }
-
-      if (!isFinite(minX) || !isFinite(minY)) {
-        resetView();
-        return;
-      }
-
-      const contentW = Math.max(100, maxX - minX);
-      const contentH = Math.max(100, maxY - minY);
-      const margin = 56;
-      const scaleX = (dimensions.width - margin * 2) / contentW;
-      const scaleY = (dimensions.height - margin * 2) / contentH;
-      const nextScale = Math.min(2.0, Math.max(MIN_SCALE, Math.min(scaleX, scaleY)));
-
-      const centerX = minX + contentW / 2;
-      const centerY = minY + contentH / 2;
-
-      setStageScale(nextScale);
-      setStagePos({
-        x: dimensions.width / 2 - centerX * nextScale,
-        y: dimensions.height / 2 - centerY * nextScale,
-      });
-    },
-    [dimensions.width, dimensions.height, resetView, allGoneNoteIds]
-  );
-
   const classWork = useClassWorkFiles({
     roomId, exportedBy: userName, elements: fullMainElements, messages: fullMainMessages,
     background: fullMainBackground, subBoards, breakoutConfig, roundTemplates, roundTemplateInk, roundVariants,
@@ -2072,192 +946,116 @@ export default function Canvas({
     }
   });
 
-  const fitAllContent = () => {
-    fitElementsAndBackgroundInView(elements, background);
-  };
-
-  // Keyboard shortcuts: Space (pan), Arrow keys (Unity-style board pan), H/P/E/V/M/T/L/R/C/S/F tool hotkeys, Ctrl+Z/Y, Ctrl+C/V/D, Delete/Backspace, Escape
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      const target = e.target as HTMLElement | null;
-      if (
-        target &&
-        (target.tagName === 'INPUT' ||
-          target.tagName === 'TEXTAREA' ||
-          target.tagName === 'SELECT' ||
-          target.isContentEditable)
-      ) {
-        return;
-      }
-      const mod = e.metaKey || e.ctrlKey;
-      const keyLower = e.key.toLowerCase();
-
-      // Arrow keys always pan the board (Unity / Unreal style camera movement)
-      if (
-        !mod &&
-        !e.altKey &&
-        !editingNote &&
-        (e.key === 'ArrowUp' || e.key === 'ArrowDown' || e.key === 'ArrowLeft' || e.key === 'ArrowRight')
-      ) {
-        e.preventDefault();
-        const panStep = e.shiftKey ? 200 : 72;
-        const dx = e.key === 'ArrowLeft' ? panStep : e.key === 'ArrowRight' ? -panStep : 0;
-        const dy = e.key === 'ArrowUp' ? panStep : e.key === 'ArrowDown' ? -panStep : 0;
-        setStagePos((prev) => ({ x: prev.x + dx, y: prev.y + dy }));
-        return;
-      }
-
-      if (e.code === 'Space' && !e.repeat) {
-        e.preventDefault();
-        setIsSpacePressed(true);
-      } else if (mod && keyLower === 'z' && e.shiftKey) {
-        e.preventDefault();
-        if (editingNote) commitEditingNote();
-        performRedo();
-      } else if (mod && keyLower === 'y') {
-        e.preventDefault();
-        if (editingNote) commitEditingNote();
-        performRedo();
-      } else if (mod && keyLower === 'z') {
-        e.preventDefault();
-        if (editingNote) commitEditingNote();
-        performUndo();
-      } else if (mod && keyLower === 'c' && selectedElements.length > 0) {
-        e.preventDefault();
-        handleCopySelection();
-      } else if (mod && keyLower === 'v' && clipboardElements.length > 0 && canDraw) {
-        e.preventDefault();
-        handlePasteElements(pastePrompt ? { x: pastePrompt.worldX, y: pastePrompt.worldY } : worldPos);
-      } else if (mod && keyLower === 'd' && selectedElements.length > 0 && canDraw) {
-        e.preventDefault();
-        handleDuplicateSelection();
-      } else if ((e.key === 'Delete' || e.key === 'Backspace') && selectedElements.length > 0 && canDraw) {
-        e.preventDefault();
-        handleDeleteSelection();
-      } else if (e.key === 'Escape') {
-        setSelectedIds([]);
-        setPastePrompt(null);
-        setShowHotkeysModal(false);
-        setShowHollowMenu(false);
-        setShowHlMenu(false);
-      } else if (!mod && !e.altKey && !editingNote) {
-        if (e.key === '?') {
-          e.preventDefault();
-          setShowHotkeysModal((prev) => !prev);
-        } else if (keyLower === 'h') {
-          e.preventDefault();
-          setTool('pan');
-        } else if ((keyLower === 'p' || keyLower === 'b') && canDraw) {
-          e.preventDefault();
-          setTool('solid');
-        } else if (keyLower === 'e' && canDraw) {
-          e.preventDefault();
-          setTool('eraser');
-        } else if (keyLower === 'v' && canDraw) {
-          e.preventDefault();
-          setTool('select');
-        } else if (keyLower === 'm' && canDraw) {
-          e.preventDefault();
-          setTool('highlighter');
-        } else if (keyLower === 't' && canDraw) {
-          e.preventDefault();
-          setTool('text');
-        } else if (keyLower === 'l' && canDraw) {
-          e.preventDefault();
-          setTool('line');
-        } else if (keyLower === 'r' && canDraw) {
-          e.preventDefault();
-          setTool('rect');
-        } else if (keyLower === 'c' && canDraw) {
-          e.preventDefault();
-          setTool('circle');
-        } else if (keyLower === 's' && canDraw) {
-          e.preventDefault();
-          setTool('stamp');
-        } else if (keyLower === 'f') {
-          e.preventDefault();
-          fitElementsAndBackgroundInView(elements, background);
-        } else if (e.key === '0') {
-          e.preventDefault();
-          resetView();
-        }
-      }
-    };
-    const handleKeyUp = (e: KeyboardEvent) => {
-      if (e.code === 'Space') {
-        setIsSpacePressed(false);
-        setIsPanning(false);
-      }
-    };
-    window.addEventListener('keydown', handleKeyDown);
-    window.addEventListener('keyup', handleKeyUp);
-    return () => {
-      window.removeEventListener('keydown', handleKeyDown);
-      window.removeEventListener('keyup', handleKeyUp);
-    };
-  }, [
-    canDraw,
-    editingNote,
+  const {
     commitEditingNote,
-    performUndo,
-    performRedo,
-    selectedElements.length,
-    clipboardElements.length,
+    openOrTapNoteAt,
     handleCopySelection,
     handlePasteElements,
     handleDuplicateSelection,
     handleDeleteSelection,
+    handleSendSelectionToBoard,
+    handleViewportPointerDown,
+    handleViewportPointerMove,
+    handleViewportPointerUp,
+    handleViewportDoubleClick
+  } = useCanvasPointerTools({
+    onCursorMove,
+    noteTextareaRef,
+    editingNote,
+    stageScale,
+    stagePos,
+    selectedElements,
+    elements,
+    setClipboardElements,
+    canDraw,
+    clipboardElements,
+    activeBoardId,
+    userId,
+    userName,
+    recordUndo,
+    onElementsBatchAdd,
+    setSelectedIds,
+    setPastePrompt,
+    onElementsBatchRemove,
+    isTeacher,
+    subBoards,
+    setSentFeedback,
+    setEditingNote,
+    noteClosedAtRef,
+    onElementRemove,
+    onElementUpdate,
+    onElementStart,
+    allGoneNoteIds,
+    penColor,
+    setTextFontSize,
+    penWidth,
+    textFontSize,
+    setStagePos,
+    setIsSpacePressed,
+    performRedo,
+    performUndo,
     pastePrompt,
     worldPos,
-    elements,
-    background,
+    setShowHotkeysModal,
+    setShowHollowMenu,
+    setShowHlMenu,
+    setTool,
     fitElementsAndBackgroundInView,
+    background,
     resetView,
-  ]);
-
-  const handleWheel = (e: any) => {
-    e.evt.preventDefault();
-    const stage = stageRef.current;
-    if (!stage) return;
-
-    const pointer = stage.getPointerPosition();
-    if (!pointer) return;
-
-    const scaleBy = 1.1;
-    const oldScale = stageScale;
-
-    const mousePointTo = {
-      x: (pointer.x - stagePos.x) / oldScale,
-      y: (pointer.y - stagePos.y) / oldScale,
-    };
-
-    const direction = e.evt.deltaY > 0 ? -1 : 1;
-    const unclampedScale = direction > 0 ? oldScale * scaleBy : oldScale / scaleBy;
-    const newScale = Math.min(MAX_SCALE, Math.max(MIN_SCALE, unclampedScale));
-
-    const newPos = {
-      x: pointer.x - mousePointTo.x * newScale,
-      y: pointer.y - mousePointTo.y * newScale,
-    };
-
-    setStageScale(newScale);
-    setStagePos(newPos);
-  };
-
-  const zoomStep = (multiplier: number) => {
-    const oldScale = stageScale;
-    const newScale = Math.min(MAX_SCALE, Math.max(MIN_SCALE, oldScale * multiplier));
-    const centerScreen = { x: dimensions.width / 2, y: dimensions.height / 2 };
-    const centerWorld = {
-      x: (centerScreen.x - stagePos.x) / oldScale,
-      y: (centerScreen.y - stagePos.y) / oldScale,
-    };
-    setStageScale(newScale);
-    setStagePos({
-      x: centerScreen.x - centerWorld.x * newScale,
-      y: centerScreen.y - centerWorld.y * newScale,
-    });
-  };
+    setIsPanning,
+    activePointerIdRef,
+    showHollowMenu,
+    showHlMenu,
+    showGridMenu,
+    setShowGridMenu,
+    showStatusMenu,
+    setShowStatusMenu,
+    showTextSizeMenu,
+    setShowTextSizeMenu,
+    getLocalPosFromEvent,
+    screenToWorld,
+    fingerScrolls,
+    effectiveTool,
+    containerRef,
+    laserStrokeRef,
+    sendLaserPoint,
+    setIsMovingBg,
+    selectionBounds,
+    selectedIds,
+    setLassoPoints,
+    stampKind,
+    nameStampTaken,
+    customTeacherStampText,
+    color,
+    userColor,
+    strokeWidth,
+    setCurrentElementId,
+    setIsDrawing,
+    isCoverMode,
+    coverColor,
+    hlColor,
+    hlStrength,
+    hollowShape,
+    hollowWeight,
+    setScreenPos,
+    setWorldPos,
+    pointerOverCanvas,
+    setPointerOverCanvas,
+    isDrawing,
+    isPanning,
+    setHoveredNoteId,
+    hoveredNoteId,
+    setDraggingNotePreview,
+    setSelectionDragOffset,
+    isMovingBg,
+    onTeacherUpdateBackground,
+    currentElementId,
+    smoothLevel,
+    onElementAppendPoints,
+    onElementsBatchUpdate,
+    onElementsReplace
+  });
 
   // Auto-fit when switching between sub-boards
   useEffect(() => {
@@ -2404,1107 +1202,7 @@ export default function Canvas({
     document.body.removeChild(link);
   };
 
-  // Get local container coordinates from a native PointerEvent or MouseEvent
-  const getLocalPosFromEvent = useCallback((clientX: number, clientY: number) => {
-    const rect = containerRef.current?.getBoundingClientRect();
-    if (!rect) return { x: clientX, y: clientY };
-    return {
-      x: clientX - rect.left,
-      y: clientY - rect.top,
-    };
-  }, []);
-
-  // OverBoard-powered PointerDown handler (supports SMART Board palm eraser, finger-scrolls mode, and click-to-edit notes)
-  const handleViewportPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
-    const targetEl = e.target as HTMLElement | null;
-    if (targetEl && targetEl.closest && targetEl.closest('[data-hud="true"], button, input, textarea, select')) {
-      return;
-    }
-    if (activePointerIdRef.current !== null) return;
-    if (e.pointerType === 'mouse' && e.button !== 0 && e.button !== 1) return;
-
-    if (showHollowMenu) {
-      setShowHollowMenu(false);
-    }
-    if (showHlMenu) {
-      setShowHlMenu(false);
-    }
-    if (showGridMenu) {
-      setShowGridMenu(false);
-    }
-    if (showStatusMenu) {
-      setShowStatusMenu(false);
-    }
-    if (showTextSizeMenu) {
-      setShowTextSizeMenu(false);
-    }
-
-    const pos = getLocalPosFromEvent(e.clientX, e.clientY);
-    const world = screenToWorld(pos.x, pos.y);
-    const kind = pointerKind(e);
-    const isMiddleClick = e.pointerType === 'mouse' && e.button === 1;
-
-    // In OverBoard, when "Finger: pans" is enabled, a finger drag pans cleanly
-    const shouldFingerPan = kind === 'finger' && fingerScrolls && !isMiddleClick;
-
-    if (effectiveTool === 'pan' || isMiddleClick || shouldFingerPan) {
-      activePointerIdRef.current = e.pointerId;
-      try {
-        containerRef.current?.setPointerCapture(e.pointerId);
-      } catch {
-        // Ignore
-      }
-      setIsPanning(true);
-      panStartRef.current = {
-        x: pos.x,
-        y: pos.y,
-        stageX: stagePos.x,
-        stageY: stagePos.y,
-        tapForNote: false,
-      };
-      e.preventDefault();
-      return;
-    }
-
-    if (effectiveTool === 'laser' && isTeacher) {
-      activePointerIdRef.current = e.pointerId;
-      laserStrokeRef.current = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
-      try { containerRef.current?.setPointerCapture(e.pointerId); } catch { /* Capture may fail if pointer ended. */ }
-      sendLaserPoint(world, true);
-      e.preventDefault();
-      return;
-    }
-
-    // Teacher dragging background worksheet
-    if (effectiveTool === 'move-bg') {
-      if (isTeacher && background) {
-        activePointerIdRef.current = e.pointerId;
-        try {
-          containerRef.current?.setPointerCapture(e.pointerId);
-        } catch {
-          // Ignore
-        }
-        setIsMovingBg(true);
-        bgMoveStartRef.current = {
-          worldX: world.x,
-          worldY: world.y,
-          origX: background.x || 0,
-          origY: background.y || 0,
-        };
-      }
-      return;
-    }
-
-    if (!canDraw) return;
-
-    // OverBoard `makeSelect`: tap or drag existing element/selection box, or draw lasso loop to multi-select
-    if (effectiveTool === 'select' && kind !== 'palm') {
-      if (editingNote) {
-        commitEditingNote();
-      }
-      setPastePrompt(null);
-      activePointerIdRef.current = e.pointerId;
-      try {
-        containerRef.current?.setPointerCapture(e.pointerId);
-      } catch {
-        // Ignore
-      }
-
-      const boxPad = 8 / stageScale;
-      const hitInsideBox =
-        selectionBounds &&
-        selectedElements.length > 0 &&
-        world.x >= selectionBounds[0] - boxPad &&
-        world.x <= selectionBounds[2] + boxPad &&
-        world.y >= selectionBounds[1] - boxPad &&
-        world.y <= selectionBounds[3] + boxPad;
-
-      if (!e.shiftKey && hitInsideBox) {
-        selectGestureRef.current = {
-          mode: 'drag-selection',
-          startClientX: e.clientX,
-          startClientY: e.clientY,
-          startWorldX: world.x,
-          startWorldY: world.y,
-          targetIds: selectedElements.map((el) => el.id),
-          prevSelectedIds: [...selectedIds],
-          shiftKey: false,
-          moved: false,
-          loopPoints: [],
-        };
-      } else {
-        const hitEl = hitElementAtPoint(
-          elements,
-          allGoneNoteIds,
-          world.x,
-          world.y,
-          10 / stageScale,
-          userId,
-          isTeacher
-        );
-        if (hitEl) {
-          const prevIds = [...selectedIds];
-          const combinedShiftIds = prevIds.includes(hitEl.id)
-            ? prevIds
-            : [...prevIds, hitEl.id];
-          if (!e.shiftKey) {
-            setSelectedIds([hitEl.id]);
-          }
-          selectGestureRef.current = {
-            mode: 'drag-single',
-            startClientX: e.clientX,
-            startClientY: e.clientY,
-            startWorldX: world.x,
-            startWorldY: world.y,
-            targetIds: e.shiftKey ? combinedShiftIds : [hitEl.id],
-            prevSelectedIds: prevIds,
-            singleEl: hitEl,
-            shiftKey: e.shiftKey,
-            moved: false,
-            loopPoints: [],
-          };
-        } else {
-          if (!e.shiftKey) {
-            setSelectedIds([]);
-          }
-          setLassoPoints([world.x, world.y]);
-          selectGestureRef.current = {
-            mode: 'lasso',
-            startClientX: e.clientX,
-            startClientY: e.clientY,
-            startWorldX: world.x,
-            startWorldY: world.y,
-            targetIds: [],
-            prevSelectedIds: [...selectedIds],
-            shiftKey: e.shiftKey,
-            moved: false,
-            loopPoints: [world.x, world.y],
-          };
-        }
-      }
-      e.preventDefault();
-      return;
-    }
-
-    // Type tool: drag existing note directly (>= 6px moves it, tap < 6px edits), or drag/tap empty canvas
-    if (effectiveTool === 'text' && kind !== 'palm') {
-      const hitNote = hitEditableNote(
-        elements,
-        allGoneNoteIds,
-        world.x,
-        world.y,
-        10 / stageScale,
-        userId,
-        isTeacher
-      );
-      if (hitNote && hitNote.id !== editingNote?.existingId) {
-        if (editingNote) {
-          commitEditingNote();
-        }
-        activePointerIdRef.current = e.pointerId;
-        try {
-          containerRef.current?.setPointerCapture(e.pointerId);
-        } catch {
-          // Ignore
-        }
-        draggingNoteRef.current = {
-          note: hitNote,
-          startClientX: e.clientX,
-          startClientY: e.clientY,
-          startWorldX: world.x,
-          startWorldY: world.y,
-          moved: false,
-        };
-        e.preventDefault();
-        return;
-      }
-
-      activePointerIdRef.current = e.pointerId;
-      try {
-        containerRef.current?.setPointerCapture(e.pointerId);
-      } catch {
-        // Ignore
-      }
-      setIsPanning(true);
-      panStartRef.current = {
-        x: pos.x,
-        y: pos.y,
-        stageX: stagePos.x,
-        stageY: stagePos.y,
-        tapForNote: true,
-      };
-      e.preventDefault();
-      return;
-    }
-
-    // If a note was open and the user started drawing with another tool, commit the note first
-    if (editingNote) {
-      commitEditingNote();
-    }
-
-    const id = Math.random().toString(36).substring(2, 11);
-
-    // SMART Board palm / pen-eraser automatically erases regardless of selected tool (OverBoard `pointerKind(e) === 'palm'`)
-    const strokeTool: Exclude<ToolType, 'pan' | 'select' | 'move-bg' | 'laser'> =
-      kind === 'palm' ? 'eraser' : (effectiveTool as Exclude<ToolType, 'pan' | 'select' | 'move-bg' | 'laser'>);
-
-    // One-click Stamp placement (when not using palm eraser)
-    if (strokeTool === 'stamp') {
-      const effectiveStampKind: StampKind =
-        !isTeacher && isTeacherStampKind(stampKind) ? 'check' : stampKind;
-      if (effectiveStampKind === 'username' && nameStampTaken) {
-        setTool('select'); // Their stamp is already down, so let them drag it instead
-        return;
-      }
-      const customText =
-        effectiveStampKind === 'teacher-custom'
-          ? customTeacherStampText.trim().slice(0, 24) || 'FEEDBACK'
-          : undefined;
-      const teacherMeta = getTeacherStampAppearance(
-        effectiveStampKind,
-        customText,
-        color === '#ffffff' ? '#7c3aed' : color
-      );
-      const stampElement: CanvasElement = {
-        id,
-        boardId: activeBoardId,
-        userId,
-        userName,
-        tool: 'stamp',
-        stamp: effectiveStampKind,
-        ...(customText ? { text: customText } : {}),
-        color: teacherMeta ? teacherMeta.color : color === '#ffffff' ? userColor : color,
-        strokeWidth,
-        x: world.x,
-        y: world.y,
-        timestamp: Date.now(),
-      };
-      recordUndo({ kind: 'add', items: [stampElement] });
-      onElementStart(stampElement);
-      return;
-    }
-
-    activePointerIdRef.current = e.pointerId;
-    try {
-      containerRef.current?.setPointerCapture(e.pointerId);
-    } catch {
-      // Ignore
-    }
-
-    setCurrentElementId(id);
-    setIsDrawing(true);
-    activeStrokeToolRef.current = strokeTool;
-    downAtRef.current = performance.now();
-
-    if (strokeTool === 'rect' || strokeTool === 'circle') {
-      shapeOriginRef.current = { x: world.x, y: world.y };
-      const newElement: CanvasElement = {
-        id,
-        boardId: activeBoardId,
-        userId,
-        userName,
-        tool: strokeTool,
-        color,
-        strokeWidth,
-        x: world.x,
-        y: world.y,
-        width: 0,
-        height: 0,
-        timestamp: Date.now(),
-      };
-      pendingStrokeRef.current = newElement;
-      onElementStart(newElement);
-    } else if (strokeTool === 'line') {
-      shapeOriginRef.current = { x: world.x, y: world.y };
-      const newElement: CanvasElement = {
-        id,
-        boardId: activeBoardId,
-        userId,
-        userName,
-        tool: 'line',
-        color,
-        strokeWidth,
-        points: [world.x, world.y, world.x, world.y],
-        timestamp: Date.now(),
-      };
-      pendingStrokeRef.current = newElement;
-      onElementStart(newElement);
-    } else {
-      // Freehand stroke: solid, hollow, spray, highlighter (see-through or cover), or eraser (personal or palm)
-      const effectiveStrokeWidth =
-        kind === 'palm'
-          ? Math.max(12, Math.round((PALM_ERASER_SCREEN_PX / stageScale) * 10) / 10)
-          : strokeWidth;
-
-      const isHlCover = strokeTool === 'highlighter' && isCoverMode;
-      const strokeColor =
-        strokeTool === 'highlighter'
-          ? isHlCover
-            ? coverColor
-            : hlInk(hlColor, hlStrength)
-          : color;
-
-      activeStrokePointsRef.current = [world.x, world.y];
-      liveSmoothRef.current = liveStart(world.x, world.y);
-
-      const newElement: CanvasElement = {
-        id,
-        boardId: activeBoardId,
-        userId,
-        userName,
-        tool: strokeTool,
-        color: strokeColor,
-        strokeWidth: effectiveStrokeWidth,
-        hollowShape: strokeTool === 'hollow' ? hollowShape : undefined,
-        hollowWeight: strokeTool === 'hollow' ? hollowWeight : undefined,
-        hlStrength: strokeTool === 'highlighter' && !isHlCover ? hlStrength : undefined,
-        isCover: isHlCover ? true : undefined,
-        points: [world.x, world.y],
-        timestamp: Date.now(),
-      };
-      pendingStrokeRef.current = newElement;
-      onElementStart(newElement);
-    }
-    e.preventDefault();
-  };
-
-  const handleViewportPointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
-    const pos = getLocalPosFromEvent(e.clientX, e.clientY);
-    setScreenPos(pos);
-    const world = screenToWorld(pos.x, pos.y);
-    setWorldPos(world);
-    if (!pointerOverCanvas) setPointerOverCanvas(true);
-
-    // Highlight hover state when over an editable text note in Type mode or selectable item in Select mode
-    if (!isDrawing && !isPanning && !draggingNoteRef.current && !selectGestureRef.current && canDraw) {
-      if (effectiveTool === 'text') {
-        const hit = hitEditableNote(
-          elements,
-          allGoneNoteIds,
-          world.x,
-          world.y,
-          8 / stageScale,
-          userId,
-          isTeacher
-        );
-        setHoveredNoteId(hit ? hit.id : null);
-      } else if (effectiveTool === 'select') {
-        const hit = hitElementAtPoint(
-          elements,
-          allGoneNoteIds,
-          world.x,
-          world.y,
-          10 / stageScale,
-          userId,
-          isTeacher
-        );
-        if (hit) {
-          setHoveredNoteId(hit.id);
-        } else if (selectionBounds) {
-          const pad = 8 / stageScale;
-          const [sx1, sy1, sx2, sy2] = selectionBounds;
-          const insideBox =
-            world.x >= sx1 - pad &&
-            world.x <= sx2 + pad &&
-            world.y >= sy1 - pad &&
-            world.y <= sy2 + pad;
-          setHoveredNoteId(insideBox ? '__selection_box__' : null);
-        } else {
-          setHoveredNoteId(null);
-        }
-      } else if (hoveredNoteId !== null) {
-        setHoveredNoteId(null);
-      }
-    }
-
-    const cursor = {
-      userId,
-      userName,
-      color: userColor,
-      boardId: activeBoardId,
-      x: world.x,
-      y: world.y,
-      tool: effectiveTool,
-      isDrawing,
-    };
-    const wait = CURSOR_EMIT_MS - (Date.now() - lastCursorEmitRef.current);
-    if (wait <= 0) {
-      if (cursorTimerRef.current) clearTimeout(cursorTimerRef.current);
-      cursorTimerRef.current = null;
-      pendingCursorRef.current = null;
-      lastCursorEmitRef.current = Date.now();
-      onCursorMove(cursor);
-    } else {
-      pendingCursorRef.current = cursor;
-      if (!cursorTimerRef.current) {
-        cursorTimerRef.current = setTimeout(() => {
-          cursorTimerRef.current = null;
-          const latest = pendingCursorRef.current;
-          pendingCursorRef.current = null;
-          if (!latest) return;
-          lastCursorEmitRef.current = Date.now();
-          onCursorMoveRef.current(latest);
-        }, wait);
-      }
-    }
-
-    if (e.pointerId !== activePointerIdRef.current) return;
-
-    if (laserStrokeRef.current) {
-      sendLaserPoint(world);
-      return;
-    }
-
-    // Direct text note drag preview in Type mode
-    if (draggingNoteRef.current) {
-      const drag = draggingNoteRef.current;
-      const distClient = Math.hypot(e.clientX - drag.startClientX, e.clientY - drag.startClientY);
-      if (!drag.moved && distClient >= 6) {
-        drag.moved = true;
-      }
-      if (drag.moved) {
-        setDraggingNotePreview({
-          id: drag.note.id,
-          dx: world.x - drag.startWorldX,
-          dy: world.y - drag.startWorldY,
-        });
-      }
-      return;
-    }
-
-    // Select / Lasso gesture move
-    if (selectGestureRef.current) {
-      const g = selectGestureRef.current;
-      const distClient = Math.hypot(e.clientX - g.startClientX, e.clientY - g.startClientY);
-      if (g.mode === 'drag-selection' || g.mode === 'drag-single') {
-        if (!g.moved && distClient >= 6) {
-          g.moved = true;
-          if (
-            g.mode === 'drag-single' &&
-            g.shiftKey &&
-            g.singleEl &&
-            !g.prevSelectedIds.includes(g.singleEl.id)
-          ) {
-            setSelectedIds(g.targetIds);
-          }
-        }
-        if (g.moved) {
-          setSelectionDragOffset({
-            dx: world.x - g.startWorldX,
-            dy: world.y - g.startWorldY,
-          });
-        }
-      } else if (g.mode === 'lasso') {
-        if (!g.moved && distClient >= 6) {
-          g.moved = true;
-        }
-        const pts = g.loopPoints;
-        const lastX = pts[pts.length - 2];
-        const lastY = pts[pts.length - 1];
-        if (Math.hypot(world.x - lastX, world.y - lastY) >= 3 / stageScale) {
-          pts.push(world.x, world.y);
-          setLassoPoints([...pts]);
-        }
-      }
-      return;
-    }
-
-    if (isPanning && panStartRef.current) {
-      const dx = pos.x - panStartRef.current.x;
-      const dy = pos.y - panStartRef.current.y;
-      // In Type mode, require 8px drag threshold before panning so a tap cleanly opens/edits a note (OverBoard v45)
-      if (panStartRef.current.tapForNote && Math.abs(dx) + Math.abs(dy) < 8) {
-        return;
-      }
-      panStartRef.current.tapForNote = false;
-      setStagePos({
-        x: panStartRef.current.stageX + dx,
-        y: panStartRef.current.stageY + dy,
-      });
-      return;
-    }
-
-    if (isMovingBg && bgMoveStartRef.current && isTeacher && background) {
-      const dx = world.x - bgMoveStartRef.current.worldX;
-      const dy = world.y - bgMoveStartRef.current.worldY;
-      onTeacherUpdateBackground({
-        x: Math.round(bgMoveStartRef.current.origX + dx),
-        y: Math.round(bgMoveStartRef.current.origY + dy),
-      });
-      return;
-    }
-
-    if (!isDrawing || !currentElementId) return;
-    const strokeTool = activeStrokeToolRef.current || effectiveTool;
-
-    if (strokeTool === 'rect' || strokeTool === 'circle') {
-      const origin = shapeOriginRef.current;
-      if (!origin) return;
-      const width = Number((world.x - origin.x).toFixed(1));
-      const height = Number((world.y - origin.y).toFixed(1));
-      if (pendingStrokeRef.current) {
-        pendingStrokeRef.current = { ...pendingStrokeRef.current, width, height };
-      }
-      onElementUpdate({
-        id: currentElementId,
-        x: origin.x,
-        y: origin.y,
-        width,
-        height,
-      });
-    } else if (strokeTool === 'line') {
-      const origin = shapeOriginRef.current;
-      if (!origin) return;
-      const nextPts = [origin.x, origin.y, world.x, world.y];
-      if (pendingStrokeRef.current) {
-        pendingStrokeRef.current = { ...pendingStrokeRef.current, points: nextPts };
-      }
-      onElementUpdate({
-        id: currentElementId,
-        points: nextPts,
-      });
-    } else if (liveSmoothRef.current) {
-      // Only unpack getCoalescedEvents() when smoothing > 0; at smoothLevel === 0 (default for Chromebooks),
-      // sample the frame pointer event directly with a larger step threshold so React/Konva isn't flooded.
-      const rawEvt = e.nativeEvent;
-      const coalesced: PointerEvent[] =
-        smoothLevel > 0 &&
-        typeof rawEvt.getCoalescedEvents === 'function' &&
-        rawEvt.getCoalescedEvents().length > 0
-          ? rawEvt.getCoalescedEvents()
-          : [rawEvt];
-
-      const appended: number[] = [];
-      const minDist =
-        smoothLevel === 0
-          ? Math.max(1.2, 1.5 / stageScale)
-          : Math.max(0.4, 0.7 / stageScale);
-      for (const ev of coalesced) {
-        const evPos = getLocalPosFromEvent(ev.clientX, ev.clientY);
-        const evWorld = screenToWorld(evPos.x, evPos.y);
-        const pt = liveAddPoint(
-          activeStrokePointsRef.current,
-          liveSmoothRef.current,
-          evWorld.x,
-          evWorld.y,
-          smoothLevel,
-          minDist
-        );
-        if (pt) {
-          appended.push(pt[0], pt[1]);
-        }
-      }
-      if (appended.length > 0) {
-        onElementAppendPoints(currentElementId, appended);
-      }
-    }
-  };
-
-  const handleViewportPointerUp = (e: React.PointerEvent<HTMLDivElement>) => {
-    if (e.pointerId !== activePointerIdRef.current) return;
-    activePointerIdRef.current = null;
-    if (laserStrokeRef.current) {
-      if (e.type === 'pointerup') {
-        const pos = getLocalPosFromEvent(e.clientX, e.clientY);
-        sendLaserPoint(screenToWorld(pos.x, pos.y), true);
-      }
-      laserStrokeRef.current = null;
-      return;
-    }
-
-    const pos = getLocalPosFromEvent(e.clientX, e.clientY);
-    const world = screenToWorld(pos.x, pos.y);
-
-    if (draggingNoteRef.current) {
-      const drag = draggingNoteRef.current;
-      draggingNoteRef.current = null;
-      setDraggingNotePreview(null);
-      if (e.type === 'pointerup') {
-        if (drag.moved) {
-          const dx = Math.round((world.x - drag.startWorldX) * 10) / 10;
-          const dy = Math.round((world.y - drag.startWorldY) * 10) / 10;
-          if (Math.abs(dx) > 0.1 || Math.abs(dy) > 0.1) {
-            const movedNote = translateElement(drag.note, dx, dy);
-            recordUndo({
-              kind: 'update',
-              before: [drag.note],
-              after: [movedNote],
-              bringToFront: true,
-            });
-            onElementUpdate({
-              id: drag.note.id,
-              x: movedNote.x,
-              y: movedNote.y,
-              bringToFront: true,
-            });
-          }
-        } else {
-          openOrTapNoteAt(world.x, world.y, drag.note);
-        }
-      }
-      return;
-    }
-
-    if (selectGestureRef.current) {
-      const g = selectGestureRef.current;
-      selectGestureRef.current = null;
-      setSelectionDragOffset(null);
-      setLassoPoints([]);
-
-      if (e.type !== 'pointerup') return;
-
-      if (g.mode === 'drag-selection' || g.mode === 'drag-single') {
-        if (g.moved) {
-          const dx = Math.round((world.x - g.startWorldX) * 10) / 10;
-          const dy = Math.round((world.y - g.startWorldY) * 10) / 10;
-          const idSet = new Set(g.targetIds);
-          const beforeItems = elements.filter((el) => idSet.has(el.id));
-          if (beforeItems.length > 0 && (Math.abs(dx) > 0.1 || Math.abs(dy) > 0.1)) {
-            const expandedBefore: CanvasElement[] = [];
-            let hadPartialErase = false;
-            for (const el of beforeItems) {
-              const pieces = expandElementVisiblePieces(el, elements);
-              if (pieces.length !== 1 || pieces[0] !== el) {
-                hadPartialErase = true;
-              }
-              expandedBefore.push(...pieces);
-            }
-            if (expandedBefore.length === 0) return;
-
-            if (hadPartialErase) {
-              const now = Date.now();
-              const addedItems: CanvasElement[] = expandedBefore.map((piece, idx) => {
-                const shifted = translateElement(piece, dx, dy);
-                return {
-                  ...shifted,
-                  id: `${Math.random().toString(36).substring(2, 9)}_${idx}`,
-                  timestamp: now + idx,
-                };
-              });
-              const removedIds = beforeItems.map((el) => el.id);
-              recordUndo({
-                kind: 'replace',
-                removed: beforeItems,
-                added: addedItems,
-              });
-              onElementsBatchRemove(removedIds);
-              onElementsBatchAdd(addedItems, activeBoardId);
-              setSelectedIds(addedItems.map((el) => el.id));
-            } else {
-              const afterItems = beforeItems.map((el) => translateElement(el, dx, dy));
-              const updates = afterItems.map((a) =>
-                a.points ? { id: a.id, points: a.points } : { id: a.id, x: a.x, y: a.y }
-              );
-              const bringToFront = !beforeItems.some((el) =>
-                hasSubsequentOverlappingEraser(el, elements)
-              );
-              recordUndo({
-                kind: 'update',
-                before: beforeItems,
-                after: afterItems,
-                bringToFront,
-              });
-              onElementsBatchUpdate(updates, bringToFront);
-            }
-          }
-        } else if (g.singleEl && g.shiftKey) {
-          const hitId = g.singleEl.id;
-          const prev = g.prevSelectedIds;
-          setSelectedIds(
-            prev.includes(hitId) ? prev.filter((id) => id !== hitId) : [...prev, hitId]
-          );
-        }
-      } else if (g.mode === 'lasso') {
-        if (g.moved && g.loopPoints.length >= 6) {
-          const picked = lassoSelectElements(
-            elements,
-            allGoneNoteIds,
-            g.loopPoints,
-            userId,
-            isTeacher
-          );
-          const pickedIds = picked.map((el) => el.id);
-          if (g.shiftKey) {
-            const merged = new Set([...g.prevSelectedIds, ...pickedIds]);
-            setSelectedIds(Array.from(merged));
-          } else {
-            setSelectedIds(pickedIds);
-          }
-        } else {
-          if (!g.shiftKey) setSelectedIds([]);
-          if (clipboardElements.length > 0) {
-            setPastePrompt({ worldX: world.x, worldY: world.y });
-          }
-        }
-      }
-      return;
-    }
-
-    if (isPanning) {
-      const panInfo = panStartRef.current;
-      setIsPanning(false);
-      panStartRef.current = null;
-      // OverBoard v45 Type tool: a tap (< 8px movement) creates a note or opens the clicked note for re-typing!
-      if (
-        e.type === 'pointerup' &&
-        panInfo?.tapForNote &&
-        Math.abs(pos.x - panInfo.x) + Math.abs(pos.y - panInfo.y) < 8
-      ) {
-        openOrTapNoteAt(world.x, world.y);
-      }
-      return;
-    }
-
-    if (isMovingBg) {
-      setIsMovingBg(false);
-      bgMoveStartRef.current = null;
-      return;
-    }
-
-    if (isDrawing && currentElementId) {
-      const id = currentElementId;
-      const strokeTool = activeStrokeToolRef.current;
-      const pts = activeStrokePointsRef.current;
-      const pending = pendingStrokeRef.current;
-      pendingStrokeRef.current = null;
-
-      setIsDrawing(false);
-      setCurrentElementId(null);
-      activeStrokeToolRef.current = null;
-      shapeOriginRef.current = null;
-      liveSmoothRef.current = null;
-
-      // OverBoard hardware blip filter: drop accidental <15ms pen/hand switch blips
-      if (
-        strokeTool !== 'rect' &&
-        strokeTool !== 'circle' &&
-        strokeTool !== 'line' &&
-        performance.now() - downAtRef.current < 15 &&
-        pts.length <= 4
-      ) {
-        onElementRemove(id);
-        return;
-      }
-
-      // Catch up smoothed stroke to exact pen-lift point (`liveLiftPoint`)
-      if (
-        e.type === 'pointerup' &&
-        strokeTool !== 'rect' &&
-        strokeTool !== 'circle' &&
-        strokeTool !== 'line'
-      ) {
-        const liftPt = liveLiftPoint(pts, world.x, world.y, Math.max(0.2, 0.5 / stageScale));
-        if (liftPt) {
-          pts.push(liftPt[0], liftPt[1]);
-          onElementAppendPoints(id, [liftPt[0], liftPt[1]]);
-        }
-      }
-
-      if (pending) {
-        const completed: CanvasElement =
-          strokeTool === 'rect' || strokeTool === 'circle' || strokeTool === 'line'
-            ? pending
-            : { ...pending, points: [...pts] };
-        if (strokeTool === 'eraser' && onElementsReplace) {
-          // The real eraser: on pen-up the stroke becomes edits (ink split or removed, notes and stamps removed)
-          // and the eraser stroke itself goes away, except over rectangles/circles it only partly covers.
-          // One undo step puts everything back where it was in the stacking order.
-          const board = elements.map((el) => (el.id === completed.id ? completed : el));
-          if (!board.some((el) => el.id === completed.id)) board.push(completed);
-          const result = eraseWithStroke(board, completed, () => Math.random().toString(36).substring(2, 11));
-          const { forward, backward } = eraseGroups(result, completed.id);
-          onElementsReplace(forward);
-          if (result.edits.length > 0 || result.keptEraser.length > 0) {
-            recordUndo({ kind: 'groups', forward, backward });
-          }
-          return;
-        }
-        // Erasing a stamp deletes it (one undo step brings both back), so one-name-stamp mode frees the name stamp.
-        const erasedStamps = strokeTool === 'eraser' ? stampsHitByEraser(elements, completed) : [];
-        if (erasedStamps.length > 0) {
-          onElementsBatchRemove(erasedStamps.map((el) => el.id));
-          recordUndo({ kind: 'replace', removed: erasedStamps, added: [completed] });
-        } else {
-          recordUndo({ kind: 'add', items: [completed] });
-        }
-      }
-    }
-  };
-
-  // Double-clicking any editable note on the canvas (even while using a pen/shape tool) opens it for re-typing!
-  const handleViewportDoubleClick = (e: React.MouseEvent<HTMLDivElement>) => {
-    if (!canDraw) return;
-    const pos = getLocalPosFromEvent(e.clientX, e.clientY);
-    const world = screenToWorld(pos.x, pos.y);
-    const hit = hitEditableNote(
-      elements,
-      allGoneNoteIds,
-      world.x,
-      world.y,
-      10 / stageScale,
-      userId,
-      isTeacher
-    );
-    if (hit) {
-      e.preventDefault();
-      openOrTapNoteAt(world.x, world.y, hit);
-    }
-  };
-
-  const renderElement = (el: CanvasElement, goneNoteIds?: Set<string>) => {
-    if (el.tool === 'text') {
-      // Hide note if an eraser stroke touched it (`notesGone`) or if it is currently open in the inline note editor
-      if (goneNoteIds?.has(el.id)) return null;
-      if (editingNote?.existingId === el.id) return null;
-    }
-
-    const dragDx =
-      selectionDragOffset && selectedIds.includes(el.id)
-        ? selectionDragOffset.dx
-        : draggingNotePreview && draggingNotePreview.id === el.id
-        ? draggingNotePreview.dx
-        : 0;
-    const dragDy =
-      selectionDragOffset && selectedIds.includes(el.id)
-        ? selectionDragOffset.dy
-        : draggingNotePreview && draggingNotePreview.id === el.id
-        ? draggingNotePreview.dy
-        : 0;
-
-    const renderBase = () => {
-      if (el.tool === 'stamp') {
-        const teacherMeta = getTeacherStampAppearance(el.stamp, el.text, el.color);
-        if (teacherMeta) {
-          const dims = getTeacherStampDimensions(teacherMeta.text, el.strokeWidth);
-          return (
-            <Group x={el.x || 0} y={el.y || 0} rotation={teacherMeta.rotationDeg}>
-              <Rect
-                x={-dims.width / 2}
-                y={-dims.height / 2}
-                width={dims.width}
-                height={dims.height}
-                cornerRadius={dims.cornerRadius}
-                fill={teacherMeta.fill}
-                opacity={0.94}
-                stroke={teacherMeta.color}
-                strokeWidth={dims.borderWidth}
-                shadowColor="#0f172a"
-                shadowBlur={4}
-                shadowOpacity={0.14}
-                shadowOffsetY={1}
-              />
-              <Rect
-                x={-dims.width / 2 + dims.innerInset}
-                y={-dims.height / 2 + dims.innerInset}
-                width={dims.width - dims.innerInset * 2}
-                height={dims.height - dims.innerInset * 2}
-                cornerRadius={Math.max(2, dims.cornerRadius - 2)}
-                stroke={teacherMeta.color}
-                strokeWidth={Math.max(1, dims.borderWidth * 0.4)}
-                opacity={0.45}
-              />
-              <KonvaText
-                x={-dims.width / 2}
-                y={-dims.fontSize * 0.46}
-                width={dims.width}
-                align="center"
-                text={teacherMeta.text}
-                fill={teacherMeta.color}
-                fontSize={dims.fontSize}
-                fontFamily="Plus Jakarta Sans, sans-serif"
-                fontStyle="800"
-                letterSpacing={1.2}
-              />
-            </Group>
-          );
-        }
-
-        if (el.stamp === 'username') {
-          const label = el.userName || 'Student';
-          const fontSize = Math.max(13, Math.round(el.strokeWidth * 1.1 + 10));
-          const padX = Math.round(fontSize * 0.85);
-          const badgeW = Math.max(64, Math.round(label.length * (fontSize * 0.62) + padX * 2));
-          const badgeH = Math.round(fontSize * 1.85);
-          return (
-            <Group x={el.x || 0} y={el.y || 0}>
-              <Rect
-                x={-badgeW / 2}
-                y={-badgeH / 2}
-                width={badgeW}
-                height={badgeH}
-                cornerRadius={badgeH / 2}
-                fill="#ffffff"
-                stroke={el.color}
-                strokeWidth={Math.max(2, fontSize * 0.14)}
-                shadowColor="#0f172a"
-                shadowBlur={4}
-                shadowOpacity={0.12}
-                shadowOffsetY={1}
-              />
-              <KonvaText
-                x={-badgeW / 2}
-                y={-fontSize * 0.48}
-                width={badgeW}
-                align="center"
-                text={label}
-                fill={el.color}
-                fontSize={fontSize}
-                fontFamily="Plus Jakarta Sans, sans-serif"
-                fontStyle="700"
-              />
-            </Group>
-          );
-        }
-
-        const stampDef = STAMP_OPTIONS.find((s) => s.kind === el.stamp) || STAMP_OPTIONS[0];
-        const radius = Math.max(16, el.strokeWidth * 1.8 + 10);
-        const fontSize = Math.round(radius * 1.15);
-        return (
-          <Group x={el.x || 0} y={el.y || 0}>
-            <Circle
-              radius={radius}
-              fill="#ffffff"
-              stroke={el.color}
-              strokeWidth={Math.max(2.5, radius * 0.14)}
-              shadowColor="#0f172a"
-              shadowBlur={4}
-              shadowOpacity={0.12}
-              shadowOffsetY={1}
-            />
-            <KonvaText
-              x={-radius}
-              y={-fontSize * 0.52}
-              width={radius * 2}
-              align="center"
-              text={stampDef.symbol}
-              fill={el.color}
-              fontSize={fontSize}
-              fontFamily="Plus Jakarta Sans, sans-serif"
-              fontStyle="700"
-            />
-          </Group>
-        );
-      }
-
-      if (el.tool === 'rect') {
-        const x = (el.width || 0) < 0 ? (el.x || 0) + (el.width || 0) : el.x || 0;
-        const y = (el.height || 0) < 0 ? (el.y || 0) + (el.height || 0) : el.y || 0;
-        return (
-          <Rect
-            x={x}
-            y={y}
-            width={Math.abs(el.width || 0)}
-            height={Math.abs(el.height || 0)}
-            stroke={el.color}
-            strokeWidth={el.strokeWidth}
-            cornerRadius={2}
-          />
-        );
-      }
-
-      if (el.tool === 'circle') {
-        const radiusX = Math.abs(el.width || 0) / 2;
-        const radiusY = Math.abs(el.height || 0) / 2;
-        const radius = Math.max(radiusX, radiusY);
-        const centerX = (el.x || 0) + (el.width || 0) / 2;
-        const centerY = (el.y || 0) + (el.height || 0) / 2;
-        return (
-          <Circle
-            x={centerX}
-            y={centerY}
-            radius={radius}
-            stroke={el.color}
-            strokeWidth={el.strokeWidth}
-          />
-        );
-      }
-
-      if (el.tool === 'text') {
-        const fontSize = getNoteFontSize(el);
-        return (
-          <KonvaText
-            x={el.x || 0}
-            y={el.y || 0}
-            text={el.text || ''}
-            fill={el.color}
-            fontSize={fontSize}
-            lineHeight={NOTE_LH}
-            fontFamily={NOTE_FONT}
-            fontStyle="600"
-          />
-        );
-      }
-
-      const pts = el.points || [];
-      if (pts.length < 2) return null;
-
-      if (el.tool === 'eraser') {
-        return (
-          <SmoothStrokeShape
-            points={pts}
-            color="#000000"
-            strokeWidth={Math.max(8, el.strokeWidth * 1.5)}
-            globalCompositeOperation="destination-out"
-          />
-        );
-      }
-
-      if (el.tool === 'spray') {
-        return <SprayStrokeLine points={pts} color={el.color} strokeWidth={el.strokeWidth} />;
-      }
-
-      if (el.tool === 'highlighter') {
-        return (
-          <SmoothStrokeShape
-            points={pts}
-            color={el.color}
-            strokeWidth={el.strokeWidth}
-            opacity={1}
-          />
-        );
-      }
-
-      if (el.tool === 'hollow') {
-        return (
-          <HollowStrokeShape
-            points={pts}
-            color={el.color}
-            strokeWidth={el.strokeWidth}
-            hollowWeight={el.hollowWeight || 2}
-            hollowShape={el.hollowShape || 'circle'}
-          />
-        );
-      }
-
-      if (el.tool === 'line') {
-        return (
-          <Line
-            points={pts}
-            stroke={el.color}
-            strokeWidth={el.strokeWidth}
-            lineCap="round"
-            lineJoin="round"
-          />
-        );
-      }
-
-      return (
-        <SmoothStrokeShape
-          points={pts}
-          color={el.color}
-          strokeWidth={el.strokeWidth}
-        />
-      );
-    };
-
-    const node = renderBase();
-    if (!node) return null;
-    return (
-      <Group key={el.id} x={dragDx} y={dragDy}>
-        {node}
-      </Group>
-    );
-  };
+  const renderElement = createCanvasElementRenderer({ editingNote, selectionDragOffset, selectedIds, draggingNotePreview });
 
   const gridSpacing = Math.max(20, Math.round(40 * stageScale));
   const activeSwatches = useMemo(() => getPaletteColors(paletteMode), [paletteMode]);
@@ -3531,1850 +1229,162 @@ export default function Canvas({
       />
 
       {/* Primary Drawing & Studio Toolbar (`data-keep-note` lets users restyle an open note without closing it) */}
-      <div
-        data-keep-note="true"
-        className="oh-chrome-bar px-3 py-1.5 border-b border-[#CBD5E1] flex flex-col gap-1.5 z-20"
-      >
-        <div className="flex flex-wrap items-center gap-2">
-        {isChatHidden && onShowChat && (
-          <div className="flex items-center gap-1.5 shrink-0">
-            <img
-              src="/assets/aistudio/favicon_68cc1684.svg"
-              alt="AllAboard"
-              referrerPolicy="no-referrer"
-              className="w-6 h-6 rounded-[2px] border border-[#CBD5E1] shrink-0 object-contain"
-            />
-            <button
-              type="button"
-              onClick={onShowChat}
-              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-[2px] border oh-btn text-xs font-semibold text-slate-700 hover:text-slate-900 transition-colors whitespace-nowrap shrink-0 cursor-pointer"
-              title="Show chat sidebar"
-              aria-label="Show chat sidebar"
-            >
-              <PanelLeftOpen size={15} />
-              <span>Chat</span>
-              {unreadChatCount > 0 && (
-                <span
-                  aria-label={`${unreadChatCount} unread messages`}
-                  className="px-1.5 py-0.5 rounded-full bg-brand-600 text-white text-[10px] font-mono tabular-nums leading-none"
-                >
-                  {unreadChatCount > 99 ? '99+' : unreadChatCount}
-                </span>
-              )}
-            </button>
-            <span
-              data-testid="room-chip"
-              className="px-2.5 py-1.5 rounded-[2px] text-xs bg-slate-100 text-slate-700 border border-[#CBD5E1] whitespace-nowrap"
-            >
-              Room: <span className="font-mono font-semibold text-slate-900">{roomId}</span>
-            </span>
-            {onReportProblem && (
-              <button
-                type="button"
-                onClick={onReportProblem}
-                className="p-1.5 rounded-[2px] border oh-btn text-slate-600 hover:text-slate-900 transition-colors cursor-pointer shrink-0"
-                title="Something not working? Report a problem"
-                aria-label="Something not working?"
-              >
-                <LifeBuoy size={15} />
-              </button>
-            )}
-          </div>
-        )}
-
-        {/* Phone-only: Tools toggle (showing the current ink) and Undo, which is the one action worth keeping one tap away. */}
-        {isPhone && (
-          <div className="flex items-center gap-1.5" data-testid="phone-toolbar">
-            <button
-              type="button"
-              onClick={() => setPhoneToolsOpen((open) => !open)}
-              aria-expanded={phoneToolsOpen}
-              aria-label={phoneToolsOpen ? 'Hide tools' : 'Show tools'}
-              className={cn(
-                'flex items-center gap-1.5 px-2.5 py-1.5 rounded-[2px] text-xs font-semibold border transition-colors cursor-pointer',
-                phoneToolsOpen
-                  ? 'oh-btn text-slate-700'
-                  : 'oh-btn-primary text-white'
-              )}
-            >
-              {phoneToolsOpen ? <ChevronUp size={15} /> : <SlidersHorizontal size={15} />}
-              <span>{phoneToolsOpen ? 'Done' : 'Tools'}</span>
-              {!phoneToolsOpen && (
-                <span
-                  aria-hidden="true"
-                  className="rounded-full ring-2 ring-white"
-                  style={{
-                    width: Math.max(6, Math.min(14, Math.round(strokeWidth * 0.3))),
-                    height: Math.max(6, Math.min(14, Math.round(strokeWidth * 0.3))),
-                    backgroundColor: tool === 'eraser' ? '#fff' : color,
-                  }}
-                />
-              )}
-            </button>
-            {toolbarCollapsed && (
-              <button
-                type="button"
-                disabled={!canDraw}
-                onClick={() => {
-                  if (editingNote) commitEditingNote();
-                  performUndo();
-                }}
-                className="flex items-center gap-1 px-2 py-1.5 text-xs font-medium oh-btn border text-slate-700 rounded-[2px] transition-colors whitespace-nowrap cursor-pointer disabled:opacity-40"
-                aria-label="Undo"
-              >
-                <Undo2 size={15} />
-                <span>Undo</span>
-              </button>
-            )}
-          </div>
-        )}
-
-        {/* Everything below folds away on phones until "Tools" is tapped. `contents` keeps the wrapping layout as is. */}
-        <div className={toolbarCollapsed ? 'hidden' : 'contents'}>
-
-        {/* Navigation & Brush Tools (wraps on narrow screens instead of cutting tools off) */}
-        <div className="flex flex-wrap items-center gap-0.5 bg-slate-100 p-0.5 rounded-[3px] border border-[#CBD5E1]">
-          <button
-            type="button"
-            onClick={() => setTool('pan')}
-            className={cn(
-              "p-1.5 rounded-[2px] border transition-colors cursor-pointer",
-              effectiveTool === 'pan'
-                ? "oh-btn-active text-brand-700"
-                : "border-transparent text-slate-600 hover:text-slate-900 hover:bg-white/70"
-            )}
-            title="Pan Tool [H] (or hold Spacebar + Drag, or use Arrow Keys)"
-          >
-            <Hand size={17} />
-          </button>
-
-          <button
-            type="button"
-            disabled={!canDraw}
-            onClick={() => setTool('select')}
-            aria-label="Select"
-            className={cn(
-              "p-1.5 2xl:px-2 rounded-[2px] border transition-colors cursor-pointer disabled:opacity-40 flex items-center gap-1 text-xs font-semibold",
-              effectiveTool === 'select'
-                ? "oh-btn-active text-indigo-700"
-                : "border-transparent text-slate-600 hover:text-slate-900 hover:bg-white/70"
-            )}
-            title="Select & Lasso Tool [V]: Tap or circle annotations and text to move, resize, restyle, copy, duplicate, or delete"
-          >
-            <Lasso size={16} />
-            <span className="hidden 2xl:inline">Select</span>
-          </button>
-
-          {isTeacher && (
-            <button type="button" title="Laser pointer" aria-label="Laser pointer" aria-pressed={effectiveTool === 'laser'}
-              onClick={() => setTool('laser')}
-              className={cn("p-1.5 rounded-[2px] border transition-colors cursor-pointer", effectiveTool === 'laser' ? "oh-btn-active text-red-600" : "border-transparent text-slate-600 hover:text-red-600 hover:bg-white/70")}>
-              <Crosshair size={17} />
-            </button>
-          )}
-
-          <div className="h-4 w-px bg-slate-300 mx-0.5" />
-
-          <button
-            type="button"
-            disabled={!canDraw}
-            onClick={() => setTool('solid')}
-            className={cn(
-              "p-1.5 rounded-[2px] border transition-colors cursor-pointer disabled:opacity-40",
-              tool === 'solid' && effectiveTool !== 'pan'
-                ? "oh-btn-active text-brand-700"
-                : "border-transparent text-slate-600 hover:text-slate-900 hover:bg-white/70"
-            )}
-            title="Pen [P]"
-            aria-label="Pen"
-          >
-            <PenLine size={17} />
-          </button>
-          {/* Hollow Outline Shape Brush with Curved Radial Shape Selector (Circle, Square, Triangle, Diamond, Star) */}
-          <div ref={hollowMenuRef} className="relative flex items-center">
-            <button
-              type="button"
-              disabled={!canDraw}
-              onClick={() => {
-                setTool('hollow');
-                setShowHollowMenu((prev) => (tool === 'hollow' ? !prev : true));
-              }}
-              aria-haspopup="true"
-              aria-expanded={showHollowMenu}
-              className={cn(
-                "p-1.5 rounded-[2px] border transition-colors cursor-pointer disabled:opacity-40 flex items-center justify-center",
-                tool === 'hollow' && effectiveTool !== 'pan'
-                  ? "oh-btn-active text-brand-700"
-                  : "border-transparent text-slate-600 hover:text-slate-900 hover:bg-white/70"
-              )}
-              title={`Hollow ${hollowShape.charAt(0).toUpperCase() + hollowShape.slice(1)} Brush (Click to stamp, drag to draw hollow stroke — click to pick shape)`}
-            >
-              <HollowShapeIcon kind={hollowShape} size={17} />
-            </button>
-
-            {showHollowMenu && (
-              <div
-                role="menu"
-                aria-label="Hollow brush shapes"
-                className="absolute left-1/2 top-full z-50 pointer-events-none"
-                style={{ width: 0, height: 0 }}
-              >
-                {/* Subtle curved guide arc connecting the 5 radial options */}
-                <svg
-                  width="168"
-                  height="88"
-                  viewBox="-84 0 168 88"
-                  className="overflow-visible pointer-events-none"
-                  style={{ position: 'absolute', left: -84, top: 0 }}
-                >
-                  <path
-                    d="M -62 26 Q 0 88 62 26"
-                    fill="none"
-                    stroke="#0f172a"
-                    strokeWidth="26"
-                    strokeLinecap="round"
-                    opacity="0.92"
-                  />
-                  <path
-                    d="M -62 26 Q 0 88 62 26"
-                    fill="none"
-                    stroke="#334155"
-                    strokeWidth="1.5"
-                    strokeDasharray="3 3"
-                  />
-                </svg>
-
-                {HOLLOW_SHAPE_OPTIONS.map((opt) => {
-                  const isActive = hollowShape === opt.kind;
-                  return (
-                    <button
-                      key={opt.kind}
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setHollowShape(opt.kind);
-                        saveLocal('allaboard-hollow-shape', opt.kind);
-                        setTool('hollow');
-                        setShowHollowMenu(false);
-                      }}
-                      style={{
-                        position: 'absolute',
-                        left: opt.dx,
-                        top: opt.dy,
-                        transform: 'translate(-50%, -50%)',
-                      }}
-                      className={cn(
-                        "pointer-events-auto w-8 h-8 rounded-full flex items-center justify-center transition-all cursor-pointer border",
-                        isActive
-                          ? "bg-brand-600 text-white border-white scale-110 ring-2 ring-brand-300"
-                          : "bg-slate-900 text-slate-200 border-slate-600 hover:bg-slate-800 hover:text-white hover:scale-110"
-                      )}
-                      title={`Hollow ${opt.label}`}
-                    >
-                      <HollowShapeIcon kind={opt.kind} size={15} />
-                    </button>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-          <button
-            type="button"
-            disabled={!canDraw}
-            onClick={() => setTool('spray')}
-            className={cn(
-              "p-1.5 rounded-[2px] border transition-colors cursor-pointer disabled:opacity-40",
-              tool === 'spray' && effectiveTool !== 'pan'
-                ? "oh-btn-active text-brand-700"
-                : "border-transparent text-slate-600 hover:text-slate-900 hover:bg-white/70"
-            )}
-            title="Spray Paint"
-          >
-            <SprayCan size={17} />
-          </button>
-
-          {/* OverBoard Split See-Through Highlighter & Cover Mode Popout Menu */}
-          <div ref={hlMenuRef} className="relative flex items-center">
-            <button
-              type="button"
-              disabled={!canDraw}
-              onClick={() => setTool('highlighter')}
-              className={cn(
-                "px-2 py-1.5 rounded-l-[2px] border-y border-l transition-colors cursor-pointer disabled:opacity-40 flex items-center gap-1 text-xs font-semibold",
-                tool === 'highlighter' && effectiveTool !== 'pan'
-                  ? isCoverMode
-                    ? "bg-slate-800 border-slate-900 text-white"
-                    : "bg-amber-200 border-amber-400 text-slate-900"
-                  : "border-transparent text-slate-600 hover:text-slate-900 hover:bg-white/70"
-              )}
-              title={
-                isCoverMode
-                  ? "Cover Mode: opaque cover bar that hides text/answers until erased"
-                  : "Highlighter Mode: see-through multiply highlight under pen ink (never dulls black worksheet text)"
-              }
-            >
-              <Highlighter size={16} />
-              <span className="hidden sm:inline">{isCoverMode ? 'Cover' : 'Highlight'}</span>
-            </button>
-            <button
-              type="button"
-              disabled={!canDraw}
-              onClick={() => {
-                setTool('highlighter');
-                setShowHlMenu((prev) => !prev);
-              }}
-              aria-haspopup="true"
-              aria-expanded={showHlMenu}
-              className={cn(
-                "px-1 py-1.5 rounded-r-[2px] border transition-colors cursor-pointer disabled:opacity-40",
-                showHlMenu || (tool === 'highlighter' && effectiveTool !== 'pan')
-                  ? isCoverMode
-                    ? "bg-slate-700 border-slate-900 text-white"
-                    : "bg-amber-300/80 border-amber-400 text-slate-900"
-                  : "border-transparent border-l-slate-300/70 text-slate-500 hover:text-slate-900 hover:bg-white/70"
-              )}
-              title="Switch between See-Through Highlight & Opaque Cover Mode"
-            >
-              <ChevronDown size={13} />
-            </button>
-
-            {/* OverBoard Highlighter Strength / Cover Mode Popout Menu */}
-            {showHlMenu && (
-              <div
-                role="menu"
-                aria-label="Highlighter options"
-                className="absolute left-0 top-full mt-1.5 z-50 w-64 p-3 rounded-[3px] bg-slate-900 text-white border-2 border-[#243044] space-y-2.5"
-              >
-                <div className="grid grid-cols-2 gap-1 bg-slate-800 border border-[#243044] p-0.5 rounded-[2px]">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setIsCoverMode(false);
-                      setTool('highlighter');
-                    }}
-                    className={cn(
-                      "px-2 py-1.5 rounded-[2px] text-xs font-semibold transition-colors cursor-pointer",
-                      !isCoverMode
-                        ? "bg-amber-400 text-slate-950"
-                        : "text-slate-300 hover:text-white"
-                    )}
-                  >
-                    Highlight
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setIsCoverMode(true);
-                      setTool('highlighter');
-                    }}
-                    className={cn(
-                      "px-2 py-1.5 rounded-[2px] text-xs font-semibold transition-colors cursor-pointer",
-                      isCoverMode
-                        ? "bg-white text-slate-950"
-                        : "text-slate-300 hover:text-white"
-                    )}
-                  >
-                    Cover (Opaque)
-                  </button>
-                </div>
-
-                {!isCoverMode ? (
-                  <>
-                    <div className="flex items-center gap-2.5">
-                      <span
-                        className="w-6 h-6 rounded-[2px] border-2 border-white shrink-0"
-                        style={{ backgroundColor: hlInk(hlColor, hlStrength) }}
-                      />
-                      <div>
-                        <div className="text-xs font-bold text-white">See-Through Highlight</div>
-                        <div className="text-[11px] text-slate-300">Multiplies cleanly under dark ink</div>
-                      </div>
-                    </div>
-
-                    <label className="block space-y-1.5 pt-1 border-t border-slate-800">
-                      <div className="flex items-center justify-between text-xs font-semibold text-slate-200">
-                        <span>Highlight strength</span>
-                        <span className="font-mono text-amber-400">{hlStrength}%</span>
-                      </div>
-                      <input
-                        type="range"
-                        min="10"
-                        max="100"
-                        step="5"
-                        value={hlStrength}
-                        onChange={(e) => {
-                          const next = parseInt(e.target.value, 10);
-                          setHlStrength(next);
-                          saveLocal('allaboard-hl-strength', String(next));
-                          setTool('highlighter');
-                        }}
-                        className="w-full h-2 rounded-full appearance-none cursor-pointer accent-amber-400"
-                        style={{
-                          background: `linear-gradient(90deg, #ffffff, ${hlInk(hlColor, hlStrength)})`,
-                        }}
-                      />
-                    </label>
-                  </>
-                ) : (
-                  <div className="space-y-2">
-                    <div className="flex items-center gap-2.5">
-                      <span
-                        className="w-6 h-6 rounded-[2px] border-2 border-white shrink-0"
-                        style={{ backgroundColor: coverColor }}
-                      />
-                      <div>
-                        <div className="text-xs font-bold text-white">Opaque Cover Bar</div>
-                        <div className="text-[11px] text-slate-300">Hides answers &amp; text underneath</div>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-1.5 pt-1 border-t border-slate-800">
-                      {getPaletteColors('cover').map((sw) => (
-                        <button
-                          key={sw.color}
-                          type="button"
-                          onClick={() => {
-                            setCoverColor(sw.color);
-                            saveLocal('allaboard-cover-color', sw.color);
-                            setTool('highlighter');
-                          }}
-                          className={cn(
-                            "w-5 h-5 rounded-full border border-slate-500 cursor-pointer transition-transform hover:scale-110",
-                            coverColor.toLowerCase() === sw.color.toLowerCase() &&
-                              "ring-2 ring-amber-400 ring-offset-1 ring-offset-slate-900 scale-110"
-                          )}
-                          style={{ backgroundColor: sw.color }}
-                          title={sw.label}
-                        />
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
-
-          <button
-            type="button"
-            disabled={!canDraw}
-            onClick={() => setTool('eraser')}
-            className={cn(
-              "p-1.5 rounded-[2px] border transition-colors cursor-pointer disabled:opacity-40",
-              tool === 'eraser' && effectiveTool !== 'pan'
-                ? "oh-btn-eraser-active"
-                : "oh-btn-eraser"
-            )}
-            title="Personal Eraser [E] (Erases your own ink, highlights, and whole text notes — SMART Board palm always erases)"
-          >
-            <Eraser size={17} />
-          </button>
-
-          <div className="h-4 w-px bg-slate-300 mx-0.5" />
-
-          {/* Geometric Shapes, Editable Text Notes & Quick Stamp */}
-          <button
-            type="button"
-            disabled={!canDraw}
-            onClick={() => setTool('line')}
-            className={cn(
-              "p-1.5 rounded-[2px] border transition-colors cursor-pointer disabled:opacity-40",
-              tool === 'line' && effectiveTool !== 'pan'
-                ? "oh-btn-active text-brand-700"
-                : "border-transparent text-slate-600 hover:text-slate-900 hover:bg-white/70"
-            )}
-            title="Straight Line [L]"
-          >
-            <Minus size={17} />
-          </button>
-          <button
-            type="button"
-            disabled={!canDraw}
-            onClick={() => setTool('rect')}
-            className={cn(
-              "p-1.5 rounded-[2px] border transition-colors cursor-pointer disabled:opacity-40",
-              tool === 'rect' && effectiveTool !== 'pan'
-                ? "oh-btn-active text-brand-700"
-                : "border-transparent text-slate-600 hover:text-slate-900 hover:bg-white/70"
-            )}
-            title="Rectangle [R]"
-          >
-            <Square size={17} />
-          </button>
-          <button
-            type="button"
-            disabled={!canDraw}
-            onClick={() => setTool('circle')}
-            className={cn(
-              "p-1.5 rounded-[2px] border transition-colors cursor-pointer disabled:opacity-40",
-              tool === 'circle' && effectiveTool !== 'pan'
-                ? "oh-btn-active text-brand-700"
-                : "border-transparent text-slate-600 hover:text-slate-900 hover:bg-white/70"
-            )}
-            title="Circle [C]"
-          >
-            <CircleIcon size={17} className="stroke-[2.5]" />
-          </button>
-          <button
-            type="button"
-            disabled={!canDraw}
-            onClick={() => setTool('text')}
-            aria-label="Type"
-            className={cn(
-              "p-1.5 2xl:px-2 rounded-[2px] border transition-colors cursor-pointer disabled:opacity-40 flex items-center gap-1 text-xs font-semibold",
-              tool === 'text' && effectiveTool !== 'pan'
-                ? "oh-btn-active text-brand-700"
-                : "border-transparent text-slate-600 hover:text-slate-900 hover:bg-white/70"
-            )}
-            title="Type Note [T]: Tap canvas to type, drag any note to move it, or tap/double-click a note to re-type it"
-          >
-            <Type size={16} />
-            <span className="hidden 2xl:inline">Type</span>
-          </button>
-          <button
-            type="button"
-            disabled={!canDraw}
-            onClick={() => setTool('stamp')}
-            className={cn(
-              "p-1.5 rounded-[2px] border transition-colors cursor-pointer disabled:opacity-40",
-              tool === 'stamp' && effectiveTool !== 'pan'
-                ? "oh-btn-active text-brand-700"
-                : "border-transparent text-slate-600 hover:text-slate-900 hover:bg-white/70"
-            )}
-            title="Quick Stamp Tool [S] (Checkmark, Question Mark, Star, Thumbs Up, Heart, or Your Username)"
-          >
-            <Stamp size={17} />
-          </button>
-        </div>
-
-        <div className="flex-1" />
-
-        {/* Personal Actions, JSON Room Save & PNG Export */}
-        <div className="flex flex-wrap items-center gap-1.5">
-          <button
-            type="button"
-            disabled={!canDraw}
-            onClick={() => {
-              if (editingNote) commitEditingNote();
-              performUndo();
-            }}
-            className="flex items-center gap-1 px-2 py-1 text-xs font-medium oh-btn border text-slate-700 rounded-[2px] transition-colors whitespace-nowrap shrink-0 cursor-pointer disabled:opacity-40"
-            title={canLocalUndo ? "Undo last action (Ctrl+Z)" : "Undo last stroke (Ctrl+Z)"}
-          >
-            <Undo2 size={15} />
-            <span>Undo</span>
-          </button>
-
-          <button
-            type="button"
-            disabled={!canDraw || !canRedo}
-            onClick={() => {
-              if (editingNote) commitEditingNote();
-              performRedo();
-            }}
-            className="flex items-center gap-1 px-2 py-1 text-xs font-medium oh-btn border text-slate-700 rounded-[2px] transition-colors whitespace-nowrap shrink-0 cursor-pointer disabled:opacity-40"
-            title="Redo (Ctrl+Y / Ctrl+Shift+Z)"
-          >
-            <Redo2 size={15} />
-            <span>Redo</span>
-          </button>
-
-          {confirmClearMine ? (
-            <div className="flex items-center gap-1 bg-red-50 px-2 py-1 rounded-[2px] border border-red-300">
-              <span className="text-xs text-red-800 font-medium whitespace-nowrap">Erase yours?</span>
-              <button
-                type="button"
-                onClick={() => {
-                  if (editingNote) setEditingNote(null);
-                  const myItems = elements.filter(
-                    (el) => el.userId === userId && !allGoneNoteIds.has(el.id)
-                  );
-                  if (myItems.length > 0) {
-                    recordUndo({ kind: 'remove', items: myItems });
-                  }
-                  setSelectedIds([]);
-                  onClearMine();
-                  setConfirmClearMine(false);
-                }}
-                className="px-2 py-0.5 text-xs font-medium oh-btn-danger border text-white rounded-[2px] cursor-pointer whitespace-nowrap"
-              >
-                Yes
-              </button>
-              <button
-                type="button"
-                onClick={() => setConfirmClearMine(false)}
-                className="px-1.5 py-0.5 text-xs text-slate-600 hover:text-slate-900 cursor-pointer"
-              >
-                No
-              </button>
-            </div>
-          ) : (
-            <button
-              type="button"
-              disabled={!canDraw}
-              onClick={() => setConfirmClearMine(true)}
-              className="flex items-center gap-1.5 px-2 py-1 text-xs font-medium oh-btn border text-red-600 rounded-[2px] transition-colors whitespace-nowrap shrink-0 cursor-pointer disabled:opacity-40"
-              title="Erase only your own drawings"
-            >
-              <Eraser size={15} />
-              <span>Clear Mine</span>
-            </button>
-          )}
-
-          <div className="h-4 w-px bg-slate-300 mx-0.5" />
-
-          <button
-            type="button"
-            disabled={classWork.isDownloading}
-            onClick={classWork.handleExportJSON}
-            className="flex items-center gap-1.5 px-2 py-1 text-xs font-medium oh-btn border text-slate-700 rounded-[2px] transition-colors whitespace-nowrap shrink-0 cursor-pointer"
-            title="Save everything in this room as a .json file: every student's board, the worksheets and the chat log. Open it later with Open class work."
-          >
-            <FileJson size={14} />
-            <span>Save class work</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={handleExportPNG}
-            className="flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium oh-btn-dark border text-white rounded-[2px] transition-colors whitespace-nowrap shrink-0 cursor-pointer"
-            title="Download current canvas view as PNG"
-          >
-            <Download size={14} />
-            <span>Export PNG</span>
-          </button>
-        </div>
-        </div>
-        </div>
-
-        {/* Row 2: Student Status Radial, Colors, Ink Size, Text Size Dropdown, Smoothing & Smartboard Finger Mode */}
-        <div className={cn("flex flex-wrap items-center gap-2", toolbarCollapsed && "hidden")}>
-        {!isTeacher && (
-          <div ref={statusMenuRef} className="relative flex items-center shrink-0">
-            <button
-              type="button"
-              onClick={() => setShowStatusMenu((prev) => !prev)}
-              aria-haspopup="true"
-              aria-expanded={showStatusMenu}
-              className={cn(
-                "flex items-center gap-1 px-2 py-1 rounded-[2px] border text-xs font-medium transition-colors cursor-pointer whitespace-nowrap",
-                myStatusOption
-                  ? cn(myStatusOption.className, "font-semibold")
-                  : "oh-btn text-slate-700 hover:text-slate-900"
-              )}
-              title="Set your live classroom status for your teacher"
-            >
-              <span className="opacity-80">My Status is:</span>
-              <span className="font-bold">{myStatusOption ? myStatusOption.label : 'None'}</span>
-              <ChevronDown size={12} className="opacity-70" />
-            </button>
-
-            {showStatusMenu && (
-              <div
-                role="menu"
-                aria-label="My status"
-                className="absolute left-0 top-full z-50 pointer-events-none"
-                style={{ width: 0, height: 0 }}
-              >
-                <svg
-                  width="260"
-                  height="96"
-                  viewBox="0 0 260 96"
-                  className="overflow-visible pointer-events-none"
-                  style={{ position: 'absolute', left: 0, top: 0 }}
-                >
-                  <path
-                    d="M 40 30 Q 128 102 214 28"
-                    fill="none"
-                    stroke="#0f172a"
-                    strokeWidth="28"
-                    strokeLinecap="round"
-                    opacity="0.92"
-                  />
-                  <path
-                    d="M 40 30 Q 128 102 214 28"
-                    fill="none"
-                    stroke="#334155"
-                    strokeWidth="1.5"
-                    strokeDasharray="3 3"
-                  />
-                </svg>
-
-                {STATUS_RADIAL_OPTIONS.map((opt) => {
-                  const isSelected = myStatus === opt.status;
-                  return (
-                    <button
-                      key={opt.status}
-                      type="button"
-                      role="menuitemradio"
-                      aria-checked={isSelected}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onSetStatus(opt.status);
-                        setShowStatusMenu(false);
-                      }}
-                      style={{
-                        position: 'absolute',
-                        left: opt.dx,
-                        top: opt.dy,
-                        transform: 'translate(-50%, -50%)',
-                      }}
-                      className={cn(
-                        "pointer-events-auto px-2.5 py-1 rounded-full text-[11px] font-bold border whitespace-nowrap transition-transform hover:scale-105 cursor-pointer shadow-sm",
-                        opt.pillClass,
-                        isSelected && "ring-2 ring-white ring-offset-1 ring-offset-slate-900 scale-105"
-                      )}
-                    >
-                      {opt.label}
-                    </button>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* Inline Stamp Selector when Stamp Tool is Active */}
-        {tool === 'stamp' && canDraw && (
-          <div className="flex flex-wrap items-center gap-1.5">
-            <div className="flex items-center gap-1 bg-brand-50/80 px-2 py-1 rounded-[3px] border border-brand-300/80">
-              <span className="text-[11px] font-medium text-brand-800 mr-1">Stamp:</span>
-              {STAMP_OPTIONS.map((st) => (
-                <button
-                  key={st.kind}
-                  type="button"
-                  onClick={() => setStampKind(st.kind)}
-                  disabled={st.kind === 'username' && nameStampTaken}
-                  className={cn(
-                    "px-2 h-6 rounded-[2px] border flex items-center justify-center text-xs font-bold transition-colors cursor-pointer whitespace-nowrap disabled:opacity-40 disabled:cursor-not-allowed",
-                    stampKind === st.kind
-                      ? "oh-btn-primary text-white"
-                      : "oh-btn text-slate-700"
-                  )}
-                  title={
-                    st.kind === 'username' && nameStampTaken
-                      ? 'You already placed your name stamp. Drag it to move it, or delete it to place it again.'
-                      : st.label
-                  }
-                >
-                  {st.kind === 'username' ? `[ ${userName} ]` : st.symbol}
-                </button>
-              ))}
-            </div>
-
-            {isTeacher && (
-              <div
-                className="flex flex-wrap items-center gap-1 bg-amber-50/90 px-2 py-1 rounded-[3px] border border-amber-300/80"
-                data-testid="teacher-stamps-group"
-              >
-                <span className="text-[11px] font-semibold text-amber-900 mr-1">Teacher stamps:</span>
-                {TEACHER_STAMP_OPTIONS.map((st) => {
-                  const isSelected = stampKind === st.kind;
-                  return (
-                    <button
-                      key={st.kind}
-                      type="button"
-                      onClick={() => setStampKind(st.kind)}
-                      style={
-                        isSelected
-                          ? { backgroundColor: st.color, color: '#ffffff', borderColor: st.color }
-                          : { color: st.color, borderColor: st.color }
-                      }
-                      className={cn(
-                        "px-2 h-6 rounded-[2px] border text-[11px] font-extrabold tracking-wide transition-colors cursor-pointer whitespace-nowrap",
-                        isSelected ? "" : "bg-white hover:bg-slate-50"
-                      )}
-                      title={
-                        st.kind === 'teacher-custom'
-                          ? 'Place a custom rubber-stamp label'
-                          : `Place ${st.label} teacher stamp`
-                      }
-                    >
-                      {st.label}
-                    </button>
-                  );
-                })}
-                {stampKind === 'teacher-custom' && (
-                  <input
-                    type="text"
-                    value={customTeacherStampText}
-                    onChange={(e) => setCustomTeacherStampText(e.target.value.slice(0, 24))}
-                    aria-label="Custom teacher stamp text"
-                    placeholder="Custom label"
-                    maxLength={24}
-                    className="h-6 w-28 px-2 text-[11px] font-bold uppercase bg-white border border-amber-300 rounded-[2px] text-slate-800 focus:outline-none focus:ring-1 focus:ring-amber-500"
-                  />
-                )}
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* OverBoard Mode-Aware Color Swatches + Custom Color Picker */}
-        <div className="flex items-center gap-1">
-          {activeSwatches.map((sw) => {
-            const activeTargetColor = editingNote ? editingNote.color : color;
-            const isSelected =
-              activeTargetColor.toLowerCase() === sw.color.toLowerCase() && tool !== 'eraser';
-            return (
-              <button
-                key={`${paletteMode}_${sw.color}`}
-                type="button"
-                onClick={() => handleSelectColor(sw.color)}
-                className={cn(
-                  "w-[18px] h-[18px] rounded-full border border-slate-300 transition-transform hover:scale-110 cursor-pointer",
-                  isSelected && "ring-2 ring-brand-600 ring-offset-2 scale-110"
-                )}
-                style={{ backgroundColor: sw.color }}
-                title={sw.label}
-              />
-            );
-          })}
-
-          {/* Custom Color Wheel Picker (OverBoard `#ink-picker`) */}
-          <div className="relative flex items-center">
-            <button
-              type="button"
-              onClick={() => customColorInputRef.current?.click()}
-              className="w-[18px] h-[18px] rounded-full border border-slate-300 flex items-center justify-center transition-transform hover:scale-110 cursor-pointer"
-              style={{
-                background:
-                  'conic-gradient(#f44336,#ffeb3b,#4caf50,#00bcd4,#3f51b5,#e91e63,#f44336)',
-              }}
-              title="Pick any custom color"
-            >
-              <span
-                className="w-2.5 h-2.5 rounded-full border border-white"
-                style={{ backgroundColor: editingNote ? editingNote.color : color }}
-              />
-            </button>
-            <input
-              ref={customColorInputRef}
-              type="color"
-              value={editingNote ? editingNote.color : color}
-              onChange={(e) => handleSelectColor(e.target.value)}
-              className="sr-only"
-              tabIndex={-1}
-              aria-hidden="true"
-            />
-          </div>
-        </div>
-
-        {/* Ink size: named for the tool it sizes, boxed in AllAboard teal with a live dot in the ink color */}
-        <div
-          className="oh-teal-chrome flex items-center gap-1 px-2 py-0.5 rounded-[2px] border text-white"
-          title="How thick your ink is (separate from text size)"
-        >
-          <label htmlFor="brush-size-slider" className="text-[11px] font-semibold text-white whitespace-nowrap">
-            {tool === 'eraser'
-              ? 'Eraser size:'
-              : tool === 'highlighter'
-              ? isCoverMode
-                ? 'Cover size:'
-                : 'Highlighter size:'
-              : tool === 'hollow'
-              ? 'Brush size:'
-              : 'Pen size:'}
-          </label>
-          <span className="flex items-center justify-center w-6 h-6 shrink-0" aria-hidden="true" data-testid="ink-size-preview">
-            <span
-              // White ring keeps the dot visible on the green box whatever the ink color (green ink included).
-              className={cn('rounded-full ring-2 ring-white', tool === 'eraser' && 'bg-white ring-white/60')}
-              style={{
-                // Scaled so the slider's whole range fits; small sizes stay visible.
-                width: Math.max(3, Math.min(24, Math.round(strokeWidth * (tool === 'eraser' ? 0.06 : 0.48)))),
-                height: Math.max(3, Math.min(24, Math.round(strokeWidth * (tool === 'eraser' ? 0.06 : 0.48)))),
-                backgroundColor: tool === 'eraser' ? undefined : color,
-                opacity: tool === 'highlighter' && !isCoverMode ? 0.5 : 1,
-              }}
-            />
-          </span>
-          <input
-            id="brush-size-slider"
-            type="range"
-            min={tool === 'eraser' ? 8 : tool === 'highlighter' || tool === 'hollow' ? 4 : 1}
-            max={
-              tool === 'eraser'
-                ? 400
-                : tool === 'hollow'
-                ? 120
-                : tool === 'highlighter'
-                ? 60
-                : 50
-            }
-            value={strokeWidth}
-            onChange={(e) => handleSelectStrokeWidth(parseInt(e.target.value, 10))}
-            className="w-16 h-1.5 bg-brand-300 rounded-full appearance-none cursor-pointer accent-white"
-          />
-          <span className="text-xs font-mono tabular-nums text-white w-7 text-right">
-            {strokeWidth}
-          </span>
-        </div>
-
-        {/* Dedicated Line Weight Slider when Hollow Shape Brush is Active */}
-        {tool === 'hollow' && (
-          <div className="flex items-center gap-1.5 bg-brand-50/80 px-2 py-0.5 rounded-[2px] border border-brand-300">
-            <label
-              htmlFor="hollow-weight-slider"
-              className="text-xs font-medium text-brand-900 whitespace-nowrap"
-              title="Border line weight of the hollow shape"
-            >
-              Line Weight:
-            </label>
-            <input
-              id="hollow-weight-slider"
-              type="range"
-              min={1}
-              max={Math.max(2, Math.min(25, Math.floor(hollowWidth / 2) - 1))}
-              value={Math.min(hollowWeight, Math.max(1, Math.floor(hollowWidth / 2) - 1))}
-              onChange={(e) => handleSelectHollowWeight(parseInt(e.target.value, 10))}
-              className="w-20 h-1.5 bg-brand-200 rounded-full appearance-none cursor-pointer accent-brand-600"
-            />
-            <span className="text-xs font-mono tabular-nums text-brand-900 w-6">
-              {Math.min(hollowWeight, Math.max(1, Math.floor(hollowWidth / 2) - 1))}
-            </span>
-          </div>
-        )}
-
-        {/* Compact Text Size Selector (shows currently selected size; click to pick S, M, L, XL, XXL or fine-tune) */}
-        <div ref={textSizeMenuRef} className="relative flex items-center shrink-0">
-          <button
-            type="button"
-            disabled={!canDraw}
-            onClick={() => setShowTextSizeMenu((prev) => !prev)}
-            aria-haspopup="true"
-            aria-expanded={showTextSizeMenu}
-            className={cn(
-              "flex items-center gap-1 px-2 py-1 rounded-[2px] border text-xs font-medium transition-colors cursor-pointer whitespace-nowrap disabled:opacity-40",
-              showTextSizeMenu || tool === 'text' || Boolean(editingNote) || selectedTextElements.length > 0
-                ? "oh-btn-active text-brand-800"
-                : "oh-btn text-slate-700 hover:text-slate-900"
-            )}
-            title="Text font size (click to pick S, M, L, XL, XXL or custom pixel size)"
-          >
-            <span className="text-slate-600">Text:</span>
-            <span className="font-semibold font-mono tabular-nums text-slate-900">
-              {activeTextPreset ? `${activeTextPreset.label} (${activeTextSize}px)` : `${activeTextSize}px`}
-            </span>
-            <ChevronDown size={12} className="opacity-70" />
-          </button>
-
-          {showTextSizeMenu && (
-            <div
-              role="menu"
-              aria-label="Text size options"
-              className="absolute left-0 top-full mt-1.5 z-50 w-64 p-3 rounded-[3px] bg-slate-900 text-white border-2 border-[#243044] space-y-2.5 shadow-lg"
-            >
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-bold text-white">Text Font Size</span>
-                <span className="text-xs font-mono text-brand-300 tabular-nums">
-                  {activeTextPreset ? `${activeTextPreset.label} · ${activeTextSize}px` : `${activeTextSize}px`}
-                </span>
-              </div>
-
-              <div className="grid grid-cols-5 gap-1">
-                {TEXT_SIZE_DROPDOWN_PRESETS.map((preset) => (
-                  <button
-                    key={preset.label}
-                    type="button"
-                    disabled={!canDraw}
-                    onClick={() => {
-                      handleSelectTextFontSize(preset.size);
-                      setShowTextSizeMenu(false);
-                    }}
-                    className={cn(
-                      "px-1.5 py-1.5 rounded-[2px] border text-xs font-bold transition-colors cursor-pointer disabled:opacity-40 text-center",
-                      activeTextSize === preset.size
-                        ? "oh-btn-primary text-white"
-                        : "bg-slate-800 border-[#243044] text-slate-200 hover:bg-slate-700 hover:text-white"
-                    )}
-                    title={preset.title}
-                  >
-                    {preset.label}
-                  </button>
-                ))}
-              </div>
-
-              <div className="flex items-center gap-1.5 pt-1 border-t border-slate-800">
-                <button
-                  type="button"
-                  disabled={!canDraw || activeTextSize <= 12}
-                  onClick={() => handleSelectTextFontSize(activeTextSize - 2)}
-                  className="w-6 h-6 rounded-[2px] bg-slate-800 border border-[#243044] hover:bg-slate-700 text-white font-bold disabled:opacity-35 cursor-pointer"
-                  title="Decrease text size"
-                >
-                  &minus;
-                </button>
-                <input
-                  aria-label="Text size"
-                  type="range"
-                  min={12}
-                  max={96}
-                  value={activeTextSize}
-                  onChange={(e) => handleSelectTextFontSize(parseInt(e.target.value, 10))}
-                  className="flex-1 h-1.5 bg-slate-700 rounded-full appearance-none cursor-pointer accent-brand-400"
-                />
-                <button
-                  type="button"
-                  disabled={!canDraw || activeTextSize >= 96}
-                  onClick={() => handleSelectTextFontSize(activeTextSize + 2)}
-                  className="w-6 h-6 rounded-[2px] bg-slate-800 border border-[#243044] hover:bg-slate-700 text-white font-bold disabled:opacity-35 cursor-pointer"
-                  title="Increase text size"
-                >
-                  +
-                </button>
-              </div>
-
-              <div className="flex items-center justify-between pt-1 border-t border-slate-800 text-slate-300">
-                <span className="text-[11px]">Preview</span>
-                <span
-                  className="font-bold text-white leading-none truncate max-w-[140px]"
-                  style={{ fontSize: Math.max(12, Math.min(30, Math.round(activeTextSize * 0.45))) }}
-                >
-                  Aa
-                </span>
-              </div>
-            </div>
-          )}
-        </div>
-
-        {/* OverBoard Smoothing Control (0..8) & Smartboard Finger Mode Toggle */}
-        <div className="flex items-center gap-1 bg-slate-100 px-1.5 py-0.5 rounded-[2px] border border-[#CBD5E1] text-xs">
-          <span className="text-[11px] text-slate-500 font-medium" title="OverBoard exponential stroke smoothing (0 = off, 8 = max)">
-            Smooth:
-          </span>
-          <button
-            type="button"
-            disabled={smoothLevel <= 0}
-            onClick={() => {
-              const next = Math.max(0, smoothLevel - 1);
-              setSmoothLevel(next);
-              saveLocal('allaboard-smooth-v2', String(next));
-            }}
-            className="w-5 h-5 rounded-[2px] hover:bg-white text-slate-700 font-bold disabled:opacity-35 cursor-pointer"
-            title="Less smoothing"
-          >
-            &minus;
-          </button>
-          <span className="font-mono font-semibold text-slate-700 w-5 text-center">
-            {smoothLevel === 0 ? 'Off' : smoothLevel}
-          </span>
-          <button
-            type="button"
-            disabled={smoothLevel >= 8}
-            onClick={() => {
-              const next = Math.min(8, smoothLevel + 1);
-              setSmoothLevel(next);
-              saveLocal('allaboard-smooth-v2', String(next));
-            }}
-            className="w-5 h-5 rounded-[2px] hover:bg-white text-slate-700 font-bold disabled:opacity-35 cursor-pointer"
-            title="More smoothing"
-          >
-            +
-          </button>
-        </div>
-
-        <button
-          type="button"
-          onClick={() => {
-            const next = !fingerScrolls;
-            setFingerScrolls(next);
-            saveLocal('allaboard-finger-scrolls', next ? '1' : '0');
-          }}
-          className={cn(
-            "px-2 py-1 rounded-[2px] text-[11px] font-medium border transition-colors cursor-pointer whitespace-nowrap",
-            fingerScrolls
-              ? "bg-amber-50 text-amber-900 border-amber-300"
-              : "oh-btn text-slate-700 hover:text-slate-900"
-          )}
-          title="Smartboard / Tablet mode: Choose whether finger/mouse drags pan the board (while stylus writes & palm erases) or draw directly"
-        >
-          Finger: {fingerScrolls ? 'pans' : 'draws'}
-        </button>
-        </div>
-      </div>
+      <CanvasToolbar
+  {...{
+    isChatHidden,
+    onShowChat,
+    unreadChatCount,
+    roomId,
+    onReportProblem,
+    isPhone,
+    setPhoneToolsOpen,
+    phoneToolsOpen,
+    strokeWidth,
+    tool,
+    color,
+    toolbarCollapsed,
+    canDraw,
+    editingNote,
+    commitEditingNote,
+    performUndo,
+    setTool,
+    effectiveTool,
+    isTeacher,
+    hollowMenuRef,
+    setShowHollowMenu,
+    showHollowMenu,
+    hollowShape,
+    setHollowShape,
+    hlMenuRef,
+    isCoverMode,
+    setShowHlMenu,
+    showHlMenu,
+    setIsCoverMode,
+    hlColor,
+    hlStrength,
+    setHlStrength,
+    coverColor,
+    setCoverColor,
+    canLocalUndo,
+    canRedo,
+    performRedo,
+    confirmClearMine,
+    setEditingNote,
+    elements,
+    userId,
+    allGoneNoteIds,
+    recordUndo,
+    setSelectedIds,
+    onClearMine,
+    setConfirmClearMine,
+    classWork,
+    handleExportPNG,
+    statusMenuRef,
+    setShowStatusMenu,
+    showStatusMenu,
+    myStatusOption,
+    myStatus,
+    onSetStatus,
+    setStampKind,
+    nameStampTaken,
+    stampKind,
+    userName,
+    customTeacherStampText,
+    setCustomTeacherStampText,
+    activeSwatches,
+    paletteMode,
+    handleSelectColor,
+    customColorInputRef,
+    handleSelectStrokeWidth,
+    hollowWidth,
+    hollowWeight,
+    handleSelectHollowWeight,
+    textSizeMenuRef,
+    setShowTextSizeMenu,
+    showTextSizeMenu,
+    selectedTextElements,
+    activeTextPreset,
+    activeTextSize,
+    handleSelectTextFontSize,
+    smoothLevel,
+    setSmoothLevel,
+    fingerScrolls,
+    setFingerScrolls
+  }}
+/>
 
       {/* Teacher Classroom Moderation, Breakout Switchboard & Worksheet Deck OR Student Sub-Board Bar */}
-      {isTeacher ? (
-        <div className={cn('oh-teacher-bar px-4 py-2 border-b border-amber-300/90 flex flex-wrap items-center justify-between gap-3 z-10', toolbarCollapsed && 'hidden')}>
-          <div className="flex flex-wrap items-center gap-2 text-xs text-amber-900">
-            <span className="font-display font-semibold">Teacher</span>
-
-            {/* Breakout / Individual Mode Launcher */}
-            <button
-              type="button"
-              onClick={handleOpenBreakoutModal}
-              className={cn(
-                "flex items-center gap-1.5 px-2.5 py-1 rounded-[2px] border text-xs font-medium transition-colors whitespace-nowrap shrink-0 cursor-pointer",
-                breakoutConfig.mode !== 'main'
-                  ? "oh-btn-primary text-white"
-                  : breakoutConfig.autoIndividual
-                  ? "oh-btn-emerald text-white"
-                  : "oh-btn text-slate-800"
-              )}
-              title="Assign individual student boards or breakout group rooms"
-            >
-              <Users size={13} />
-              <span>
-                {breakoutConfig.mode === 'individual'
-                  ? `Individual Boards (${activeRoundBoards.length})`
-                  : breakoutConfig.mode === 'groups'
-                  ? `Breakout Groups (${activeRoundBoards.length})`
-                  : breakoutConfig.autoIndividual
-                  ? 'Breakouts · Students → Own Boards'
-                  : 'Breakouts / Individual'}
-              </span>
-            </button>
-
-            {breakoutConfig.mode !== 'main' && (
-              <button
-                type="button"
-                onClick={() => onConfigureBreakout({ action: 'return-to-main' })}
-                className="flex items-center gap-1.5 px-2.5 py-1 rounded-[2px] border oh-btn text-xs font-medium transition-colors whitespace-nowrap shrink-0 cursor-pointer text-slate-800"
-                title="Pull every student back to the Main Board. Their breakout work is kept."
-              >
-                Bring All to Main
-              </button>
-            )}
-            {viewingRound &&
-              (breakoutConfig.mode === 'main' || viewingRound.id !== breakoutConfig.activeRoundId) && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    onConfigureBreakout({ action: 'resume', roundId: viewingRound.id });
-                    setTeacherViewingRoundId(null);
-                  }}
-                  className="flex items-center gap-1.5 px-2.5 py-1 rounded-[2px] border oh-btn-active text-xs font-medium transition-colors whitespace-nowrap shrink-0 cursor-pointer text-brand-900"
-                  title={`Send students to ${viewingRound.title} with their work intact`}
-                >
-                  {breakoutConfig.mode === 'main' && viewingRound.id === activeRound?.id
-                    ? `Resume Round ${viewingRound.number}`
-                    : `Send Class to Round ${viewingRound.number}`}
-                </button>
-              )}
-
-            {/* Teacher Board Switcher Dropdown + Live Grid Overview Button */}
-            {Object.keys(subBoards).length > 0 && (
-              <div className="flex items-center gap-1.5 bg-white px-2 py-0.5 rounded-[2px] border border-[#CBD5E1]">
-                {(rounds.length > 1 || (viewingRound && isPreparedRound(viewingRound))) && (
-                  <>
-                    <span className="text-[11px] text-slate-500">Round:</span>
-                    <select
-                      aria-label="Breakout round to view"
-                      value={effectiveViewingRoundId ?? ''}
-                      onChange={(e) => {
-                        const v = e.target.value;
-                        setTeacherViewingRoundId(v === breakoutConfig.activeRoundId ? null : v);
-                      }}
-                      className="text-xs font-semibold text-slate-900 bg-transparent focus:outline-none cursor-pointer pr-1"
-                    >
-                      {rounds.map((r) => (
-                        <option key={r.id} value={r.id}>
-                          {r.title}{r.id === breakoutConfig.activeRoundId ? ' (live)' : ''}
-                        </option>
-                      ))}
-                      {viewingRound && isPreparedRound(viewingRound) && (
-                        <option value={viewingRound.id}>{viewingRound.title} (prepared)</option>
-                      )}
-                      <option value="all">All Rounds</option>
-                    </select>
-                    <span className="text-slate-300" aria-hidden="true">|</span>
-                  </>
-                )}
-                <span className="text-[11px] text-slate-500">Board:</span>
-                <select
-                  value={activeBoardId}
-                  onChange={(e) => {
-                    onSelectBoard(e.target.value);
-                    setShowLiveGridOverview(false);
-                  }}
-                  className="text-xs font-semibold text-slate-900 bg-transparent focus:outline-none cursor-pointer pr-1"
-                >
-                  <option value="main">Main Class Board ({fullMainElements.length} items)</option>
-                  {activeBoardId !== 'main' && !teacherVisibleBoards.some((sb) => sb.id === activeBoardId) && (
-                    <option value={activeBoardId}>{roundShortLabel(subBoards[activeBoardId]?.roundId)} · {activeBoardTitle}</option>
-                  )}
-                  {teacherVisibleBoards.map((sb) => (
-                    <option key={sb.id} value={sb.id}>
-                      {effectiveViewingRoundId === 'all' ? `${roundShortLabel(sb.roundId)} · ` : ''}
-                      {sb.title} ({sb.elements.length} items)
-                    </option>
-                  ))}
-                </select>
-
-                <span className="text-slate-300" aria-hidden="true">|</span>
-
-                <button
-                  type="button"
-                  onClick={() => setShowLiveGridOverview(!showLiveGridOverview)}
-                  className={cn(
-                    "flex items-center gap-1 px-2 py-0.5 rounded-[2px] border text-[11px] font-semibold transition-colors cursor-pointer whitespace-nowrap",
-                    showLiveGridOverview
-                      ? "oh-btn-primary text-white"
-                      : "border-transparent text-brand-700 hover:bg-brand-50"
-                  )}
-                  title="View live miniature previews of all student and group boards at once"
-                >
-                  <LayoutGrid size={12} />
-                  <span>{showLiveGridOverview ? 'Close Grid' : 'Live Grid View'}</span>
-                </button>
-
-                <span className="text-slate-300" aria-hidden="true">|</span>
-
-                <button
-                  type="button"
-                  disabled={Boolean(pdfExportProgress)}
-                  onClick={handleBatchExportAllPdf}
-                  className="flex items-center gap-1 px-2 py-0.5 rounded-[2px] text-[11px] font-semibold text-emerald-700 hover:bg-emerald-50 disabled:opacity-50 transition-colors cursor-pointer whitespace-nowrap"
-                  title="Download a multi-page PDF containing every student or group board in one file"
-                >
-                  <FileSpreadsheet size={12} />
-                  <span>
-                    {pdfExportProgress
-                      ? `PDF ${pdfExportProgress.current}/${pdfExportProgress.total}...`
-                      : 'Export All (.PDF)'}
-                  </span>
-                </button>
-              </div>
-            )}
-
-            <span aria-hidden="true">·</span>
-
-            {/* Teacher Classroom Countdown Timer Button & Popover */}
-            <div ref={timerMenuRef} className="relative">
-              <button
-                type="button"
-                onClick={() => setShowTimerMenu((prev) => !prev)}
-                className={cn(
-                  "flex items-center gap-1.5 px-2.5 py-1 rounded-[2px] text-xs font-semibold transition-colors whitespace-nowrap shrink-0 cursor-pointer border",
-                  timer?.isRunning
-                    ? displayRemainingMs <= 60000
-                      ? "oh-btn-danger text-white animate-pulse"
-                      : "oh-btn-dark text-amber-300"
-                    : displayRemainingMs > 0
-                    ? "bg-amber-200 text-slate-900 border-amber-400"
-                    : "oh-btn text-slate-800"
-                )}
-                title="Start, pause, or configure the synchronized classroom countdown timer"
-              >
-                <Timer size={13} className={timer?.isRunning ? "text-amber-300" : "text-amber-600"} />
-                <span className="font-mono tabular-nums">
-                  {timer?.isRunning || displayRemainingMs > 0
-                    ? `${formatTimerMs(displayRemainingMs)}${!timer?.isRunning ? ' (Paused)' : ''}`
-                    : 'Timer'}
-                </span>
-              </button>
-
-              {showTimerMenu && (
-                <div className="absolute left-0 top-full mt-1.5 z-50 w-72 rounded-[3px] bg-white border-2 border-[#CBD5E1] overflow-hidden text-slate-800 select-text">
-                  <div className="oh-panel-header flex items-center justify-between px-3.5 py-2 border-b border-[#CBD5E1]">
-                    <span className="font-display font-bold text-xs text-slate-900">
-                      Classroom Countdown Timer
-                    </span>
-                    {(timer?.isRunning || displayRemainingMs > 0) && (
-                      <span className="font-mono tabular-nums text-xs font-bold text-brand-600">
-                        {formatTimerMs(displayRemainingMs)}
-                      </span>
-                    )}
-                  </div>
-
-                  <div className="p-3.5 space-y-3">
-                  {/* Default Preset Buttons: 5, 10, 20, 30 minutes */}
-                  <div>
-                    <span className="block text-[11px] font-medium text-slate-500 mb-1.5">
-                      Quick Start Presets:
-                    </span>
-                    <div className="grid grid-cols-4 gap-1.5">
-                      {[5, 10, 20, 30].map((mins) => (
-                        <button
-                          key={mins}
-                          type="button"
-                          onClick={() => {
-                            onTeacherTimerControl({
-                              action: 'start',
-                              durationSeconds: mins * 60,
-                            });
-                            setShowTimerMenu(false);
-                          }}
-                          className="py-1.5 px-2 rounded-[2px] border oh-btn text-xs font-mono font-semibold text-slate-800 hover:text-brand-700 transition-colors cursor-pointer"
-                        >
-                          {mins}m
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-
-                  {/* Custom Exact Time Input */}
-                  <form
-                    onSubmit={(e) => {
-                      e.preventDefault();
-                      const secs = parseCustomTimeSeconds(customTimeInput);
-                      if (secs && secs >= 5) {
-                        onTeacherTimerControl({
-                          action: 'start',
-                          durationSeconds: secs,
-                        });
-                        setShowTimerMenu(false);
-                      }
-                    }}
-                    className="space-y-1"
-                  >
-                    <label className="block text-[11px] font-medium text-slate-500">
-                      Exact Time (e.g. <span className="font-mono">7:30</span> or minutes like <span className="font-mono">12</span>):
-                    </label>
-                    <div className="flex items-center gap-1.5">
-                      <input
-                        type="text"
-                        value={customTimeInput}
-                        onChange={(e) => setCustomTimeInput(e.target.value)}
-                        placeholder="e.g. 7:30 or 15"
-                        className="flex-1 px-2.5 py-1.5 text-xs font-mono border border-[#CBD5E1] rounded-[2px] focus:outline-none focus:border-brand-600"
-                      />
-                      <button
-                        type="submit"
-                        disabled={!parseCustomTimeSeconds(customTimeInput)}
-                        className="px-3 py-1.5 rounded-[2px] border oh-btn-primary text-xs font-semibold text-white disabled:opacity-40 cursor-pointer whitespace-nowrap"
-                      >
-                        Start
-                      </button>
-                    </div>
-                  </form>
-
-                  {/* Active Timer Controls (Pause/Resume, +1m, Stop) */}
-                  {(timer?.isRunning || displayRemainingMs > 0) && (
-                    <div className="flex items-center gap-1.5 pt-2 border-t border-slate-200">
-                      {timer?.isRunning ? (
-                        <button
-                          type="button"
-                          onClick={() => onTeacherTimerControl({ action: 'pause' })}
-                          className="flex-1 flex items-center justify-center gap-1 py-1.5 px-2 rounded-[2px] border border-amber-300 bg-amber-100 text-amber-900 hover:bg-amber-200 text-xs font-semibold cursor-pointer"
-                        >
-                          <Pause size={12} />
-                          <span>Pause</span>
-                        </button>
-                      ) : (
-                        <button
-                          type="button"
-                          onClick={() => onTeacherTimerControl({ action: 'resume' })}
-                          className="flex-1 flex items-center justify-center gap-1 py-1.5 px-2 rounded-[2px] border oh-btn-emerald text-xs font-semibold text-white cursor-pointer"
-                        >
-                          <Play size={12} />
-                          <span>Resume</span>
-                        </button>
-                      )}
-                      <button
-                        type="button"
-                        onClick={() => onTeacherTimerControl({ action: 'add-minute' })}
-                        className="py-1.5 px-2.5 rounded-[2px] border oh-btn text-xs font-mono font-semibold text-slate-700 cursor-pointer"
-                        title="Add 1 minute"
-                      >
-                        +1m
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          onTeacherTimerControl({ action: 'stop' });
-                          setShowTimerMenu(false);
-                        }}
-                        className="flex items-center justify-center gap-1 py-1.5 px-2.5 rounded-[2px] border border-red-200 bg-red-50 text-red-600 hover:bg-red-100 text-xs font-semibold cursor-pointer"
-                        title="Stop and clear timer"
-                      >
-                        <RotateCcw size={12} />
-                        <span>Stop</span>
-                      </button>
-                    </div>
-                  )}
-
-                  {/* Auto-Lock on Expire Option */}
-                  <label className="flex items-center gap-2 pt-2 border-t border-slate-200 text-xs text-slate-700 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={Boolean(timer?.autoLockOnExpire)}
-                      onChange={(e) =>
-                        onTeacherTimerControl({
-                          action: 'set-autolock',
-                          autoLockOnExpire: e.target.checked,
-                        })
-                      }
-                      className="rounded-[2px] border-[#CBD5E1] text-brand-600 focus:ring-brand-500"
-                    />
-                    <span>Auto-lock board when time expires</span>
-                  </label>
-                  </div>
-                </div>
-              )}
-            </div>
-
-            <span aria-hidden="true">·</span>
-
-            {/* Built-In Worksheet Templates Button */}
-            <button
-              type="button"
-              onClick={() => setShowTemplateModal(true)}
-              className="flex items-center gap-1.5 px-2.5 py-1 rounded-[2px] border oh-btn text-xs font-medium text-slate-800 transition-colors whitespace-nowrap shrink-0 cursor-pointer"
-              title="Choose from 3 customizable classroom worksheet templates"
-            >
-              <LayoutTemplate size={13} className="text-amber-600" />
-              <span>Templates (3)</span>
-            </button>
-
-            {/* Upload Custom Background Worksheet Button */}
-            <button
-              type="button"
-              disabled={isUploadingWorksheet}
-              onClick={() => worksheetInputRef.current?.click()}
-              className="flex items-center gap-1.5 px-2.5 py-1 rounded-[2px] border oh-btn text-xs font-medium text-slate-800 transition-colors whitespace-nowrap shrink-0 cursor-pointer"
-              title="Upload a .jpg, .png, or multi-page .pdf worksheet as a non-erasable background"
-            >
-              <ImagePlus size={13} className="text-brand-600" />
-              <span>
-                {isUploadingWorksheet
-                  ? 'Rendering...'
-                  : background
-                  ? 'Upload Custom'
-                  : 'Upload (.JPG / .PNG / .PDF)'}
-              </span>
-            </button>
-
-            {isGoogleDriveConfigured() && (
-              <div className="flex items-center gap-1.5 shrink-0">
-                <button
-                  type="button"
-                  disabled={isUploadingWorksheet || Boolean(driveBusy)}
-                  onClick={handleWorksheetFromDrive}
-                  className="flex items-center gap-1.5 px-2.5 py-1 rounded-[2px] border oh-btn text-xs font-medium text-slate-800 transition-colors whitespace-nowrap shrink-0 cursor-pointer disabled:opacity-50"
-                  title="Import a Google Slides deck or PDF from your Google Drive as a worksheet"
-                >
-                  <HardDrive size={13} className="text-emerald-600" />
-                  <span>{driveBusy || 'Slides / PDF from Drive'}</span>
-                </button>
-                {driveCanCancel && (
-                  <button
-                    type="button"
-                    onClick={handleCancelDriveImport}
-                    className="text-xs font-medium text-amber-900 underline hover:text-red-700 cursor-pointer whitespace-nowrap"
-                  >
-                    Cancel
-                  </button>
-                )}
-              </div>
-            )}
-
-            {/* Import Size Multiplier Selector (0.5x to 3x, default 2x) */}
-            <label
-              className="flex items-center gap-1 px-2 py-0.5 rounded-[2px] bg-white border border-[#b6c2d2] text-xs text-slate-700 shrink-0"
-              title="Set the size at which PDFs, Google Slides, PowerPoint decks, and images are imported onto the board (default 2x so standard pen and text sizes feel natural)"
-            >
-              <span className="text-[11px] font-medium text-slate-500">Import Size:</span>
-              <select
-                aria-label="Worksheet import size"
-                value={String(worksheetImportScale)}
-                onChange={(e) => handleUpdateWorksheetImportScale(Number(e.target.value))}
-                className="font-mono font-semibold text-xs text-slate-900 bg-transparent focus:outline-none cursor-pointer"
-              >
-                {WORKSHEET_SCALE_OPTIONS.map((mult) => (
-                  <option key={mult} value={String(mult)}>
-                    {mult}&times;
-                  </option>
-                ))}
-              </select>
-            </label>
-
-            {/* Active Background Worksheet Controls */}
-            {background && (
-              <div className="flex items-center gap-1.5 bg-white px-2 py-0.5 rounded-[2px] border border-[#b6c2d2] text-xs text-slate-700">
-                <button
-                  type="button"
-                  onClick={() => setTool(tool === 'move-bg' ? 'solid' : 'move-bg')}
-                  className={cn(
-                    "flex items-center gap-1 px-1.5 py-0.5 rounded-[2px] border text-[11px] font-medium transition-colors cursor-pointer whitespace-nowrap",
-                    effectiveTool === 'move-bg'
-                      ? "oh-btn-primary text-white"
-                      : "border-transparent hover:bg-slate-100 text-slate-700"
-                  )}
-                  title="Drag background worksheet on the canvas"
-                >
-                  <Move size={11} />
-                  <span>{effectiveTool === 'move-bg' ? 'Moving...' : 'Move'}</span>
-                </button>
-
-                <div className="flex items-center gap-0.5">
-                  <button
-                    type="button"
-                    onClick={() =>
-                      onTeacherUpdateBackground({
-                        scale: Math.max(0.2, Number(((background.scale || 1) - 0.15).toFixed(2))),
-                      })
-                    }
-                    className="px-1.5 py-0.5 rounded-[2px] hover:bg-slate-100 font-mono text-xs cursor-pointer"
-                    title="Shrink worksheet"
-                  >
-                    -
-                  </button>
-                  <span className="font-mono tabular-nums text-[11px] px-1">
-                    {Math.round((background.scale || 1) * 100)}%
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() =>
-                      onTeacherUpdateBackground({
-                        scale: Math.min(4.0, Number(((background.scale || 1) + 0.15).toFixed(2))),
-                      })
-                    }
-                    className="px-1.5 py-0.5 rounded-[2px] hover:bg-slate-100 font-mono text-xs cursor-pointer"
-                    title="Enlarge worksheet"
-                  >
-                    +
-                  </button>
-                </div>
-
-                {background.pages.length > 1 && (
-                  <>
-                    <span className="text-slate-300" aria-hidden="true">|</span>
-                    <div className="flex items-center gap-1" role="group" aria-label="Worksheet page layout">
-                      <span className="text-[11px] font-medium text-slate-500">Layout:</span>
-                      <div className="flex items-center bg-slate-100 rounded-[2px] p-0.5 border border-[#CBD5E1]">
-                        {(
-                          [
-                            { value: 'row', label: 'Row', title: 'Pages side by side', Icon: Columns },
-                            { value: 'stack', label: 'Column', title: 'Pages top to bottom', Icon: Rows },
-                            { value: 'grid', label: 'Grid', title: 'Pages in a grid', Icon: LayoutGrid },
-                          ] as const
-                        ).map(({ value, label, title, Icon }) => {
-                          const activeLayout =
-                            background.layout === 'stack' || background.layout === 'grid'
-                              ? background.layout
-                              : 'row';
-                          const isActive = activeLayout === value;
-                          return (
-                            <button
-                              key={value}
-                              type="button"
-                              aria-pressed={isActive}
-                              title={title}
-                              onClick={() => {
-                                if (isActive) return;
-                                const hasInkOrStamps = elements.some((el) => el.tool !== 'eraser');
-                                if (
-                                  hasInkOrStamps &&
-                                  !window.confirm(
-                                    'Changing the layout moves the pages but not the ink already on them. Continue?'
-                                  )
-                                ) {
-                                  return;
-                                }
-                                onTeacherUpdateBackground({ layout: value });
-                              }}
-                              className={cn(
-                                'flex items-center gap-1 px-1.5 py-0.5 rounded-[2px] border text-[11px] font-medium transition-colors cursor-pointer whitespace-nowrap',
-                                isActive
-                                  ? 'oh-btn-active text-brand-800'
-                                  : 'border-transparent text-slate-600 hover:text-slate-900'
-                              )}
-                            >
-                              <Icon size={11} />
-                              <span>{label}</span>
-                            </button>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  </>
-                )}
-
-                <span className="text-slate-300" aria-hidden="true">|</span>
-
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (!confirmRemoveWorksheet) {
-                      setConfirmRemoveWorksheet(true);
-                      if (removeWorksheetTimerRef.current) {
-                        clearTimeout(removeWorksheetTimerRef.current);
-                      }
-                      removeWorksheetTimerRef.current = setTimeout(() => {
-                        setConfirmRemoveWorksheet(false);
-                        removeWorksheetTimerRef.current = null;
-                      }, 3000);
-                      return;
-                    }
-                    if (removeWorksheetTimerRef.current) {
-                      clearTimeout(removeWorksheetTimerRef.current);
-                      removeWorksheetTimerRef.current = null;
-                    }
-                    setConfirmRemoveWorksheet(false);
-                    onTeacherSetBackground(null);
-                    if (tool === 'move-bg') setTool('solid');
-                  }}
-                  className={cn(
-                    'px-1.5 py-0.5 rounded-[2px] text-[11px] cursor-pointer whitespace-nowrap transition-colors',
-                    confirmRemoveWorksheet
-                      ? 'bg-red-50 text-red-700 font-bold'
-                      : 'text-red-600 hover:bg-red-50 font-medium'
-                  )}
-                  title="Remove background worksheet from this board. Ink stays."
-                >
-                  {confirmRemoveWorksheet ? 'Tap again to remove' : 'Remove worksheet'}
-                </button>
-              </div>
-            )}
-
-            {worksheetError && (
-              <span className="text-xs text-red-600 font-medium">{worksheetError}</span>
-            )}
-          </div>
-
-          {/* Wraps: without it, anything past the right edge (Ink by, Clear Ink on a 1366 px Chromebook) was cut off. */}
-          <div className="flex flex-wrap items-center gap-2">
-            <button
-              type="button"
-              onClick={() => fileInputRef.current?.click()}
-              className="flex items-center gap-1.5 px-3 py-1 rounded-[2px] border oh-btn text-xs font-medium text-slate-800 transition-colors whitespace-nowrap shrink-0 cursor-pointer"
-              title="Open a .json file made with Save class work: every student's board, the worksheets and the chat log"
-            >
-              <Upload size={13} />
-              <span>Open class work</span>
-            </button>
-
-            {onTeacherLessonRequest && (
-              <button
-                type="button"
-                onClick={() => setLessonModal('save')}
-                className="flex items-center gap-1.5 px-3 py-1 rounded-[2px] border oh-btn text-xs font-medium text-slate-800 transition-colors whitespace-nowrap shrink-0 cursor-pointer"
-                title="Save this lesson (worksheets, your ink, breakout rounds and settings, no student work) as a .allaboard file"
-              >
-                <BookMarked size={13} />
-                <span>Save lesson…</span>
-              </button>
-            )}
-
-            {onTeacherLessonRequest && (
-              <button
-                type="button"
-                onClick={() => setLessonModal('load')}
-                className="flex items-center gap-1.5 px-3 py-1 rounded-[2px] border oh-btn text-xs font-medium text-slate-800 transition-colors whitespace-nowrap shrink-0 cursor-pointer"
-                title="Set up a saved .allaboard lesson in a new room or this one"
-              >
-                <BookOpen size={13} />
-                <span>Load lesson…</span>
-              </button>
-            )}
-
-            {isGoogleDriveConfigured() && (
-              <>
-                <button
-                  type="button"
-                  disabled={classWork.driveOpening}
-                  onClick={classWork.handleOpenFromDrive}
-                  className="flex items-center gap-1.5 px-3 py-1 rounded-[2px] border oh-btn text-xs font-medium text-slate-800 transition-colors whitespace-nowrap shrink-0 cursor-pointer disabled:opacity-50"
-                  title="Open a room you saved to Google Drive"
-                >
-                  <HardDrive size={13} className="text-emerald-600" />
-                  <span>{classWork.driveOpening ? 'Opening...' : 'Open Room from Drive'}</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={classWork.handleSaveToDrive}
-                  className="flex items-center gap-1.5 px-3 py-1 rounded-[2px] border oh-btn text-xs font-medium text-slate-800 transition-colors whitespace-nowrap shrink-0 cursor-pointer"
-                  title="Save this room (drawings, chat, worksheets and breakout boards) to your Google Drive"
-                >
-                  <HardDrive size={13} className="text-emerald-600" />
-                  <span>Save Room to Drive</span>
-                </button>
-                {classWork.driveOpenError && (
-                  <span className="text-xs text-red-600 font-medium">{classWork.driveOpenError}</span>
-                )}
-                {classWork.driveNotice && (
-                  <span
-                    className={cn(
-                      'text-xs whitespace-nowrap',
-                      classWork.driveNotice.isError ? 'text-red-600 font-medium' : 'text-slate-500'
-                    )}
-                  >
-                    {classWork.driveNotice.text}
-                  </span>
-                )}
-                {classWork.driveAccount && (
-                  <span className="text-xs text-slate-500 whitespace-nowrap" data-testid="drive-account-chip">
-                    Drive: {classWork.driveAccount.email} ·{' '}
-                    <button
-                      type="button"
-                      onClick={() => void classWork.handleSwitchDriveAccount()}
-                      className="text-indigo-600 hover:text-indigo-700 hover:underline font-medium cursor-pointer"
-                    >
-                      Switch
-                    </button>
-                  </span>
-                )}
-              </>
-            )}
-
-            <button
-              type="button"
-              onClick={() => onTeacherToggleLock(!isCanvasLocked)}
-              className={cn(
-                "flex items-center gap-1.5 px-3 py-1 rounded-[2px] border text-xs font-medium transition-colors whitespace-nowrap shrink-0 cursor-pointer",
-                isCanvasLocked
-                  ? "oh-btn-amber text-white"
-                  : "oh-btn text-amber-900"
-              )}
-            >
-              {isCanvasLocked ? <Unlock size={13} /> : <Lock size={13} />}
-              <span>{isCanvasLocked ? 'Unlock Board' : 'Lock Board'}</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => onTeacherToggleHideCursors(!hideStudentCursors)}
-              aria-pressed={hideStudentCursors}
-              className={cn(
-                "flex items-center gap-1.5 px-3 py-1 rounded-[2px] border text-xs font-medium transition-colors whitespace-nowrap shrink-0 cursor-pointer",
-                hideStudentCursors
-                  ? "oh-btn-amber text-white"
-                  : "oh-btn text-amber-900"
-              )}
-            >
-              <MousePointer2 size={13} />
-              <span>{hideStudentCursors ? 'Show Student Cursors' : 'Hide Student Cursors'}</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => onTeacherToggleOneNameStamp(!oneNameStamp)}
-              aria-pressed={oneNameStamp}
-              title="Limit each student to one name stamp per board. They can still drag or delete it."
-              className={cn(
-                "flex items-center gap-1.5 px-3 py-1 rounded-[2px] border text-xs font-medium transition-colors whitespace-nowrap shrink-0 cursor-pointer",
-                oneNameStamp
-                  ? "oh-btn-amber text-white"
-                  : "oh-btn text-amber-900"
-              )}
-            >
-              <span>One Name Stamp: {oneNameStamp ? 'On' : 'Off'}</span>
-            </button>
-
-            <label
-              className={cn(
-                "flex items-center gap-1 px-2 py-0.5 rounded-[2px] border text-xs shrink-0",
-                focusedInkAuthor ? "oh-btn-amber text-white" : "bg-white border-[#b6c2d2] text-amber-900"
-              )}
-              title="Fade everyone else's ink on your screen. Students and exports are not affected."
-            >
-              <span className="font-medium whitespace-nowrap">Ink by:</span>
-              <select
-                aria-label="Focus ink by student"
-                value={focusedInkAuthor ?? ''}
-                onChange={(e) => setInkFocusKey(e.target.value || null)}
-                className="max-w-[160px] bg-transparent font-semibold focus:outline-none cursor-pointer"
-              >
-                <option value="" className="text-slate-900">Everyone</option>
-                {boardInkAuthors.map((author) => (
-                  <option key={author.key} value={author.key} className="text-slate-900">
-                    {author.name} ({author.itemCount})
-                  </option>
-                ))}
-              </select>
-            </label>
-
-            {confirmClearAll ? (
-              <div className="flex items-center gap-1.5 bg-white px-2.5 py-1 rounded-[2px] border border-red-300">
-                <span className="text-xs font-medium text-red-700 whitespace-nowrap">
-                  Clear ink on {activeBoardTitle}?
-                </span>
-                <button
-                  type="button"
-                  onClick={() => {
-                    onTeacherClearAll();
-                    setConfirmClearAll(false);
-                  }}
-                  className="px-2 py-0.5 text-xs font-medium oh-btn-danger border text-white rounded-[2px] cursor-pointer whitespace-nowrap"
-                >
-                  Confirm
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setConfirmClearAll(false)}
-                  className="px-1.5 py-0.5 text-xs text-slate-600 hover:text-slate-900 cursor-pointer"
-                >
-                  Cancel
-                </button>
-              </div>
-            ) : (
-              <button
-                type="button"
-                onClick={() => setConfirmClearAll(true)}
-                className="flex items-center gap-1.5 px-3 py-1 rounded-[2px] border oh-btn text-xs font-medium text-red-600 transition-colors whitespace-nowrap shrink-0 cursor-pointer"
-              >
-                <Trash2 size={13} />
-                <span>Clear Ink</span>
-              </button>
-            )}
-          </div>
-        </div>
-      ) : (
-        /* Student Status Banner (Breakout / Individual Board Indicator, Active Timer, or Lock Banner) */
-        (breakoutConfig.mode !== 'main' ||
-          isCanvasLocked ||
-          timer?.isRunning ||
-          displayRemainingMs > 0) && (
-          <div className="oh-chrome-bar px-4 py-1.5 border-b border-brand-300 flex flex-wrap items-center justify-between gap-2 text-xs text-slate-800 z-10">
-            <div className="flex items-center gap-2">
-              <span className="font-display font-semibold text-brand-900">
-                Active Board: {activeBoardTitle}
-              </span>
-              {breakoutConfig.mode === 'individual' && (
-                <span className="text-slate-600">· Personal Individual Assignment</span>
-              )}
-              {breakoutConfig.mode === 'groups' && (
-                <span className="text-slate-600">· Breakout Group Board</span>
-              )}
-            </div>
-
-            <div className="flex items-center gap-3">
-              {(timer?.isRunning || displayRemainingMs > 0) && (
-                <span
-                  className={cn(
-                    "flex items-center gap-1.5 px-2.5 py-0.5 rounded-[2px] border font-mono tabular-nums font-bold text-xs",
-                    timer?.isRunning
-                      ? displayRemainingMs <= 60000
-                        ? "bg-red-600 border-red-700 text-white animate-pulse"
-                        : "bg-slate-900 border-[#243044] text-amber-300"
-                      : "bg-amber-200 border-amber-400 text-slate-900"
-                  )}
-                >
-                  <Timer size={12} />
-                  <span>
-                    {formatTimerMs(displayRemainingMs)}
-                    {!timer?.isRunning ? ' (Paused)' : ''}
-                  </span>
-                </span>
-              )}
-
-              {breakoutConfig.mode === 'groups' && breakoutConfig.allowSelfSelect && (
-                <div className="flex items-center gap-1.5">
-                  <span className="text-slate-600">Switch Group:</span>
-                  <select
-                    value={activeBoardId}
-                    onChange={(e) => onAssignUserToBoard(e.target.value)}
-                    className="bg-white border border-brand-300 rounded-[2px] px-2 py-0.5 text-xs font-semibold text-brand-900 cursor-pointer"
-                  >
-                    {activeRoundBoards.filter((sb) => sb.kind === 'group').map((sb) => (
-                      <option key={sb.id} value={sb.id}>
-                        {sb.title} ({sb.assignedUserIds.length} students)
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              )}
-
-              {isCanvasLocked && (
-                <span className="flex items-center gap-1 text-amber-800 font-medium">
-                  <Lock size={13} className="text-amber-600" />
-                  <span>Read-Only / Locked by Teacher</span>
-                </span>
-              )}
-            </div>
-          </div>
-        )
-      )}
+      <TeacherClassroomBar
+  {...{
+    isTeacher,
+    toolbarCollapsed,
+    handleOpenBreakoutModal,
+    breakoutConfig,
+    activeRoundBoards,
+    onConfigureBreakout,
+    viewingRound,
+    setTeacherViewingRoundId,
+    activeRound,
+    subBoards,
+    rounds,
+    effectiveViewingRoundId,
+    activeBoardId,
+    onSelectBoard,
+    setShowLiveGridOverview,
+    fullMainElements,
+    teacherVisibleBoards,
+    roundShortLabel,
+    activeBoardTitle,
+    showLiveGridOverview,
+    pdfExportProgress,
+    handleBatchExportAllPdf,
+    timerMenuRef,
+    setShowTimerMenu,
+    timer,
+    displayRemainingMs,
+    showTimerMenu,
+    onTeacherTimerControl,
+    customTimeInput,
+    setCustomTimeInput,
+    setShowTemplateModal,
+    isUploadingWorksheet,
+    worksheetInputRef,
+    background,
+    driveBusy,
+    handleWorksheetFromDrive,
+    driveCanCancel,
+    handleCancelDriveImport,
+    worksheetImportScale,
+    handleUpdateWorksheetImportScale,
+    setTool,
+    tool,
+    effectiveTool,
+    onTeacherUpdateBackground,
+    elements,
+    confirmRemoveWorksheet,
+    setConfirmRemoveWorksheet,
+    removeWorksheetTimerRef,
+    onTeacherSetBackground,
+    worksheetError,
+    fileInputRef,
+    onTeacherLessonRequest,
+    setLessonModal,
+    classWork,
+    onTeacherToggleLock,
+    isCanvasLocked,
+    onTeacherToggleHideCursors,
+    hideStudentCursors,
+    onTeacherToggleOneNameStamp,
+    oneNameStamp,
+    focusedInkAuthor,
+    setInkFocusKey,
+    boardInkAuthors,
+    confirmClearAll,
+    onTeacherClearAll,
+    setConfirmClearAll,
+    onAssignUserToBoard
+  }}
+/>
 
       {/* Teacher Live Grid Overview of All Student / Group Boards */}
       {isTeacher && showLiveGridOverview && (
@@ -5772,639 +1782,54 @@ export default function Canvas({
           </Layer>
         </Stage>
 
-        {/* Floating Action Bar for Selected / Lassoed Elements */}
-        {selectedElements.length > 0 && selectionBounds && !selectionDragOffset && canDraw && (
-          <div
-            data-hud="true"
-            data-keep-note="true"
-            onPointerDown={(e) => e.stopPropagation()}
-            onDoubleClick={(e) => e.stopPropagation()}
-            className="absolute z-40 flex flex-wrap items-center gap-1.5 px-2.5 py-1.5 rounded-[3px] bg-slate-900 text-white border-2 border-[#243044] text-xs"
-            style={{
-              left: Math.max(
-                12,
-                Math.min(
-                  Math.max(12, dimensions.width - 420),
-                  stagePos.x + ((selectionBounds[0] + selectionBounds[2]) / 2) * stageScale - 160
-                )
-              ),
-              top: Math.max(
-                10,
-                Math.min(
-                  Math.max(10, dimensions.height - 64),
-                  stagePos.y + selectionBounds[1] * stageScale - 52
-                )
-              ),
-            }}
-          >
-            <span className="font-semibold text-indigo-300 px-1 whitespace-nowrap">
-              {selectedElements.length} selected
-            </span>
-
-            {selectionAuthors.length > 0 && (
-              <span
-                data-testid="selection-authors"
-                title={describeSelectionAuthors(selectionAuthors)}
-                className="max-w-[220px] truncate px-1 font-medium text-slate-100"
-              >
-                {formatSelectionAuthors(selectionAuthors)}
-              </span>
-            )}
-
-            {selectedTextElements.length > 0 && (
-              <>
-                <div className="h-3.5 w-px bg-slate-700" />
-                <button
-                  type="button"
-                  onClick={() => handleSelectTextFontSize(activeTextSize - 4)}
-                  className="px-1.5 py-0.5 rounded-[2px] border oh-btn-dark font-semibold cursor-pointer"
-                  title="Shrink selected text"
-                >
-                  A&minus;
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleSelectTextFontSize(activeTextSize + 4)}
-                  className="px-1.5 py-0.5 rounded-[2px] border oh-btn-dark font-semibold cursor-pointer"
-                  title="Grow selected text"
-                >
-                  A+
-                </button>
-                {selectedElements.length === 1 && selectedTextElements.length === 1 && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const target = selectedTextElements[0];
-                      setSelectedIds([]);
-                      openOrTapNoteAt(target.x || 0, target.y || 0, target);
-                    }}
-                    className="flex items-center gap-1 px-2 py-0.5 rounded-[2px] border oh-btn-primary font-medium cursor-pointer whitespace-nowrap"
-                    title="Edit text content"
-                  >
-                    <Edit3 size={12} />
-                    <span>Edit</span>
-                  </button>
-                )}
-              </>
-            )}
-
-            <div className="h-3.5 w-px bg-slate-700" />
-
-            <button
-              type="button"
-              onClick={handleCopySelection}
-              className="flex items-center gap-1 px-2 py-0.5 rounded-[2px] border oh-btn-dark font-medium cursor-pointer whitespace-nowrap"
-              title="Copy selection (Ctrl+C)"
-            >
-              <Copy size={12} />
-              <span>Copy</span>
-            </button>
-            <button
-              type="button"
-              onClick={handleDuplicateSelection}
-              className="px-2 py-0.5 rounded-[2px] border oh-btn-dark font-medium cursor-pointer whitespace-nowrap"
-              title="Duplicate selection (Ctrl+D)"
-            >
-              Duplicate
-            </button>
-            <button
-              type="button"
-              onClick={handleDeleteSelection}
-              className="flex items-center gap-1 px-2 py-0.5 rounded-[2px] border oh-btn-danger font-medium cursor-pointer whitespace-nowrap"
-              title="Delete selected items (Delete)"
-            >
-              <Trash2 size={12} />
-              <span>Delete</span>
-            </button>
-
-            {isTeacher && (
-              <>
-                <div className="h-3.5 w-px bg-slate-700" />
-                <select
-                  aria-label="Target board to send copy"
-                  value={sendToBoardTarget}
-                  onChange={(e) => setSendToBoardTarget(e.target.value)}
-                  className="bg-slate-800 border border-[#243044] rounded-[2px] px-1.5 py-0.5 text-[11px] text-white"
-                >
-                  <option value="ALL_SUBBOARDS">All Boards in Current Round</option>
-                  <option value="main">Main Class Board</option>
-                  {activeRoundBoards.map((sb) => (
-                    <option key={sb.id} value={sb.id}>
-                      {sb.title}
-                    </option>
-                  ))}
-                </select>
-                <button
-                  type="button"
-                  onClick={() => handleSendSelectionToBoard(sendToBoardTarget)}
-                  className="px-2 py-0.5 rounded-[2px] border oh-btn-emerald font-semibold cursor-pointer whitespace-nowrap"
-                >
-                  Send Copy
-                </button>
-                {sentFeedback && (
-                  <span className="text-[11px] text-emerald-300 font-medium whitespace-nowrap">
-                    {sentFeedback}
-                  </span>
-                )}
-              </>
-            )}
-
-            <button
-              type="button"
-              onClick={() => setSelectedIds([])}
-              className="p-0.5 rounded-[2px] text-slate-400 hover:text-white cursor-pointer"
-              title="Deselect (Esc)"
-            >
-              <X size={13} />
-            </button>
-          </div>
-        )}
-
-        {/* Tap-to-Paste Prompt after copying with Select tool */}
-        {pastePrompt && clipboardElements.length > 0 && selectedElements.length === 0 && canDraw && (
-          <div
-            data-hud="true"
-            onPointerDown={(e) => e.stopPropagation()}
-            className="absolute z-40 flex items-center gap-1.5 px-2.5 py-1.5 rounded-[3px] bg-slate-900 text-white border-2 border-[#243044] text-xs"
-            style={{
-              left: Math.max(12, Math.min(dimensions.width - 180, stagePos.x + pastePrompt.worldX * stageScale)),
-              top: Math.max(12, Math.min(dimensions.height - 48, stagePos.y + pastePrompt.worldY * stageScale - 36)),
-            }}
-          >
-            <button
-              type="button"
-              onClick={() => handlePasteElements({ x: pastePrompt.worldX, y: pastePrompt.worldY })}
-              className="px-2 py-0.5 rounded-[2px] border oh-btn-primary font-semibold cursor-pointer whitespace-nowrap"
-            >
-              Paste {clipboardElements.length} item{clipboardElements.length > 1 ? 's' : ''} here
-            </button>
-            <button
-              type="button"
-              onClick={() => setPastePrompt(null)}
-              className="p-0.5 text-slate-400 hover:text-white cursor-pointer"
-              title="Dismiss"
-            >
-              <X size={13} />
-            </button>
-          </div>
-        )}
-
-        {/* OverBoard v45 Editable Multiline Text Note (`makeTyping` port) — Drag handle + Live Text Size bar + Multiline Textarea */}
-        {editingNote && (
-          <div
-            data-hud="true"
-            data-keep-note="true"
-            className="absolute z-40 select-text"
-            style={{
-              left: stagePos.x + editingNote.worldX * stageScale,
-              top: stagePos.y + editingNote.worldY * stageScale,
-            }}
-            onPointerDown={(e) => e.stopPropagation()}
-            onDoubleClick={(e) => e.stopPropagation()}
-          >
-            {/* Floating Drag Handle & Quick Size Controls */}
-            <div
-              data-keep-note="true"
-              className="absolute -top-8 left-0 flex items-center gap-1 px-1.5 py-0.5 rounded-[3px] bg-slate-900 text-white border border-[#243044] text-[11px] whitespace-nowrap"
-            >
-              <button
-                type="button"
-                aria-label="Drag note position"
-                title="Drag to move this note"
-                onPointerDown={(e) => {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  const startClientX = e.clientX;
-                  const startClientY = e.clientY;
-                  const origWorldX = editingNote.worldX;
-                  const origWorldY = editingNote.worldY;
-                  const onMove = (ev: PointerEvent) => {
-                    const dx = (ev.clientX - startClientX) / stageScale;
-                    const dy = (ev.clientY - startClientY) / stageScale;
-                    setEditingNote((prev) =>
-                      prev
-                        ? {
-                            ...prev,
-                            worldX: Math.round((origWorldX + dx) * 10) / 10,
-                            worldY: Math.round((origWorldY + dy) * 10) / 10,
-                          }
-                        : null
-                    );
-                  };
-                  const onUp = () => {
-                    window.removeEventListener('pointermove', onMove);
-                    window.removeEventListener('pointerup', onUp);
-                    window.removeEventListener('pointercancel', onUp);
-                    requestAnimationFrame(() => noteTextareaRef.current?.focus());
-                  };
-                  window.addEventListener('pointermove', onMove);
-                  window.addEventListener('pointerup', onUp);
-                  window.addEventListener('pointercancel', onUp);
-                }}
-                className="flex items-center gap-1 px-1.5 py-0.5 rounded-[2px] border oh-btn-dark cursor-grab active:cursor-grabbing text-slate-200 font-medium"
-              >
-                <Move size={11} />
-                <span>Drag</span>
-              </button>
-
-              <div className="h-3 w-px bg-slate-700 mx-0.5" />
-
-              {TEXT_SIZE_PRESETS.map((preset) => (
-                <button
-                  key={preset.label}
-                  type="button"
-                  onPointerDown={(e) => e.preventDefault()}
-                  onClick={() => handleSelectTextFontSize(preset.size)}
-                  className={cn(
-                    "px-1 py-0.5 rounded-[2px] border font-bold cursor-pointer",
-                    editingNote.fontSize === preset.size
-                      ? "oh-btn-primary text-white"
-                      : "border-transparent text-slate-300 hover:bg-slate-800"
-                  )}
-                  title={preset.title}
-                >
-                  {preset.label}
-                </button>
-              ))}
-
-              <button
-                type="button"
-                onPointerDown={(e) => e.preventDefault()}
-                onClick={() => handleSelectTextFontSize(editingNote.fontSize - 3)}
-                className="px-1 py-0.5 rounded-[2px] text-slate-300 hover:bg-slate-800 font-bold cursor-pointer"
-                title="Smaller text"
-              >
-                &minus;
-              </button>
-              <button
-                type="button"
-                onPointerDown={(e) => e.preventDefault()}
-                onClick={() => handleSelectTextFontSize(editingNote.fontSize + 3)}
-                className="px-1 py-0.5 rounded-[2px] text-slate-300 hover:bg-slate-800 font-bold cursor-pointer"
-                title="Larger text"
-              >
-                +
-              </button>
-
-              <button
-                type="button"
-                aria-label="Done editing note"
-                onPointerDown={(e) => e.preventDefault()}
-                onClick={() => commitEditingNote()}
-                className="flex items-center gap-0.5 px-1.5 py-0.5 rounded-[2px] border oh-btn-emerald text-white font-semibold cursor-pointer ml-0.5"
-                title="Save note (Esc or Ctrl+Enter)"
-              >
-                <Check size={11} />
-                <span>Done</span>
-              </button>
-            </div>
-
-            <textarea
-              ref={noteTextareaRef}
-              rows={1}
-              wrap="off"
-              dir="auto"
-              spellCheck={false}
-              aria-label="Editable text note"
-              value={editingNote.value}
-              onChange={(e) => {
-                setEditingNote({ ...editingNote, value: e.target.value });
-              }}
-              onKeyDown={(e) => {
-                if (e.key === 'Escape' || (e.key === 'Enter' && (e.ctrlKey || e.metaKey))) {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  commitEditingNote();
-                }
-              }}
-              onBlur={(e) => {
-                // Keep note open if user clicked the toolbar to change color or size (`restyle`)
-                const related = e.relatedTarget as HTMLElement | null;
-                if (related && related.closest && related.closest('[data-keep-note="true"]')) {
-                  return;
-                }
-                if (Date.now() - editingNote.openedAt < 200) {
-                  requestAnimationFrame(() => noteTextareaRef.current?.focus());
-                  return;
-                }
-                setTimeout(() => {
-                  if (document.activeElement !== noteTextareaRef.current) {
-                    commitEditingNote();
-                  }
-                }, 0);
-              }}
-              placeholder="Type note… (Enter = new line, Esc = done)"
-              className="m-0 p-0 border-0 outline-2 outline-dashed outline-brand-600 rounded-xs bg-white/88 resize-none overflow-hidden focus:outline-brand-600 shadow-sm"
-              style={{
-                color: editingNote.color,
-                fontSize: `${editingNote.fontSize * stageScale}px`,
-                lineHeight: NOTE_LH,
-                fontFamily: NOTE_FONT,
-                fontWeight: 600,
-              }}
-            />
-          </div>
-        )}
-
-        {/* Custom Precision Cursor Overlay when Drawing */}
-        {effectiveTool !== 'pan' && effectiveTool !== 'move-bg' && effectiveTool !== 'select' && effectiveTool !== 'text' && (
-          <div
-            className="pointer-events-none absolute z-30 flex items-center justify-center"
-            style={{
-              left: screenPos.x,
-              top: screenPos.y,
-              transform: 'translate(-50%, -50%)',
-            }}
-          >
-            <div className="relative">
-              <MousePointer2 size={15} className="text-slate-900 fill-white drop-shadow-xs" />
-              <div
-                className="absolute -top-4 left-4 text-white text-[10px] font-medium px-1.5 py-0.5 rounded whitespace-nowrap shadow-xs"
-                style={{ backgroundColor: userColor }}
-              >
-                {userName}
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Floating Bottom-Right Infinite Canvas Zoom & Navigation HUD */}
-        <div
-          data-hud="true"
-          onPointerDown={(e) => e.stopPropagation()}
-          onPointerMove={(e) => e.stopPropagation()}
-          onPointerUp={(e) => e.stopPropagation()}
-          onDoubleClick={(e) => e.stopPropagation()}
-          className="oh-chrome-bar absolute bottom-4 right-4 z-20 flex items-center gap-1 px-2 py-1.5 rounded-[3px] border border-[#CBD5E1] text-xs text-slate-700"
-        >
-          {/* Upward Curved Radial Background Grid Selector (Blank, Dots, Graph Paper, Isometric 3D) */}
-          <div ref={gridMenuRef} className="relative flex items-center">
-            <button
-              type="button"
-              onClick={() => setShowGridMenu((prev) => !prev)}
-              aria-haspopup="true"
-              aria-expanded={showGridMenu}
-              className={cn(
-                "p-1.5 rounded-[2px] border transition-colors cursor-pointer",
-                gridMode !== 'blank' || showGridMenu
-                  ? "oh-btn-active text-brand-700"
-                  : "border-transparent text-slate-500 hover:bg-white/80 hover:text-slate-800"
-              )}
-              title={`Background Grid: ${GRID_MODE_OPTIONS.find((o) => o.mode === gridMode)?.label || gridMode} (click to choose Blank, Dots, Graph Paper, or Isometric 3D)`}
-            >
-              <GridModeIcon mode={gridMode} size={14} />
-            </button>
-
-            {showGridMenu && (
-              <div
-                role="menu"
-                aria-label="Canvas background grid options"
-                className="absolute left-1/2 bottom-full z-50 pointer-events-none"
-                style={{ width: 0, height: 0 }}
-              >
-                {/* Subtle SVG radial guide arc curving upward */}
-                <svg
-                  width="156"
-                  height="88"
-                  viewBox="-78 -80 156 88"
-                  className="overflow-visible pointer-events-none"
-                >
-                  <path
-                    d="M -54 -26 Q 0 -76 54 -26"
-                    fill="none"
-                    stroke="rgba(15, 23, 42, 0.25)"
-                    strokeWidth="2"
-                    strokeDasharray="3 3"
-                  />
-                </svg>
-
-                {GRID_MODE_OPTIONS.map((opt) => {
-                  const isSelected = gridMode === opt.mode;
-                  return (
-                    <button
-                      key={opt.mode}
-                      type="button"
-                      role="menuitemradio"
-                      aria-checked={isSelected}
-                      aria-label={opt.label}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setGridMode(opt.mode);
-                        saveLocal('allaboard-grid-mode', opt.mode);
-                        setShowGridMenu(false);
-                      }}
-                      style={{
-                        left: `${opt.dx}px`,
-                        top: `${opt.dy}px`,
-                        transform: 'translate(-50%, -50%)',
-                      }}
-                      className={cn(
-                        "pointer-events-auto absolute w-8 h-8 rounded-full flex items-center justify-center border transition-transform hover:scale-110 cursor-pointer",
-                        isSelected
-                          ? "bg-brand-600 text-white border-white ring-2 ring-brand-500/50"
-                          : "bg-slate-900 text-slate-200 border-[#243044] hover:bg-slate-800 hover:text-white"
-                      )}
-                      title={opt.label}
-                    >
-                      <GridModeIcon mode={opt.mode} size={15} />
-                    </button>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-
-          <div className="h-4 w-px bg-slate-300 mx-0.5" />
-
-          <button
-            type="button"
-            onClick={() => zoomStep(1 / 1.25)}
-            className="p-1.5 rounded-[2px] border oh-btn transition-colors cursor-pointer"
-            title="Zoom Out"
-          >
-            <ZoomOut size={14} />
-          </button>
-
-          <button
-            type="button"
-            onClick={resetView}
-            className="px-2 py-1 rounded-[2px] hover:bg-white font-mono tabular-nums font-medium text-slate-700 cursor-pointer"
-            title="Click to reset zoom to 100% at origin (0,0)"
-          >
-            {Math.round(stageScale * 100)}%
-          </button>
-
-          <button
-            type="button"
-            onClick={() => zoomStep(1.25)}
-            className="p-1.5 rounded-[2px] border oh-btn transition-colors cursor-pointer"
-            title="Zoom In"
-          >
-            <ZoomIn size={14} />
-          </button>
-
-          <div className="h-4 w-px bg-slate-300 mx-0.5" />
-
-          <button
-            type="button"
-            onClick={fitAllContent}
-            className="flex items-center gap-1 px-2 py-1 rounded-[2px] border oh-btn font-medium text-slate-700 whitespace-nowrap cursor-pointer"
-            title="Fit worksheet and all drawings into view [F]"
-          >
-            <Maximize2 size={13} />
-            <span>Fit All</span>
-          </button>
-
-          <div className="h-4 w-px bg-slate-300 mx-0.5" />
-
-          <button
-            type="button"
-            onClick={() => setShowHotkeysModal((prev) => !prev)}
-            className={cn(
-              "flex items-center gap-1 px-2 py-1 rounded-[2px] border font-medium whitespace-nowrap cursor-pointer transition-colors",
-              showHotkeysModal
-                ? "oh-btn-primary text-white"
-                : "oh-btn text-slate-700"
-            )}
-            title="Keyboard Shortcuts & Navigation [?]"
-          >
-            <Keyboard size={13} />
-            <span>Hotkeys</span>
-          </button>
-        </div>
-
-        {/* Keyboard Shortcuts & Navigation Modal */}
-        {showHotkeysModal && (
-          <div
-            data-hud="true"
-            onPointerDown={(e) => e.stopPropagation()}
-            onClick={() => setShowHotkeysModal(false)}
-            className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 p-4"
-          >
-            <div
-              onClick={(e) => e.stopPropagation()}
-              className="bg-white border-2 border-[#CBD5E1] rounded-[3px] w-full max-w-lg overflow-hidden text-slate-800"
-            >
-              <div className="oh-panel-header flex items-center justify-between px-5 py-3.5 border-b border-[#CBD5E1]">
-                <div className="flex items-center gap-2">
-                  <Keyboard size={17} className="text-brand-600" />
-                  <h2 className="font-display font-bold text-sm text-slate-900">
-                    Keyboard Shortcuts &amp; Navigation
-                  </h2>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setShowHotkeysModal(false)}
-                  className="p-1 rounded-[2px] border border-transparent hover:border-[#CBD5E1] text-slate-400 hover:text-slate-700 cursor-pointer"
-                  title="Close (Esc)"
-                >
-                  <X size={16} />
-                </button>
-              </div>
-
-              <div className="p-5 grid grid-cols-1 sm:grid-cols-2 gap-5 text-xs">
-                <div className="space-y-2.5">
-                  <div className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
-                    Navigation &amp; Camera
-                  </div>
-                  <div className="space-y-1.5">
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="text-slate-700">Move around board</span>
-                      <kbd className="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-300 font-mono text-[11px] font-semibold text-slate-800">
-                        ↑ ↓ ← →
-                      </kbd>
-                    </div>
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="text-slate-700">Fast move around board</span>
-                      <kbd className="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-300 font-mono text-[11px] font-semibold text-slate-800">
-                        Shift + Arrows
-                      </kbd>
-                    </div>
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="text-slate-700">Hand / Pan tool</span>
-                      <kbd className="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-300 font-mono text-[11px] font-semibold text-slate-800">
-                        H
-                      </kbd>
-                    </div>
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="text-slate-700">Temporary pan while drawing</span>
-                      <kbd className="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-300 font-mono text-[11px] font-semibold text-slate-800">
-                        Hold Space
-                      </kbd>
-                    </div>
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="text-slate-700">Fit all pages &amp; ink</span>
-                      <kbd className="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-300 font-mono text-[11px] font-semibold text-slate-800">
-                        F
-                      </kbd>
-                    </div>
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="text-slate-700">Reset zoom to 100%</span>
-                      <kbd className="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-300 font-mono text-[11px] font-semibold text-slate-800">
-                        0
-                      </kbd>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="space-y-2.5">
-                  <div className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
-                    Drawing Tools
-                  </div>
-                  <div className="space-y-1.5">
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="text-slate-700 font-medium">Solid Pen</span>
-                      <kbd className="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-300 font-mono text-[11px] font-semibold text-slate-800">
-                        P / B
-                      </kbd>
-                    </div>
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="text-slate-700 font-medium">Personal Eraser</span>
-                      <kbd className="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-300 font-mono text-[11px] font-semibold text-slate-800">
-                        E
-                      </kbd>
-                    </div>
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="text-slate-700">Select &amp; Lasso</span>
-                      <kbd className="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-300 font-mono text-[11px] font-semibold text-slate-800">
-                        V
-                      </kbd>
-                    </div>
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="text-slate-700">Highlighter / Cover</span>
-                      <kbd className="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-300 font-mono text-[11px] font-semibold text-slate-800">
-                        M
-                      </kbd>
-                    </div>
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="text-slate-700">Type Note</span>
-                      <kbd className="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-300 font-mono text-[11px] font-semibold text-slate-800">
-                        T
-                      </kbd>
-                    </div>
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="text-slate-700">Line / Rect / Circle / Stamp</span>
-                      <kbd className="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-300 font-mono text-[11px] font-semibold text-slate-800">
-                        L / R / C / S
-                      </kbd>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              <div className="px-5 py-3 bg-slate-50 border-t border-slate-200 flex flex-wrap items-center justify-between gap-2 text-[11px] text-slate-500">
-                <span>
-                  Undo: <kbd className="font-mono font-semibold text-slate-700">Ctrl+Z</kbd> · Redo:{' '}
-                  <kbd className="font-mono font-semibold text-slate-700">Ctrl+Y</kbd> · Copy/Paste/Duplicate:{' '}
-                  <kbd className="font-mono font-semibold text-slate-700">Ctrl+C / V / D</kbd>
-                </span>
-                <span>
-                  Press <kbd className="font-mono font-semibold text-slate-700">?</kbd> anytime to toggle
-                </span>
-              </div>
-            </div>
-          </div>
-        )}
+        <CanvasViewportOverlays
+  {...{
+    selectedElements,
+    selectionBounds,
+    selectionDragOffset,
+    canDraw,
+    dimensions,
+    stagePos,
+    stageScale,
+    selectionAuthors,
+    selectedTextElements,
+    handleSelectTextFontSize,
+    activeTextSize,
+    setSelectedIds,
+    openOrTapNoteAt,
+    handleCopySelection,
+    handleDuplicateSelection,
+    handleDeleteSelection,
+    isTeacher,
+    sendToBoardTarget,
+    setSendToBoardTarget,
+    activeRoundBoards,
+    handleSendSelectionToBoard,
+    sentFeedback,
+    pastePrompt,
+    clipboardElements,
+    handlePasteElements,
+    setPastePrompt,
+    editingNote,
+    setEditingNote,
+    noteTextareaRef,
+    commitEditingNote,
+    effectiveTool,
+    screenPos,
+    userColor,
+    userName,
+    gridMenuRef,
+    setShowGridMenu,
+    showGridMenu,
+    gridMode,
+    setGridMode,
+    zoomStep,
+    resetView,
+    fitAllContent,
+    setShowHotkeysModal,
+    showHotkeysModal
+  }}
+/>
       </div>
     </div>
   );
