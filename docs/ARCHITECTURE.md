@@ -26,7 +26,7 @@ Teachers are identified by a per-room **PIN**, not a login.
 | Behavior | Where to make the change | What to verify |
 |---|---|---|
 | Production startup or server imports | [Server entry point](../server.ts) and [shared boot check](../scripts/smoke.sh) | After the build, plain Node 22 loads the server, serves a healthy `/healthz` and returns the app page. PR CI and deployment both run `bash scripts/smoke.sh`. |
-| A drawing tool changes a board | Validate the edit in its [socket handler](../server.ts), then call `publishDrawingEdit`. Choose the teacher overview change and whether the sender needs the server result. | Another student on the board sees the live edit, a teacher viewing a different board gets the overview update, and the edit survives restart. Reordering needs a full-board overview. [Board channel tests](../tests/server.test.ts) · [Eraser and undo](../tests/eraserEdits.test.ts) |
+| A drawing tool changes a board | Validate the edit in its [socket handler](../server/drawingHandlers.ts), then call `publishDrawingEdit`. Choose the teacher overview change and whether the sender needs the server result. | Another student on the board sees the live edit, a teacher viewing a different board gets the overview update, and the edit survives restart. Reordering needs a full-board overview. [Board channel tests](../tests/server.test.ts) · [Eraser and undo](../tests/eraserEdits.test.ts) |
 | Saving or opening class work | [Snapshot writer and reader](../src/lib/roomSnapshot.ts), [shared data types](../src/types.ts) and [local file and Drive actions](../src/components/useClassWorkFiles.ts) | Round-trip the main board, breakout boards, worksheets, and ink. Retry missing worksheet pages before saving. A lost restore acknowledgment keeps the file available for review. [Snapshot tests](../tests/roomSnapshot.test.ts) · [Drive save and restore](../e2e/googleDrive.spec.ts) |
 
 ## 2. Stack
@@ -43,7 +43,13 @@ Teachers are identified by a per-room **PIN**, not a login.
 
 | File | Lines | Role |
 |---|---|---|
-| `server.ts` | ~3500 | **Everything server-side:** room state, all 44 socket handlers, permissions, breakouts, timer, persistence wiring, `/api/assets/:hash`, `/healthz`, startup/shutdown. Exports `startServer(options)` (used by tests). |
+| `server.ts` | ~300 | Server startup, socket registration, timers, and shutdown. Exports `startServer(options)` (used by tests). |
+| `server/types.ts`, `server/roomSerialization.ts` | — | Shared server types and room serialization/validation helpers. |
+| `server/roomPersistence.ts` | — | Backup selection, room hydration, persistence, and housekeeping. |
+| `server/boardChannels.ts` | — | Board channels, digest and cursor batching, and drawing edit publication. |
+| `server/httpRoutes.ts` | — | Health, report, room availability, and asset HTTP routes. |
+| `server/breakoutHandlers.ts`, `server/lessonPackHandlers.ts` | — | Breakout and lesson domain helpers. |
+| `server/registerBreakoutHandlers.ts`, `server/registerLessonHandlers.ts`, `server/drawingHandlers.ts`, `server/moderationHandlers.ts` | — | Socket event registration by subsystem. |
 | `roomStore.ts` | ~350 | SQLite store: one row per room plus content-addressed assets (`assets`, `room_assets`). Has a JSON fallback if `node:sqlite` is missing. Fails open to `os.tmpdir()`. |
 | `backupMirror.ts` | ~380 | `BackupMirror` (batch, assets-first, retry, flush on SIGTERM) over `BackupBackend`: `GcsBackend` (Cloud Storage JSON API + metadata token) or `DirBackend` (folder). |
 | `src/App.tsx` | ~2320 | Client root: identity (`localStorage`), socket lifecycle (`26` listeners), **all client state** (elements, messages, subBoards, settings), lobby/welcome screen, handlers passed down as props. |

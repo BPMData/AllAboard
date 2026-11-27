@@ -45,7 +45,7 @@ then `gcloud run deploy --source .` (Buildpacks). The service settings that matt
 **replaced** the revision template each time. Console-added volume mounts vanished (the `/backup` mount),
 env vars came and went (`BACKUP_DIR=/backup` outlived its mount and turned backups off; `DATA_DIR=/data` kept
 reappearing). Some of those may still be set on the service, so anything that must persist (bucket name, feature
-flags) lives **in code**, e.g. `DEFAULT_BACKUP_BUCKET` in `server.ts`, and code never trusts stale env vars.
+flags) lives **in code**, e.g. `DEFAULT_BACKUP_BUCKET` in `server/roomPersistence.ts`, and code never trusts stale env vars.
 
 ### R2. Production runs `node server.ts` (type stripping). The test suite runs `tsx`.
 Node's type stripping **rejects** TypeScript-only runtime syntax:
@@ -91,13 +91,13 @@ All storage setup **fails open**. `RoomStore` falls back to a temp dir; the back
 | Backup engine | `backupMirror.ts` → `BackupMirror` | Batches changed rooms and writes every **10 s**. Writes images **before** the room that references them. Retries on failure. Flushes immediately on SIGTERM. |
 | Bucket backend | `backupMirror.ts` → `GcsBackend` | Cloud Storage JSON API over `fetch`. Auth is a token from `http://metadata.google.internal/…/token` (built into Cloud Run, no keys). 20 s timeout per request. |
 | Folder backend | `backupMirror.ts` → `DirBackend` | Plain files. Used for local dev, tests, and `BACKUP_DIR`. |
-| Choosing a target | `server.ts` → `openBackupMirror` | Tries `BACKUP_DIR`, then the bucket (`BACKUP_BUCKET`, else `allaboard-data` when `K_SERVICE` is set and `NODE_ENV !== 'development'`, or `NODE_ENV=production`). **The first one whose probe succeeds wins**, and the rest are logged as skipped. |
-| Restore | `server.ts` → `restoreFromBackup` | At boot, **before listening**: copies every backed-up room into SQLite. Images are restored lazily by `GET /api/assets/:hash`. |
+| Choosing a target | `server/roomPersistence.ts` → `openBackupMirror` | Tries `BACKUP_DIR`, then the bucket (`BACKUP_BUCKET`, else `allaboard-data` when `K_SERVICE` is set and `NODE_ENV !== 'development'`, or `NODE_ENV=production`). **The first one whose probe succeeds wins**, and the rest are logged as skipped. |
+| Restore | `server/roomPersistence.ts` → `restoreFromBackup` | At boot, **before listening**: copies every backed-up room into SQLite. Images are restored lazily by `GET /api/assets/:hash`. |
 
 **Bucket layout:** `rooms/<roomId>.json.gz` and `assets/<sha256>`. The old `rooms-store.json` in the bucket
 root is legacy and harmless.
 
-**Production detection:** `server.ts` treats either `NODE_ENV=production` or `K_SERVICE` (when `NODE_ENV !== 'development'`) as production, so both `dist/` serving and automatic `gs://allaboard-data` backups keep working on Cloud Run even if `NODE_ENV` is unset.
+**Production detection:** `server/roomPersistence.ts` treats either `NODE_ENV=production` or `K_SERVICE` (when `NODE_ENV !== 'development'`) as production, so both `dist/` serving and automatic `gs://allaboard-data` backups keep working on Cloud Run even if `NODE_ENV` is unset.
 
 ---
 
