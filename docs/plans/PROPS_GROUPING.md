@@ -30,18 +30,16 @@ Count fields with (swap the file and the `interface Props` / `interface Options`
 awk '/^interface Props/{f=1;next} f&&/^}/{exit} f' src/components/canvas/CanvasToolbar.tsx | grep -cE '^  [a-zA-Z]+\??:'
 ```
 
-## Phase 0 — React hooks lint (setup only, no code changes)
+## Phase 0 — React hooks lint (setup only, no code changes) — done
 
-This refactor changes what every hook receives, which is exactly what `exhaustive-deps` checks. Skip this phase if
-`eslint.config.js` with these rules is already on `main`.
+This refactor changes what every hook receives, which is exactly what `exhaustive-deps` checks. Done with **oxlint**
+(no TypeScript dependency, works with TS 7) rather than ESLint:
 
-1. Add exact-version devDependencies `eslint`, `typescript-eslint`, `eslint-plugin-react-hooks`.
-2. Create `eslint.config.js` (flat config) that lints only `*.ts`/`*.tsx` under `src/`, `server/` and the root server
-   files, with **only** `react-hooks/rules-of-hooks: "error"` and `react-hooks/exhaustive-deps: "warn"`. No style rules
-   (Prettier owns style).
-3. Change `"lint"` to `tsc --noEmit && eslint .` (CI already runs `npm run lint`).
-4. Fix any `rules-of-hooks` errors; each is a real bug, so explain each fix in the PR. **Do not** fix `exhaustive-deps`
-   warnings or add `eslint-disable` comments; list the warning count per file in the PR. That list is the baseline.
+1. Exact-version devDependency `oxlint`.
+2. `"lint": "tsc --noEmit && oxlint --react-plugin -A all -D react/rules-of-hooks -W react/exhaustive-deps src server"`:
+   only `rules-of-hooks` (error) and `exhaustive-deps` (warn). No style rules (Prettier owns style).
+3. No `rules-of-hooks` errors on `main`. `exhaustive-deps` warnings were left as they are (no disable comments); the
+   per-file counts in the Phase 0 PR are the baseline.
 
 From Phase 1 on: **no phase may add a new `exhaustive-deps` warning** over that baseline.
 
