@@ -325,54 +325,32 @@ export default function Canvas({
     stageScale,
     setStageScale,
     stagePos,
-    setStagePos,
     stageRef,
     containerRef,
     dimensions,
-    screenToWorld,
     resetView,
     fitElementsAndBackgroundInView,
     handleWheel,
-    getLocalPosFromEvent,
   } = viewport;
 
   const interaction = useCanvasInteractionState();
   const {
     isSpacePressed,
-    setIsSpacePressed,
     isPanning,
-    setIsPanning,
     isMovingBg,
-    setIsMovingBg,
-    isDrawing,
-    setIsDrawing,
-    currentElementId,
-    setCurrentElementId,
     activePointerIdRef,
     selectedIds,
     setSelectedIds,
     lassoPoints,
-    setLassoPoints,
     selectionDragOffset,
-    setSelectionDragOffset,
     draggingNotePreview,
-    setDraggingNotePreview,
-    clipboardElements,
-    setClipboardElements,
-    pastePrompt,
-    setPastePrompt,
-    setSentFeedback,
-    setScreenPos,
     worldPos,
-    setWorldPos,
     pointerOverCanvas,
     setPointerOverCanvas,
     hoveredNoteId,
-    setHoveredNoteId,
     editingNote,
     setEditingNote,
     noteTextareaRef,
-    noteClosedAtRef,
   } = interaction;
 
   // Confirmation States
@@ -507,13 +485,14 @@ export default function Canvas({
   const [lessonModal, setLessonModal] = useState<'save' | 'load' | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const { laserPoints, laserNow, laserStrokeRef, sendLaserPoint } = useCanvasLaser({
+  const laser = useCanvasLaser({
     laserSocket,
     activeBoardId,
     isTeacher,
     userId,
     activePointerIdRef,
   });
+  const { laserPoints, laserNow } = laser;
 
   const canDraw = !isCanvasLocked || isTeacher;
   const effectiveTool: ToolType = !canDraw
@@ -699,7 +678,7 @@ export default function Canvas({
     setSelectedIds,
     setEditingNote,
   });
-  const { recordUndo, performUndo, performRedo } = history;
+  const { recordUndo } = history;
 
   const toolSettings = useToolSettings({
     tool,
@@ -713,24 +692,7 @@ export default function Canvas({
     recordUndo,
     onElementsBatchUpdate,
   });
-  const {
-    penColor,
-    penWidth,
-    hollowShape,
-    hollowWeight,
-    hlColor,
-    hlStrength,
-    isCoverMode,
-    coverColor,
-    textFontSize,
-    setTextFontSize,
-    smoothLevel,
-    fingerScrolls,
-    stampKind,
-    customTeacherStampText,
-    color,
-    strokeWidth,
-  } = toolSettings;
+  const { hollowShape, color, strokeWidth } = toolSettings;
 
   // Compute positioned geometry for each page of the background worksheet
   const computedBackgroundPages = useMemo(() => {
@@ -771,6 +733,25 @@ export default function Canvas({
     }
   );
 
+  // Every popout menu; the toolbar renders four of them, the viewport overlays render the grid menu.
+  const menus = {
+    showHollowMenu,
+    setShowHollowMenu,
+    hollowMenuRef,
+    showHlMenu,
+    setShowHlMenu,
+    hlMenuRef,
+    showGridMenu,
+    setShowGridMenu,
+    gridMenuRef,
+    showStatusMenu,
+    setShowStatusMenu,
+    statusMenuRef,
+    showTextSizeMenu,
+    setShowTextSizeMenu,
+    textSizeMenuRef,
+  };
+
   const {
     noteSelection,
     handleViewportPointerDown,
@@ -778,102 +759,29 @@ export default function Canvas({
     handleViewportPointerUp,
     handleViewportDoubleClick,
   } = useCanvasPointerTools({
-    onCursorMove,
-    noteTextareaRef,
-    editingNote,
-    stageScale,
-    stagePos,
-    selectedElements,
-    elements,
-    setClipboardElements,
-    canDraw,
-    clipboardElements,
-    activeBoardId,
-    userId,
-    userName,
-    recordUndo,
-    onElementsBatchAdd,
-    setSelectedIds,
-    setPastePrompt,
-    onElementsBatchRemove,
-    isTeacher,
-    subBoards,
-    setSentFeedback,
-    setEditingNote,
-    noteClosedAtRef,
-    onElementRemove,
-    onElementUpdate,
-    onElementStart,
-    allGoneNoteIds,
-    penColor,
-    setTextFontSize,
-    penWidth,
-    textFontSize,
-    setStagePos,
-    setIsSpacePressed,
-    performRedo,
-    performUndo,
-    pastePrompt,
-    worldPos,
+    viewport,
+    interaction,
+    history,
+    laser,
+    toolSettings,
+    menus,
+    boardActions: {
+      onElementStart,
+      onElementAppendPoints,
+      onElementUpdate,
+      onElementRemove,
+      onElementsBatchAdd,
+      onElementsBatchUpdate,
+      onElementsBatchRemove,
+      onElementsReplace,
+      onTeacherUpdateBackground,
+      onCursorMove,
+    },
+    user: { userId, userName, userColor, isTeacher, canDraw, nameStampTaken },
+    board: { activeBoardId, elements, allGoneNoteIds, subBoards, background },
+    selection: { selectedElements, selectionBounds },
+    toolState: { tool, effectiveTool, setTool },
     setShowHotkeysModal,
-    setShowHollowMenu,
-    setShowHlMenu,
-    setTool,
-    fitElementsAndBackgroundInView,
-    background,
-    resetView,
-    setIsPanning,
-    activePointerIdRef,
-    showHollowMenu,
-    showHlMenu,
-    showGridMenu,
-    setShowGridMenu,
-    showStatusMenu,
-    setShowStatusMenu,
-    showTextSizeMenu,
-    setShowTextSizeMenu,
-    getLocalPosFromEvent,
-    screenToWorld,
-    fingerScrolls,
-    effectiveTool,
-    containerRef,
-    laserStrokeRef,
-    sendLaserPoint,
-    setIsMovingBg,
-    selectionBounds,
-    selectedIds,
-    setLassoPoints,
-    stampKind,
-    nameStampTaken,
-    customTeacherStampText,
-    color,
-    userColor,
-    strokeWidth,
-    setCurrentElementId,
-    setIsDrawing,
-    isCoverMode,
-    coverColor,
-    hlColor,
-    hlStrength,
-    hollowShape,
-    hollowWeight,
-    setScreenPos,
-    setWorldPos,
-    pointerOverCanvas,
-    setPointerOverCanvas,
-    isDrawing,
-    isPanning,
-    setHoveredNoteId,
-    hoveredNoteId,
-    setDraggingNotePreview,
-    setSelectionDragOffset,
-    isMovingBg,
-    onTeacherUpdateBackground,
-    currentElementId,
-    smoothLevel,
-    onElementAppendPoints,
-    onElementsBatchUpdate,
-    onElementsReplace,
   });
   const { commitEditingNote } = noteSelection;
 
@@ -1053,20 +961,7 @@ export default function Canvas({
       <CanvasToolbar
         history={history}
         toolSettings={toolSettings}
-        menus={{
-          showHollowMenu,
-          setShowHollowMenu,
-          hollowMenuRef,
-          showHlMenu,
-          setShowHlMenu,
-          hlMenuRef,
-          showStatusMenu,
-          setShowStatusMenu,
-          statusMenuRef,
-          showTextSizeMenu,
-          setShowTextSizeMenu,
-          textSizeMenuRef,
-        }}
+        menus={menus}
         toolState={{ tool, effectiveTool, setTool }}
         classWork={classWork}
         chat={{ isChatHidden, onShowChat, unreadChatCount }}

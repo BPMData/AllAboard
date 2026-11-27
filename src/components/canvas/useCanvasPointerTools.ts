@@ -18,235 +18,188 @@ import {
   translateElement,
 } from '../../lib/inkCore';
 import { getTeacherStampAppearance, isTeacherStampKind } from '../../lib/stamps';
-import {
-  CanvasElement,
-  HollowShapeKind,
-  RemoteCursor,
-  RoomBackground,
-  StampKind,
-  SubBoardData,
-  ToolType,
-} from '../../types';
+import { CanvasElement, RemoteCursor, RoomBackground, StampKind, SubBoardData, ToolType } from '../../types';
 import { PALM_ERASER_SCREEN_PX } from './canvasHelpers';
+import type { useCanvasHistory } from './useCanvasHistory';
+import type { useCanvasInteractionState } from './useCanvasInteractionState';
+import type { useCanvasLaser } from './useCanvasLaser';
 import { useCanvasNoteSelection } from './useCanvasNoteSelection';
+import type { useStageViewport } from './useStageViewport';
+import type { ToolSettings, ToolState } from './useToolSettings';
 
-import type { HistoryAction } from './canvasHelpers';
-interface Options {
-  onCursorMove: (cursor: Omit<RemoteCursor, 'updatedAt'>) => void;
-  noteTextareaRef: React.RefObject<HTMLTextAreaElement>;
-  editingNote: {
-    existingId: string | null;
-    worldX: number;
-    worldY: number;
-    value: string;
-    color: string;
-    strokeWidth: number;
-    fontSize: number;
-    openedAt: number;
-  };
-  stageScale: number;
-  stagePos: { x: number; y: number };
-  selectedElements: CanvasElement[];
-  elements: CanvasElement[];
-  setClipboardElements: React.Dispatch<React.SetStateAction<CanvasElement[]>>;
-  canDraw: boolean;
-  clipboardElements: CanvasElement[];
-  activeBoardId: string;
-  userId: string;
-  userName: string;
-  recordUndo: (action: HistoryAction, boardId?: string) => void;
-  onElementsBatchAdd: (elements: CanvasElement[], targetBoardId?: string) => void;
-  setSelectedIds: React.Dispatch<React.SetStateAction<string[]>>;
-  setPastePrompt: React.Dispatch<React.SetStateAction<{ worldX: number; worldY: number }>>;
-  onElementsBatchRemove: (ids: string[]) => void;
-  isTeacher: boolean;
-  subBoards: Record<string, SubBoardData>;
-  setSentFeedback: React.Dispatch<React.SetStateAction<string>>;
-  setEditingNote: React.Dispatch<
-    React.SetStateAction<{
-      existingId: string | null;
-      worldX: number;
-      worldY: number;
-      value: string;
-      color: string;
-      strokeWidth: number;
-      fontSize: number;
-      openedAt: number;
-    }>
-  >;
-  noteClosedAtRef: React.RefObject<number>;
-  onElementRemove: (id: string) => void;
-  onElementUpdate: (patch: Partial<CanvasElement> & { id: string; bringToFront?: boolean }) => void;
-  onElementStart: (element: CanvasElement) => void;
-  allGoneNoteIds: Set<string>;
-  penColor: string;
-  setTextFontSize: React.Dispatch<React.SetStateAction<number>>;
-  penWidth: number;
-  textFontSize: number;
-  setStagePos: React.Dispatch<React.SetStateAction<{ x: number; y: number }>>;
-  setIsSpacePressed: React.Dispatch<React.SetStateAction<boolean>>;
-  performRedo: () => void;
-  performUndo: () => void;
-  pastePrompt: { worldX: number; worldY: number };
-  worldPos: { x: number; y: number };
-  setShowHotkeysModal: React.Dispatch<React.SetStateAction<boolean>>;
-  setShowHollowMenu: React.Dispatch<React.SetStateAction<boolean>>;
-  setShowHlMenu: React.Dispatch<React.SetStateAction<boolean>>;
-  setTool: React.Dispatch<React.SetStateAction<ToolType>>;
-  fitElementsAndBackgroundInView: (targetElements: CanvasElement[], targetBg: RoomBackground | null) => void;
-  background: RoomBackground;
-  resetView: () => void;
-  setIsPanning: React.Dispatch<React.SetStateAction<boolean>>;
-  activePointerIdRef: React.RefObject<number>;
+/** Popout menu flags the pointer and keyboard handlers close. */
+export interface PointerMenus {
   showHollowMenu: boolean;
+  setShowHollowMenu: React.Dispatch<React.SetStateAction<boolean>>;
   showHlMenu: boolean;
+  setShowHlMenu: React.Dispatch<React.SetStateAction<boolean>>;
   showGridMenu: boolean;
   setShowGridMenu: React.Dispatch<React.SetStateAction<boolean>>;
   showStatusMenu: boolean;
   setShowStatusMenu: React.Dispatch<React.SetStateAction<boolean>>;
   showTextSizeMenu: boolean;
   setShowTextSizeMenu: React.Dispatch<React.SetStateAction<boolean>>;
-  getLocalPosFromEvent: (clientX: number, clientY: number) => { x: number; y: number };
-  screenToWorld: (sx: number, sy: number) => { x: number; y: number };
-  fingerScrolls: boolean;
-  effectiveTool: ToolType;
-  containerRef: React.RefObject<HTMLDivElement>;
-  laserStrokeRef: React.RefObject<string>;
-  sendLaserPoint: (world: { x: number; y: number }, force?: boolean) => void;
-  setIsMovingBg: React.Dispatch<React.SetStateAction<boolean>>;
-  selectionBounds: [number, number, number, number];
-  selectedIds: string[];
-  setLassoPoints: React.Dispatch<React.SetStateAction<number[]>>;
-  stampKind: StampKind;
-  nameStampTaken: boolean;
-  customTeacherStampText: string;
-  color: string;
-  userColor: string;
-  strokeWidth: number;
-  setCurrentElementId: React.Dispatch<React.SetStateAction<string>>;
-  setIsDrawing: React.Dispatch<React.SetStateAction<boolean>>;
-  isCoverMode: boolean;
-  coverColor: string;
-  hlColor: string;
-  hlStrength: number;
-  hollowShape: HollowShapeKind;
-  hollowWeight: number;
-  setScreenPos: React.Dispatch<React.SetStateAction<{ x: number; y: number }>>;
-  setWorldPos: React.Dispatch<React.SetStateAction<{ x: number; y: number }>>;
-  pointerOverCanvas: boolean;
-  setPointerOverCanvas: React.Dispatch<React.SetStateAction<boolean>>;
-  isDrawing: boolean;
-  isPanning: boolean;
-  setHoveredNoteId: React.Dispatch<React.SetStateAction<string>>;
-  hoveredNoteId: string;
-  setDraggingNotePreview: React.Dispatch<React.SetStateAction<{ id: string; dx: number; dy: number }>>;
-  setSelectionDragOffset: React.Dispatch<React.SetStateAction<{ dx: number; dy: number }>>;
-  isMovingBg: boolean;
-  onTeacherUpdateBackground: (patch: Partial<RoomBackground>) => void;
-  currentElementId: string;
-  smoothLevel: number;
+}
+
+/** Board writes (from `useDrawingActions` via `Canvas`). */
+export interface BoardActions {
+  onElementStart: (element: CanvasElement) => void;
   onElementAppendPoints: (id: string, newPoints: number[]) => void;
+  onElementUpdate: (patch: Partial<CanvasElement> & { id: string; bringToFront?: boolean }) => void;
+  onElementRemove: (id: string) => void;
+  onElementsBatchAdd: (elements: CanvasElement[], targetBoardId?: string) => void;
   onElementsBatchUpdate: (updates: Array<Partial<CanvasElement> & { id: string }>, bringToFront?: boolean) => void;
+  onElementsBatchRemove: (ids: string[]) => void;
   onElementsReplace: (groups: ElementGroup<CanvasElement>[]) => void;
+  onTeacherUpdateBackground: (patch: Partial<RoomBackground>) => void;
+  onCursorMove: (cursor: Omit<RemoteCursor, 'updatedAt'>) => void;
+}
+
+/** Who is drawing and what they may do. */
+export interface PointerUser {
+  userId: string;
+  userName: string;
+  userColor: string;
+  isTeacher: boolean;
+  canDraw: boolean;
+  nameStampTaken: boolean;
+}
+
+/** The board being drawn on. */
+export interface PointerBoard {
+  activeBoardId: string;
+  elements: CanvasElement[];
+  allGoneNoteIds: Set<string>;
+  subBoards: Record<string, SubBoardData>;
+  background: RoomBackground;
+}
+
+/** The current selection, as `Canvas` derives it. */
+export interface PointerSelection {
+  selectedElements: CanvasElement[];
+  selectionBounds: [number, number, number, number];
+}
+
+interface Options {
+  viewport: ReturnType<typeof useStageViewport>;
+  interaction: ReturnType<typeof useCanvasInteractionState>;
+  history: ReturnType<typeof useCanvasHistory>;
+  laser: ReturnType<typeof useCanvasLaser>;
+  toolSettings: ToolSettings;
+  menus: PointerMenus;
+  boardActions: BoardActions;
+  user: PointerUser;
+  board: PointerBoard;
+  selection: PointerSelection;
+  toolState: ToolState;
+  setShowHotkeysModal: React.Dispatch<React.SetStateAction<boolean>>;
 }
 export function useCanvasPointerTools({
-  onCursorMove,
-  noteTextareaRef,
-  editingNote,
-  stageScale,
-  stagePos,
-  selectedElements,
-  elements,
-  setClipboardElements,
-  canDraw,
-  clipboardElements,
-  activeBoardId,
-  userId,
-  userName,
-  recordUndo,
-  onElementsBatchAdd,
-  setSelectedIds,
-  setPastePrompt,
-  onElementsBatchRemove,
-  isTeacher,
-  subBoards,
-  setSentFeedback,
-  setEditingNote,
-  noteClosedAtRef,
-  onElementRemove,
-  onElementUpdate,
-  onElementStart,
-  allGoneNoteIds,
-  penColor,
-  setTextFontSize,
-  penWidth,
-  textFontSize,
-  setStagePos,
-  setIsSpacePressed,
-  performRedo,
-  performUndo,
-  pastePrompt,
-  worldPos,
+  viewport,
+  interaction,
+  history,
+  laser,
+  toolSettings,
+  menus,
+  boardActions,
+  user,
+  board,
+  selection,
+  toolState,
   setShowHotkeysModal,
-  setShowHollowMenu,
-  setShowHlMenu,
-  setTool,
-  fitElementsAndBackgroundInView,
-  background,
-  resetView,
-  setIsPanning,
-  activePointerIdRef,
-  showHollowMenu,
-  showHlMenu,
-  showGridMenu,
-  setShowGridMenu,
-  showStatusMenu,
-  setShowStatusMenu,
-  showTextSizeMenu,
-  setShowTextSizeMenu,
-  getLocalPosFromEvent,
-  screenToWorld,
-  fingerScrolls,
-  effectiveTool,
-  containerRef,
-  laserStrokeRef,
-  sendLaserPoint,
-  setIsMovingBg,
-  selectionBounds,
-  selectedIds,
-  setLassoPoints,
-  stampKind,
-  nameStampTaken,
-  customTeacherStampText,
-  color,
-  userColor,
-  strokeWidth,
-  setCurrentElementId,
-  setIsDrawing,
-  isCoverMode,
-  coverColor,
-  hlColor,
-  hlStrength,
-  hollowShape,
-  hollowWeight,
-  setScreenPos,
-  setWorldPos,
-  pointerOverCanvas,
-  setPointerOverCanvas,
-  isDrawing,
-  isPanning,
-  setHoveredNoteId,
-  hoveredNoteId,
-  setDraggingNotePreview,
-  setSelectionDragOffset,
-  isMovingBg,
-  onTeacherUpdateBackground,
-  currentElementId,
-  smoothLevel,
-  onElementAppendPoints,
-  onElementsBatchUpdate,
-  onElementsReplace,
 }: Options) {
+  // Destructured once so the callbacks and effects below list fields, not the (new-every-render) group objects.
+  const {
+    stageScale,
+    stagePos,
+    setStagePos,
+    fitElementsAndBackgroundInView,
+    resetView,
+    getLocalPosFromEvent,
+    screenToWorld,
+    containerRef,
+  } = viewport;
+  const {
+    noteTextareaRef,
+    editingNote,
+    setClipboardElements,
+    clipboardElements,
+    setSelectedIds,
+    setPastePrompt,
+    setSentFeedback,
+    setEditingNote,
+    noteClosedAtRef,
+    setIsSpacePressed,
+    pastePrompt,
+    worldPos,
+    setIsPanning,
+    activePointerIdRef,
+    setIsMovingBg,
+    selectedIds,
+    setLassoPoints,
+    setCurrentElementId,
+    setIsDrawing,
+    setScreenPos,
+    setWorldPos,
+    pointerOverCanvas,
+    setPointerOverCanvas,
+    isDrawing,
+    isPanning,
+    setHoveredNoteId,
+    hoveredNoteId,
+    setDraggingNotePreview,
+    setSelectionDragOffset,
+    isMovingBg,
+    currentElementId,
+  } = interaction;
+  const { recordUndo, performRedo, performUndo } = history;
+  const { laserStrokeRef, sendLaserPoint } = laser;
+  const {
+    penColor,
+    setTextFontSize,
+    penWidth,
+    textFontSize,
+    fingerScrolls,
+    stampKind,
+    customTeacherStampText,
+    color,
+    strokeWidth,
+    isCoverMode,
+    coverColor,
+    hlColor,
+    hlStrength,
+    hollowShape,
+    hollowWeight,
+    smoothLevel,
+  } = toolSettings;
+  const {
+    showHollowMenu,
+    setShowHollowMenu,
+    showHlMenu,
+    setShowHlMenu,
+    showGridMenu,
+    setShowGridMenu,
+    showStatusMenu,
+    setShowStatusMenu,
+    showTextSizeMenu,
+    setShowTextSizeMenu,
+  } = menus;
+  const {
+    onElementStart,
+    onElementAppendPoints,
+    onElementUpdate,
+    onElementRemove,
+    onElementsBatchAdd,
+    onElementsBatchUpdate,
+    onElementsBatchRemove,
+    onElementsReplace,
+    onTeacherUpdateBackground,
+    onCursorMove,
+  } = boardActions;
+  const { userId, userName, userColor, isTeacher, canDraw, nameStampTaken } = user;
+  const { activeBoardId, elements, allGoneNoteIds, subBoards, background } = board;
+  const { selectedElements, selectionBounds } = selection;
+  const { effectiveTool, setTool } = toolState;
   const panStartRef = useRef<{
     x: number;
     y: number;
