@@ -911,21 +911,32 @@ export function useClassroomActions({ connection, roomState, roomSetters, lobby 
     },
     [socket]
   );
+  /** Handed to `Canvas` whole (`CanvasTeacherActions`). */
+  const teacherActions = {
+    onConfigureBreakout: handleConfigureBreakout,
+    onSpotlightBoard: handleSpotlightBoard,
+    onAssignUserToBoard: handleAssignUserToBoard,
+    onTeacherToggleLock: handleTeacherToggleLock,
+    onTeacherToggleHideCursors: handleTeacherToggleHideCursors,
+    onTeacherToggleOneNameStamp: handleTeacherToggleOneNameStamp,
+    onTeacherClearAll: handleTeacherClearAll,
+    onTeacherSetBackground: handleTeacherSetBackground,
+    onTeacherSendWorksheet: handleTeacherSendWorksheet,
+    onTeacherUpdateBackground: handleTeacherUpdateBackground,
+    onTeacherImportRoom: handleTeacherImportRoom,
+    onTeacherLessonRequest: handleTeacherLessonRequest,
+    onOpenLoadedLessonRoom: handleOpenLoadedLessonRoom,
+    getSavedTeacherPin,
+    generateUnusedRoomCode,
+    onTeacherTimerControl: handleTeacherTimerControl,
+    onTeacherClearStatus: handleClearStatus,
+  };
+
   return {
+    teacherActions,
     handleAuthenticateTeacher,
     handleStepDownTeacher,
-    handleConfigureBreakout,
-    handleSpotlightBoard,
-    handleAssignUserToBoard,
-    handleTeacherSendWorksheet,
-    handleTeacherSetBackground,
-    handleTeacherUpdateBackground,
-    handleTeacherImportRoom,
-    generateUnusedRoomCode,
-    handleTeacherLessonRequest,
-    getSavedTeacherPin,
     problemReport,
-    handleOpenLoadedLessonRoom,
     handleLeaveRoom,
     handleSwitchRoom,
     handleCreateNewRoom,
@@ -944,12 +955,7 @@ export function useClassroomActions({ connection, roomState, roomSetters, lobby 
     purgeContributionCounts,
     handleTeacherUnbanUser,
     sendMessage,
-    handleTeacherToggleLock,
-    handleTeacherToggleHideCursors,
-    handleTeacherToggleOneNameStamp,
     handleSetStatus,
     handleClearStatus,
-    handleTeacherClearAll,
-    handleTeacherTimerControl,
   };
 }

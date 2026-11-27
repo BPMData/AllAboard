@@ -284,18 +284,8 @@ export default function App() {
   const {
     handleAuthenticateTeacher,
     handleStepDownTeacher,
-    handleConfigureBreakout,
-    handleSpotlightBoard,
-    handleAssignUserToBoard,
-    handleTeacherSendWorksheet,
-    handleTeacherSetBackground,
-    handleTeacherUpdateBackground,
-    handleTeacherImportRoom,
-    generateUnusedRoomCode,
-    handleTeacherLessonRequest,
-    getSavedTeacherPin,
     problemReport,
-    handleOpenLoadedLessonRoom,
+    teacherActions,
     handleLeaveRoom,
     handleSwitchRoom,
     handleCreateNewRoom,
@@ -314,13 +304,8 @@ export default function App() {
     purgeContributionCounts,
     handleTeacherUnbanUser,
     sendMessage,
-    handleTeacherToggleLock,
-    handleTeacherToggleHideCursors,
-    handleTeacherToggleOneNameStamp,
     handleSetStatus,
     handleClearStatus,
-    handleTeacherClearAll,
-    handleTeacherTimerControl,
   } = useClassroomActions({
     connection: { socket, emitDrawing },
     roomState: {
@@ -383,20 +368,7 @@ export default function App() {
       onClose={problemReport.close}
     />
   ) : null;
-  const {
-    handleElementStart,
-    handleElementAppendPoints,
-    handleElementUpdate,
-    handleElementsBatchUpdate,
-    handleElementsBatchAdd,
-    handleElementsBatchRemove,
-    handleElementsReplace,
-    handleElementRemove,
-    handleCursorMove,
-    handleUndo,
-    handleClearMine,
-    handleClearUserDrawings,
-  } = useDrawingActions({
+  const { drawingActions, handleClearUserDrawings } = useDrawingActions({
     socket,
     activeBoardId,
     setSubBoards,
@@ -503,7 +475,6 @@ export default function App() {
           remoteCursors={remoteCursors}
           laserSocket={socket}
           onSetStatus={handleSetStatus}
-          onTeacherClearStatus={handleClearStatus}
           isCanvasLocked={roomSettings.isCanvasLocked}
           hideStudentCursors={Boolean(roomSettings.hideStudentCursors)}
           oneNameStamp={Boolean(roomSettings.oneNameStamp)}
@@ -513,34 +484,7 @@ export default function App() {
           userName={userName}
           userColor={userColor}
           onSelectBoard={setTeacherSelectedBoardId}
-          onConfigureBreakout={handleConfigureBreakout}
-          onSpotlightBoard={handleSpotlightBoard}
-          onAssignUserToBoard={handleAssignUserToBoard}
-          onElementStart={handleElementStart}
-          onElementAppendPoints={handleElementAppendPoints}
-          onElementUpdate={handleElementUpdate}
-          onElementRemove={handleElementRemove}
-          onElementsBatchUpdate={handleElementsBatchUpdate}
-          onElementsBatchAdd={handleElementsBatchAdd}
-          onElementsBatchRemove={handleElementsBatchRemove}
-          onElementsReplace={handleElementsReplace}
-          onCursorMove={handleCursorMove}
-          onUndo={handleUndo}
-          onClearMine={handleClearMine}
-          onTeacherToggleLock={handleTeacherToggleLock}
-          onTeacherToggleHideCursors={handleTeacherToggleHideCursors}
-          onTeacherToggleOneNameStamp={handleTeacherToggleOneNameStamp}
-          onTeacherClearAll={handleTeacherClearAll}
-          onTeacherSetBackground={handleTeacherSetBackground}
-          onTeacherSendWorksheet={handleTeacherSendWorksheet}
-          onTeacherUpdateBackground={handleTeacherUpdateBackground}
-          onTeacherImportRoom={handleTeacherImportRoom}
-          onTeacherLessonRequest={handleTeacherLessonRequest}
-          onOpenLoadedLessonRoom={handleOpenLoadedLessonRoom}
-          getSavedTeacherPin={getSavedTeacherPin}
-          generateUnusedRoomCode={generateUnusedRoomCode}
           timer={roomSettings.timer}
-          onTeacherTimerControl={handleTeacherTimerControl}
           fullMainElements={elements}
           fullMainMessages={messages}
           fullMainBackground={background}
@@ -551,6 +495,8 @@ export default function App() {
             setIsChatHidden(false);
             storeChatHiddenChoice(window.localStorage, false);
           }}
+          drawingActions={drawingActions}
+          teacherActions={teacherActions}
         />
       </div>
 

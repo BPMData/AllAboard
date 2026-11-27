@@ -274,18 +274,23 @@ export function useDrawingActions({
     },
     [socket, activeBoardId]
   );
+  /** Handed to `Canvas` whole (`CanvasDrawingActions`). */
+  const drawingActions = {
+    onElementStart: handleElementStart,
+    onElementAppendPoints: handleElementAppendPoints,
+    onElementUpdate: handleElementUpdate,
+    onElementRemove: handleElementRemove,
+    onElementsBatchUpdate: handleElementsBatchUpdate,
+    onElementsBatchAdd: handleElementsBatchAdd,
+    onElementsBatchRemove: handleElementsBatchRemove,
+    onElementsReplace: handleElementsReplace,
+    onCursorMove: handleCursorMove,
+    onUndo: handleUndo,
+    onClearMine: handleClearMine,
+  };
+
   return {
-    handleElementStart,
-    handleElementAppendPoints,
-    handleElementUpdate,
-    handleElementsBatchUpdate,
-    handleElementsBatchAdd,
-    handleElementsBatchRemove,
-    handleElementsReplace,
-    handleElementRemove,
-    handleCursorMove,
-    handleUndo,
-    handleClearMine,
+    drawingActions,
     handleClearUserDrawings,
   };
 }

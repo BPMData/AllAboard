@@ -3,21 +3,16 @@ import { getNoteFontSize, noteSize } from '../../lib/inkCore';
 import { CanvasElement } from '../../types';
 import type { HistoryAction } from './canvasHelpers';
 
-import type { CanvasProps } from '../Canvas';
-type Options = Pick<
-  CanvasProps,
-  | 'laserSocket'
-  | 'activeBoardId'
-  | 'onUndo'
-  | 'onElementsBatchRemove'
-  | 'onElementsBatchAdd'
-  | 'onElementsBatchUpdate'
-  | 'onElementsReplace'
-> & {
-  canDraw: boolean;
-  setSelectedIds: React.Dispatch<React.SetStateAction<string[]>>;
-  setEditingNote: (value: null) => void;
-};
+import type { CanvasDrawingActions, CanvasProps } from '../Canvas';
+type Options = Pick<CanvasProps, 'laserSocket' | 'activeBoardId'> &
+  Pick<
+    CanvasDrawingActions,
+    'onUndo' | 'onElementsBatchRemove' | 'onElementsBatchAdd' | 'onElementsBatchUpdate' | 'onElementsReplace'
+  > & {
+    canDraw: boolean;
+    setSelectedIds: React.Dispatch<React.SetStateAction<string[]>>;
+    setEditingNote: (value: null) => void;
+  };
 export function useCanvasHistory({
   laserSocket,
   activeBoardId,
