@@ -4,6 +4,10 @@
 > **Behavior-preserving refactor only.** Keep every `aria-label`, `title`, button text, `data-keep-note`, `localStorage`
 > key, Socket.IO event, and Playwright selector. Do not change the Konva layer order or the `outgoingInkRef` flush order.
 > **One phase per PR**, in order. Run the checkpoint after every phase and report the before/after counts.
+>
+> **Agents: do one phase per session.** Find the first phase whose work isn't on `main` yet (check `git log` and the
+> code), do only that phase, open a PR with "Merge with **Create a merge commit**" at the top of the description, and
+> stop. Do not merge. If an earlier phase's PR is still open, stop and ask.
 
 ## Why
 
@@ -26,11 +30,20 @@ Count fields with (swap the file and the `interface Props` / `interface Options`
 awk '/^interface Props/{f=1;next} f&&/^}/{exit} f' src/components/canvas/CanvasToolbar.tsx | grep -cE '^  [a-zA-Z]+\??:'
 ```
 
-## Prerequisite
+## Phase 0 — React hooks lint (setup only, no code changes)
 
-`eslint-plugin-react-hooks` must be set up (`rules-of-hooks` as an error, `exhaustive-deps` at least as a warning)
-and run in CI. This refactor changes what every hook receives, which is exactly what `exhaustive-deps` checks.
-**No phase may add a new `exhaustive-deps` warning.**
+This refactor changes what every hook receives, which is exactly what `exhaustive-deps` checks. Skip this phase if
+`eslint.config.js` with these rules is already on `main`.
+
+1. Add exact-version devDependencies `eslint`, `typescript-eslint`, `eslint-plugin-react-hooks`.
+2. Create `eslint.config.js` (flat config) that lints only `*.ts`/`*.tsx` under `src/`, `server/` and the root server
+   files, with **only** `react-hooks/rules-of-hooks: "error"` and `react-hooks/exhaustive-deps: "warn"`. No style rules
+   (Prettier owns style).
+3. Change `"lint"` to `tsc --noEmit && eslint .` (CI already runs `npm run lint`).
+4. Fix any `rules-of-hooks` errors; each is a real bug, so explain each fix in the PR. **Do not** fix `exhaustive-deps`
+   warnings or add `eslint-disable` comments; list the warning count per file in the PR. That list is the baseline.
+
+From Phase 1 on: **no phase may add a new `exhaustive-deps` warning** over that baseline.
 
 ## Rules (all phases)
 
