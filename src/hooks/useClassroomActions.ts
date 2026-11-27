@@ -181,7 +181,7 @@ export function useClassroomActions({ connection, roomState, roomSetters, lobby 
         );
       });
     },
-    [socket, roomId]
+    [socket, roomId, setIsTeacher]
   );
 
   const handleStepDownTeacher = useCallback(() => {
@@ -194,7 +194,7 @@ export function useClassroomActions({ connection, roomState, roomSetters, lobby 
     if (socket) {
       socket.emit('teacher:step-down');
     }
-  }, [socket, roomId]);
+  }, [socket, roomId, setIsTeacher]);
 
   const handleConfigureBreakout = useCallback(
     (payload: ConfigureBreakoutPayload): Promise<{ ok: boolean; error?: string; roundId?: string }> => {
@@ -211,7 +211,7 @@ export function useClassroomActions({ connection, roomState, roomSetters, lobby 
         });
       });
     },
-    [socket]
+    [socket, setTeacherSelectedBoardId]
   );
 
   const handleSpotlightBoard = useCallback(
@@ -224,7 +224,7 @@ export function useClassroomActions({ connection, roomState, roomSetters, lobby 
         });
       });
     },
-    [socket]
+    [socket, setTeacherSelectedBoardId]
   );
 
   const handleAssignUserToBoard = useCallback(
@@ -273,7 +273,7 @@ export function useClassroomActions({ connection, roomState, roomSetters, lobby 
         );
       });
     },
-    [socket, activeBoardId]
+    [socket, activeBoardId, setBackground, setSubBoards]
   );
 
   const handleTeacherUpdateBackground = useCallback(
@@ -294,7 +294,7 @@ export function useClassroomActions({ connection, roomState, roomSetters, lobby 
         socket.emit('teacher:update-background', { boardId: activeBoardId, patch });
       }
     },
-    [socket, activeBoardId]
+    [socket, activeBoardId, setSubBoards, setBackground]
   );
 
   const handleTeacherImportRoom = useCallback<RestoreClassWork>(
@@ -405,23 +405,36 @@ export function useClassroomActions({ connection, roomState, roomSetters, lobby 
     [socket]
   );
 
-  const performSwitchRoom = useCallback((cleanedRoomId: string) => {
-    setRemoteCursors({});
-    setIsTeacher(false);
-    setIsNameLocked(false);
-    setKickNotice(null);
-    setPendingPurgePrompt(null);
-    setIsPurgingContributions(false);
-    setTeacherSelectedBoardId('main');
-    setRoomId(cleanedRoomId);
-    try {
-      if (isJoinedRef.current) {
-        sessionStorage.setItem(STORAGE_KEYS.JOINED_ROOM_SESSION, cleanedRoomId);
+  const performSwitchRoom = useCallback(
+    (cleanedRoomId: string) => {
+      setRemoteCursors({});
+      setIsTeacher(false);
+      setIsNameLocked(false);
+      setKickNotice(null);
+      setPendingPurgePrompt(null);
+      setIsPurgingContributions(false);
+      setTeacherSelectedBoardId('main');
+      setRoomId(cleanedRoomId);
+      try {
+        if (isJoinedRef.current) {
+          sessionStorage.setItem(STORAGE_KEYS.JOINED_ROOM_SESSION, cleanedRoomId);
+        }
+      } catch {
+        // Ignore
       }
-    } catch {
-      // Ignore
-    }
-  }, []);
+    },
+    [
+      setRemoteCursors,
+      isJoinedRef,
+      setIsTeacher,
+      setKickNotice,
+      setIsNameLocked,
+      setIsPurgingContributions,
+      setRoomId,
+      setTeacherSelectedBoardId,
+      setPendingPurgePrompt,
+    ]
+  );
 
   /** This room's Teacher PIN as this browser saved it, to prefill the PIN for a new room. */
   const getSavedTeacherPin = useCallback((): string => {
@@ -533,7 +546,7 @@ export function useClassroomActions({ connection, roomState, roomSetters, lobby 
     } catch {
       // Ignore
     }
-  }, []);
+  }, [setIsJoined, setIsTeacher, setPendingPurgePrompt]);
 
   const performLobbyJoin = useCallback(
     (targetRoomId: string, trimmedName: string, cleanPin: string) => {
@@ -572,7 +585,20 @@ export function useClassroomActions({ connection, roomState, roomSetters, lobby 
       setHasEditedLobbyRoom(false);
       setIsJoined(true);
     },
-    [roomId, liveRoomId, socket, userId, userKey, userColor]
+    [
+      roomId,
+      liveRoomId,
+      socket,
+      userId,
+      userKey,
+      userColor,
+      setKickNotice,
+      setUserName,
+      setIsTeacher,
+      setHasEditedLobbyRoom,
+      setIsJoined,
+      setRoomId,
+    ]
   );
 
   const handleSwitchRoom = useCallback(
@@ -596,7 +622,7 @@ export function useClassroomActions({ connection, roomState, roomSetters, lobby 
         setIsCheckingRoom(false);
       }
     },
-    [effectiveRoomId, isCheckingRoom, checkRoomAvailability, performSwitchRoom]
+    [effectiveRoomId, isCheckingRoom, checkRoomAvailability, performSwitchRoom, setIsCheckingRoom, setPendingRoomPrompt]
   );
 
   const handleCreateNewRoom = useCallback(async () => {
@@ -609,7 +635,7 @@ export function useClassroomActions({ connection, roomState, roomSetters, lobby 
     } finally {
       setIsCheckingRoom(false);
     }
-  }, [isCheckingRoom, generateUnusedRoomCode, performSwitchRoom]);
+  }, [isCheckingRoom, generateUnusedRoomCode, performSwitchRoom, setHasEditedLobbyRoom, setIsCheckingRoom]);
 
   const handleJoin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -686,7 +712,7 @@ export function useClassroomActions({ connection, roomState, roomSetters, lobby 
     if (!isCheckingRoom) {
       setPendingRoomPrompt(null);
     }
-  }, [isCheckingRoom]);
+  }, [isCheckingRoom, setPendingRoomPrompt]);
 
   const handleConfirmJoinAnyway = useCallback(() => {
     if (!pendingRoomPrompt || isCheckingRoom) return;
@@ -697,7 +723,7 @@ export function useClassroomActions({ connection, roomState, roomSetters, lobby 
     } else {
       performLobbyJoin(prompt.availability.roomId, prompt.userName || userName.trim(), prompt.teacherPin || '');
     }
-  }, [pendingRoomPrompt, isCheckingRoom, performSwitchRoom, performLobbyJoin, userName]);
+  }, [pendingRoomPrompt, isCheckingRoom, performSwitchRoom, performLobbyJoin, userName, setPendingRoomPrompt]);
 
   const handleConfirmCreateFreshRoom = useCallback(async () => {
     if (!pendingRoomPrompt || isCheckingRoom) return;
@@ -715,7 +741,17 @@ export function useClassroomActions({ connection, roomState, roomSetters, lobby 
     } finally {
       setIsCheckingRoom(false);
     }
-  }, [pendingRoomPrompt, isCheckingRoom, generateUnusedRoomCode, performSwitchRoom, performLobbyJoin, userName]);
+  }, [
+    pendingRoomPrompt,
+    isCheckingRoom,
+    generateUnusedRoomCode,
+    performSwitchRoom,
+    performLobbyJoin,
+    userName,
+    setHasEditedLobbyRoom,
+    setIsCheckingRoom,
+    setPendingRoomPrompt,
+  ]);
 
   const handleCustomRoomFromModal = useCallback(
     async (customRoomRaw: string) => {
@@ -743,7 +779,17 @@ export function useClassroomActions({ connection, roomState, roomSetters, lobby 
         setIsCheckingRoom(false);
       }
     },
-    [pendingRoomPrompt, isCheckingRoom, checkRoomAvailability, performSwitchRoom, performLobbyJoin, userName]
+    [
+      pendingRoomPrompt,
+      isCheckingRoom,
+      checkRoomAvailability,
+      performSwitchRoom,
+      performLobbyJoin,
+      userName,
+      setPendingRoomPrompt,
+      setHasEditedLobbyRoom,
+      setIsCheckingRoom,
+    ]
   );
 
   const handleUpdateName = useCallback(
@@ -763,7 +809,7 @@ export function useClassroomActions({ connection, roomState, roomSetters, lobby 
         });
       }
     },
-    [socket, userId, userColor, isNameLocked, isTeacher]
+    [socket, userId, userColor, isNameLocked, isTeacher, setUserName]
   );
 
   const handleTeacherRenameUser = useCallback(
@@ -798,14 +844,14 @@ export function useClassroomActions({ connection, roomState, roomSetters, lobby 
         }
       });
     },
-    [socket]
+    [socket, setPendingPurgePrompt]
   );
 
   const handleCancelPurgeContributions = useCallback(() => {
     if (!isPurgingContributions) {
       setPendingPurgePrompt(null);
     }
-  }, [isPurgingContributions]);
+  }, [isPurgingContributions, setPendingPurgePrompt]);
 
   const handleConfirmPurgeContributions = useCallback(() => {
     if (!socket || !pendingPurgePrompt || isPurgingContributions) return;
@@ -819,7 +865,14 @@ export function useClassroomActions({ connection, roomState, roomSetters, lobby 
       setIsPurgingContributions(false);
       setPendingPurgePrompt(null);
     });
-  }, [socket, pendingPurgePrompt, isPurgingContributions]);
+  }, [
+    socket,
+    pendingPurgePrompt,
+    isPurgingContributions,
+    setIsPurgingContributions,
+    emitDrawing,
+    setPendingPurgePrompt,
+  ]);
 
   const purgeContributionCounts = useMemo(() => {
     if (!pendingPurgePrompt) {
@@ -901,7 +954,7 @@ export function useClassroomActions({ connection, roomState, roomSetters, lobby 
     if (socket) {
       emitDrawing(socket, 'teacher:clear-all', { boardId: activeBoardId });
     }
-  }, [socket, activeBoardId]);
+  }, [socket, activeBoardId, emitDrawing]);
 
   const handleTeacherTimerControl = useCallback(
     (payload: TimerControlPayload) => {

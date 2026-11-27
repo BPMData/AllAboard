@@ -105,7 +105,7 @@ export function useCanvasNoteSelection({
     el.style.height = '1px';
     el.style.width = `${Math.max(el.scrollWidth + 6, scaledFont * 3)}px`;
     el.style.height = `${Math.max(el.scrollHeight, Math.round(scaledFont * NOTE_LH))}px`;
-  }, [editingNote, stageScale]);
+  }, [editingNote, stageScale, noteTextareaRef]);
 
   useEffect(() => {
     if (editingNote) {
@@ -134,7 +134,7 @@ export function useCanvasNoteSelection({
     const pieces = selectedElements.flatMap((el) => expandElementVisiblePieces(el, elements));
     if (pieces.length === 0) return;
     setClipboardElements(pieces.map((el) => ({ ...el, points: el.points ? [...el.points] : undefined })));
-  }, [selectedElements, elements]);
+  }, [selectedElements, elements, setClipboardElements]);
 
   const handlePasteElements = useCallback(
     (targetWorldPos?: { x: number; y: number } | null) => {
@@ -165,7 +165,17 @@ export function useCanvasNoteSelection({
       setSelectedIds(clones.map((c) => c.id));
       setPastePrompt(null);
     },
-    [canDraw, clipboardElements, activeBoardId, userId, userName, recordUndo, onElementsBatchAdd]
+    [
+      canDraw,
+      clipboardElements,
+      activeBoardId,
+      userId,
+      userName,
+      recordUndo,
+      onElementsBatchAdd,
+      setSelectedIds,
+      setPastePrompt,
+    ]
   );
 
   const handleDuplicateSelection = useCallback(() => {
@@ -187,14 +197,24 @@ export function useCanvasNoteSelection({
     recordUndo({ kind: 'add', items: clones });
     onElementsBatchAdd(clones, activeBoardId);
     setSelectedIds(clones.map((c) => c.id));
-  }, [canDraw, selectedElements, elements, activeBoardId, userId, userName, recordUndo, onElementsBatchAdd]);
+  }, [
+    canDraw,
+    selectedElements,
+    elements,
+    activeBoardId,
+    userId,
+    userName,
+    recordUndo,
+    onElementsBatchAdd,
+    setSelectedIds,
+  ]);
 
   const handleDeleteSelection = useCallback(() => {
     if (!canDraw || selectedElements.length === 0) return;
     recordUndo({ kind: 'remove', items: selectedElements });
     onElementsBatchRemove(selectedElements.map((el) => el.id));
     setSelectedIds([]);
-  }, [canDraw, selectedElements, recordUndo, onElementsBatchRemove]);
+  }, [canDraw, selectedElements, recordUndo, onElementsBatchRemove, setSelectedIds]);
 
   const handleSendSelectionToBoard = useCallback(
     (targetBoardId: string) => {
@@ -219,7 +239,7 @@ export function useCanvasNoteSelection({
       setSentFeedback(`Sent to ${label}`);
       setTimeout(() => setSentFeedback(null), 2200);
     },
-    [isTeacher, selectedElements, elements, activeBoardId, subBoards, onElementsBatchAdd]
+    [isTeacher, selectedElements, elements, activeBoardId, subBoards, onElementsBatchAdd, setSentFeedback]
   );
 
   const commitEditingNote = useCallback(() => {
@@ -304,6 +324,8 @@ export function useCanvasNoteSelection({
     userId,
     userName,
     onElementStart,
+    setEditingNote,
+    noteClosedAtRef,
   ]);
 
   const openOrTapNoteAt = useCallback(
@@ -368,6 +390,9 @@ export function useCanvasNoteSelection({
       penWidth,
       penColor,
       textFontSize,
+      setEditingNote,
+      setTextFontSize,
+      noteClosedAtRef,
     ]
   );
   return {

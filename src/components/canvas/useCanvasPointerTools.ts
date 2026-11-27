@@ -244,7 +244,15 @@ export function useCanvasPointerTools({
     setEditingNote(null);
     draggingNoteRef.current = null;
     selectGestureRef.current = null;
-  }, [activeBoardId]);
+  }, [
+    activeBoardId,
+    setLassoPoints,
+    setEditingNote,
+    setDraggingNotePreview,
+    setSelectionDragOffset,
+    setSelectedIds,
+    setPastePrompt,
+  ]);
 
   const lastCursorEmitRef = useRef<number>(0);
 
@@ -440,6 +448,15 @@ export function useCanvasPointerTools({
     background,
     fitElementsAndBackgroundInView,
     resetView,
+    setIsPanning,
+    setShowHollowMenu,
+    setStagePos,
+    setIsSpacePressed,
+    setShowHlMenu,
+    setSelectedIds,
+    setTool,
+    setShowHotkeysModal,
+    setPastePrompt,
   ]);
 
   const handleViewportPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
