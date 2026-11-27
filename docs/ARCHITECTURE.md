@@ -43,30 +43,40 @@ Teachers are identified by a per-room **PIN**, not a login.
 
 | File | Lines | Role |
 |---|---|---|
-| `server.ts` | ~2000 | **Everything server-side:** room state, all socket handlers, permissions, breakouts, timer, persistence wiring, `/api/assets/:hash`, `/healthz`, startup/shutdown. Exports `startServer(options)` (used by tests). |
+| `server.ts` | ~3500 | **Everything server-side:** room state, all 44 socket handlers, permissions, breakouts, timer, persistence wiring, `/api/assets/:hash`, `/healthz`, startup/shutdown. Exports `startServer(options)` (used by tests). |
 | `roomStore.ts` | ~350 | SQLite store: one row per room plus content-addressed assets (`assets`, `room_assets`). Has a JSON fallback if `node:sqlite` is missing. Fails open to `os.tmpdir()`. |
-| `backupMirror.ts` | ~375 | `BackupMirror` (batch, assets-first, retry, flush on SIGTERM) over `BackupBackend`: `GcsBackend` (Cloud Storage JSON API + metadata token) or `DirBackend` (folder). |
-| `src/App.tsx` | ~1800 | Client root: identity (`localStorage`), socket lifecycle, **all client state** (elements, messages, subBoards, settings), lobby/welcome screen, handlers passed down as props. |
-| `src/components/Canvas.tsx` | ~6400 | The whiteboard: Konva stage, tools, selection/lasso, worksheet layer, stamps (`STAMP_OPTIONS`), teacher toolbars, breakout UI, class-work controls, PDF export. **The biggest file; search before scrolling.** |
-| `src/components/CanvasModals.tsx` | ~1070 | Breakout manager, live grid overview (teacher sees all boards), import modal (`PendingSnapshotData`). |
-| `src/components/Chat.tsx` | ~1000 | Chat sidebar (resizable/collapsible), roster, room-code bar. |
-| `src/components/RoomExistsModal.tsx`, `PurgeContributionsModal.tsx` | — | Lobby collision warning; teacher "purge a student's work." |
-| `src/lib/breakoutRounds.ts` | ~290 | **Pure helpers shared by client and server** for rounds/boards. Never parse board-ID strings. Use these. |
+| `backupMirror.ts` | ~380 | `BackupMirror` (batch, assets-first, retry, flush on SIGTERM) over `BackupBackend`: `GcsBackend` (Cloud Storage JSON API + metadata token) or `DirBackend` (folder). |
+| `src/App.tsx` | ~2320 | Client root: identity (`localStorage`), socket lifecycle (`26` listeners), **all client state** (elements, messages, subBoards, settings), lobby/welcome screen, handlers passed down as props. |
+| `src/components/Canvas.tsx` | ~6410 | The whiteboard: Konva stage, tools, selection/lasso, worksheet layer, stamps (`STAMP_OPTIONS`), teacher toolbars, breakout UI, PDF export, and class-work actions (`useClassWorkFiles`). **The biggest file; search before scrolling.** |
+| `src/components/CanvasModals.tsx` | ~2380 | Breakout manager (`BreakoutManagerModal`), live grid overview (`LiveGridOverview`), worksheet template picker, restore snapshot modal, PDF page-range picker, Drive save modal. |
+| `src/components/useClassWorkFiles.ts` | ~280 | Local `.json` and Google Drive class-work save/open/restore state and recovery prompts, used by `Canvas.tsx`. |
+| `src/components/Chat.tsx` | ~1120 | Chat sidebar (resizable/collapsible), roster, room-code bar. |
+| `src/components/RoomExistsModal.tsx`, `PurgeContributionsModal.tsx`, `SendWorksheetModal.tsx`, `WorksheetVariantsEditor.tsx` | — | Lobby collision warning; teacher purge work; sending A–D worksheet variants to boards / prepared rounds. |
+| `src/lib/breakoutRounds.ts` | ~340 | **Pure helpers shared by client and server** for rounds/boards. Never parse board-ID strings. Use these. |
 | `src/lib/lessonPack.ts`, `src/components/LessonPackModals.tsx` | — | `.allaboard` lesson packs: pure build / validate / asset helpers (used by client and server) and the **Save lesson…** / **Load lesson…** dialogs. |
-| `src/lib/worksheetLoader.ts` | ~390 | PDF/image → `BackgroundPage[]` (browser-side render to JPEG data URLs). Built-in templates (`four-corners`, `frayer-model`, `checkin-columns`). `MAX_PDF_PAGES = 30` (`src/lib/pageRange.ts`). |
-| `src/lib/batchPdfExport.ts` | ~590 | Export boards to PDF (renders background plus ink). |
-| `src/lib/inkCore.ts` | — | Ink smoothing, highlighter/cover, text-note logic (from OverBoard). |
+| `src/lib/worksheetLoader.ts` | ~570 | PDF/image → `BackgroundPage[]` (browser-side render to JPEG data URLs via `pdfjs-dist`). Built-in templates (`four-corners`, `frayer-model`, `checkin-columns`). `MAX_PDF_PAGES = 30` (`src/lib/pageRange.ts`). |
+| `src/lib/batchPdfExport.ts` | ~605 | Export boards to PDF (renders background plus ink). |
+| `src/lib/inkCore.ts` | ~1295 | Ink smoothing, highlighter/cover, text-note geometry, hit-testing, lasso selection (from OverBoard). |
+| `src/lib/eraserEdits.ts`, `src/lib/elementGroups.ts`, `src/lib/stampQuadrants.ts` | — | Vector eraser stroke splitting (`elements-replace`), order-preserving element groups, and four-corners name-stamp quadrant mapping. |
+| `src/lib/googleDrive.ts`, `src/lib/googleConfig.ts` | ~890 | Browser-only GIS OAuth (`drive.file` scope only) + Picker + Drive v3 upload/download for worksheets, room snapshots, and `.allaboard` lesson packs. |
 | `problemReportRoute.ts`, `src/lib/problemReport.ts`, `src/components/ProblemReportModal.tsx` | — | **"Something not working?"** problem reports: `POST /api/report` → OverBoard's Apps Script relay → public GitHub issue + private email. See [`REPORTS.md`](REPORTS.md). |
-| `socketGuards.ts` | — | Per-socket rate limits, element size caps, Teacher PIN hashing (scrypt). See §5. |
+| `socketGuards.ts` | ~195 | Per-socket rate limits, element size caps, Teacher PIN hashing (scrypt). See §5. |
 | `staticAssets.ts` | — | Production `dist/` serving: hashed `/assets` cached 1 year (`immutable`) and gzipped once in memory; `index.html` `no-cache`. |
 | `src/lib/pointBatcher.ts`, `src/lib/drawThrottle.ts`, `src/lib/boardDigest.ts` | — | Client-side coalescing of streaming ink (send every 50 ms, apply incoming once per frame) and the network pacing constants (ink 500 ms, cursor 250 ms). Teacher overview digests (1.5 s). |
-| `scripts/loadtest.ts` | — | `npx tsx scripts/loadtest.ts --mode main\|individual --client legacy\|batched` — N fake drawing students, prints msg/s in and out and server CPU. |
+| `scripts/loadtest.ts` | ~330 | `npx tsx scripts/loadtest.ts --mode main\|individual --client legacy\|batched` — N fake drawing students, prints msg/s in and out and server CPU. |
 | `src/lib/roomCode.ts` | — | `normalizeRoomCode` (**must match** server `normalizeRoomId`), `sanitizeRoomCodeDraft`. |
 | `src/lib/chatSidebar.ts` | — | Chat sidebar sizing constants plus `localStorage` keys. |
-| `src/types.ts` | — | Shared types (`CanvasElement`, `RoomBackground`, `BreakoutConfig`, `RoomSnapshot`, …). |
-| `tests/*.test.ts` | — | Server integration (`server.test.ts`, real sockets against `startServer`), store, backup (incl. `fakeGcs.ts`), breakout helpers, ink, PDF export, chat. |
-| `e2e/*.spec.ts` | — | Playwright: classroom flows, worksheets. `e2e/serve.ts` starts the server. |
-| `PLANS_*.md` | — | **Historical** implementation plans (already executed). Useful as examples of the plan format; they don't describe pending work. |
+| `src/types.ts` | ~280 | Shared types (`CanvasElement`, `RoomBackground`, `BreakoutConfig`, `RoomSnapshot`, …). |
+| `tests/*.test.ts` | — | Server integration (`server.test.ts`, real sockets against `startServer`), plain-Node boot check (`nodeBoot.test.ts`), OAuth scope guard (`googleScopes.test.ts`), store, backup (`fakeGcs.ts`), breakout helpers, ink, PDF export, chat. |
+| `e2e/*.spec.ts` | — | Playwright: classroom flows, worksheets, eraser, lesson packs, Google Drive mocks. `e2e/serve.ts` starts the server. |
+| `PLANS_*.md` | — | **Historical** implementation plans (already executed). Useful as examples of the plan format; upcoming Terra specs live in `docs/plans/`. |
+
+### Client & Canvas Architecture (and why)
+
+- **Why Konva (`react-konva`) over raw `<canvas>` or DOM SVG:** Konva gives declarative React stage/layer management, built-in drag/transform bounds, and separate HTML5 backing `<canvas>` elements per `<Layer>`. That lets `Canvas.tsx` keep static worksheets (`WorksheetPageNode`), multiply-blended highlighters (`MultiplyHighlightLayer` using CSS `mixBlendMode = 'multiply'` so printed worksheet text stays crisp black), opaque ink (`InkLayer`), and live pointer previews/cursors isolated without re-rasterizing the worksheet on every stroke.
+- **Why layer opacity uses CSS instead of Konva `opacity` (`useLayerScreenOpacity`):** Konva layer opacity composites individual strokes before fading, which breaks visual coverage of eraser strokes and alters exported PDFs; CSS opacity on the layer's DOM canvas keeps exports and erasers accurate.
+- **Why PDF rendering happens in the browser (`src/lib/worksheetLoader.ts`):** `pdfjs-dist` renders PDF pages to compressed JPEG `data:` URLs on the teacher's machine, so the Cloud Run container never runs heavy native PDF/image binaries and uploaded worksheets store cleanly as content-addressed images (`/api/assets/<sha256>`).
+- **Why `App.tsx` owns all room/socket state:** Keeping one canonical copy of `elements`, `subBoards`, `messages`, `breakoutConfig`, and `users` in `App.tsx` avoids diverging client stores between `Canvas` and `Chat`, while `outgoingInkRef` (`PointQueue`) flushes streaming points before discrete `emitDrawing` actions so server ordering stays deterministic. Trade-off: `App.tsx` passes ~70 flat props to `Canvas` (`CanvasProps`) and should eventually group callbacks (`drawingActions`, `teacherActions`) once a shared Socket.IO TypeScript contract is in place (see `docs/plans/TYPED_SOCKET_CONTRACT.md`).
 
 ## 4. Runtime topology
 
