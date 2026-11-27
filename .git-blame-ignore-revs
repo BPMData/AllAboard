@@ -1,0 +1,5 @@
+# Revisions that only reformatted code (no behaviour change). GitHub's blame view honours this file automatically;
+# locally, run: git config blame.ignoreRevsFile .git-blame-ignore-revs
+
+# Format the repository with Prettier
+341d53470cc9ef238d320a3ade6de918ac4399d6

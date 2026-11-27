@@ -26,6 +26,9 @@ jobs:
       - name: Typecheck (tsc)
         run: npm run lint
 
+      - name: Check formatting (Prettier)
+        run: npx prettier --check .
+
       - name: Run automated tests
         run: npm test
 

@@ -28,3 +28,5 @@ storage, env vars, Cloud Run settings, or server startup code, read [`docs/DEPLO
    `tests/googleScopes.test.ts` enforces the allowed list.
 
 Commands: `npm ci`, `npm run lint` (tsc), `npm test` (node:test via tsx), `npm run test:e2e` (Playwright).
+
+**Formatting:** run `npx prettier --write` on changed files before committing (CI runs `prettier --check .`).
