@@ -1,124 +1,98 @@
 import { Check, Copy, Edit3, Keyboard, Maximize2, MousePointer2, Move, Trash2, X, ZoomIn, ZoomOut } from 'lucide-react';
-import React from 'react';
+import React, { useState } from 'react';
 import { NOTE_FONT, NOTE_LH, TEXT_SIZE_PRESETS } from '../../lib/inkCore';
 import type { SelectionAuthor } from '../../lib/selectionAuthors';
 import { describeSelectionAuthors, formatSelectionAuthors } from '../../lib/selectionAuthors';
 import { cn } from '../../lib/utils';
 import { CanvasElement, GridMode, SubBoardData, ToolType } from '../../types';
 import { GRID_MODE_OPTIONS, GridModeIcon, saveLocal } from './canvasHelpers';
+import type { useCanvasInteractionState } from './useCanvasInteractionState';
+import type { useCanvasNoteSelection } from './useCanvasNoteSelection';
+import type { useStageViewport } from './useStageViewport';
+import type { ToolSettings } from './useToolSettings';
 
-interface Props {
+/** The current selection, as `Canvas` derives it. */
+export interface OverlaySelection {
   selectedElements: CanvasElement[];
   selectionBounds: [number, number, number, number];
-  selectionDragOffset: { dx: number; dy: number };
-  canDraw: boolean;
-  dimensions: { width: number; height: number };
-  stagePos: { x: number; y: number };
-  stageScale: number;
   selectionAuthors: SelectionAuthor[];
   selectedTextElements: CanvasElement[];
-  handleSelectTextFontSize: (nextSize: number, applyToSelection?: boolean) => void;
-  activeTextSize: number;
-  setSelectedIds: React.Dispatch<React.SetStateAction<string[]>>;
-  openOrTapNoteAt: (worldX: number, worldY: number, forceExisting?: CanvasElement | null) => void;
-  handleCopySelection: () => void;
-  handleDuplicateSelection: () => void;
-  handleDeleteSelection: () => void;
-  isTeacher: boolean;
-  sendToBoardTarget: string;
-  setSendToBoardTarget: React.Dispatch<React.SetStateAction<string>>;
-  activeRoundBoards: SubBoardData[];
-  handleSendSelectionToBoard: (targetBoardId: string) => void;
-  sentFeedback: string;
-  pastePrompt: { worldX: number; worldY: number };
-  clipboardElements: CanvasElement[];
-  handlePasteElements: (targetWorldPos?: { x: number; y: number } | null) => void;
-  setPastePrompt: React.Dispatch<React.SetStateAction<{ worldX: number; worldY: number }>>;
-  editingNote: {
-    existingId: string | null;
-    worldX: number;
-    worldY: number;
-    value: string;
-    color: string;
-    strokeWidth: number;
-    fontSize: number;
-    openedAt: number;
-  };
-  setEditingNote: React.Dispatch<
-    React.SetStateAction<{
-      existingId: string | null;
-      worldX: number;
-      worldY: number;
-      value: string;
-      color: string;
-      strokeWidth: number;
-      fontSize: number;
-      openedAt: number;
-    }>
-  >;
-  noteTextareaRef: React.RefObject<HTMLTextAreaElement>;
-  commitEditingNote: () => void;
-  effectiveTool: ToolType;
-  screenPos: { x: number; y: number };
-  userColor: string;
-  userName: string;
-  gridMenuRef: React.RefObject<HTMLDivElement>;
-  setShowGridMenu: React.Dispatch<React.SetStateAction<boolean>>;
-  showGridMenu: boolean;
+}
+
+export interface GridControls {
   gridMode: GridMode;
   setGridMode: React.Dispatch<React.SetStateAction<GridMode>>;
-  zoomStep: (multiplier: number) => void;
-  resetView: () => void;
-  fitAllContent: () => void;
-  setShowHotkeysModal: React.Dispatch<React.SetStateAction<boolean>>;
+  showGridMenu: boolean;
+  setShowGridMenu: React.Dispatch<React.SetStateAction<boolean>>;
+  gridMenuRef: React.RefObject<HTMLDivElement>;
+}
+
+export interface HotkeysModal {
   showHotkeysModal: boolean;
+  setShowHotkeysModal: React.Dispatch<React.SetStateAction<boolean>>;
+}
+
+export interface OverlayUser {
+  userName: string;
+  userColor: string;
+  isTeacher: boolean;
+  canDraw: boolean;
+}
+
+interface Props {
+  viewport: ReturnType<typeof useStageViewport>;
+  interaction: ReturnType<typeof useCanvasInteractionState>;
+  noteSelection: ReturnType<typeof useCanvasNoteSelection>;
+  toolSettings: ToolSettings;
+  selection: OverlaySelection;
+  grid: GridControls;
+  hotkeys: HotkeysModal;
+  user: OverlayUser;
+  activeRoundBoards: SubBoardData[];
+  effectiveTool: ToolType;
 }
 export function CanvasViewportOverlays({
-  selectedElements,
-  selectionBounds,
-  selectionDragOffset,
-  canDraw,
-  dimensions,
-  stagePos,
-  stageScale,
-  selectionAuthors,
-  selectedTextElements,
-  handleSelectTextFontSize,
-  activeTextSize,
-  setSelectedIds,
-  openOrTapNoteAt,
-  handleCopySelection,
-  handleDuplicateSelection,
-  handleDeleteSelection,
-  isTeacher,
-  sendToBoardTarget,
-  setSendToBoardTarget,
+  viewport,
+  interaction,
+  noteSelection,
+  toolSettings,
+  selection,
+  grid,
+  hotkeys,
+  user,
   activeRoundBoards,
-  handleSendSelectionToBoard,
-  sentFeedback,
-  pastePrompt,
-  clipboardElements,
-  handlePasteElements,
-  setPastePrompt,
-  editingNote,
-  setEditingNote,
-  noteTextareaRef,
-  commitEditingNote,
   effectiveTool,
-  screenPos,
-  userColor,
-  userName,
-  gridMenuRef,
-  setShowGridMenu,
-  showGridMenu,
-  gridMode,
-  setGridMode,
-  zoomStep,
-  resetView,
-  fitAllContent,
-  setShowHotkeysModal,
-  showHotkeysModal,
 }: Props) {
+  const { dimensions, stagePos, stageScale, zoomStep, resetView, fitAllContent } = viewport;
+  const {
+    selectionDragOffset,
+    setSelectedIds,
+    sentFeedback,
+    pastePrompt,
+    setPastePrompt,
+    clipboardElements,
+    editingNote,
+    setEditingNote,
+    noteTextareaRef,
+    screenPos,
+  } = interaction;
+  const {
+    openOrTapNoteAt,
+    handleCopySelection,
+    handleDuplicateSelection,
+    handleDeleteSelection,
+    handleSendSelectionToBoard,
+    handlePasteElements,
+    commitEditingNote,
+  } = noteSelection;
+  const { activeTextSize, handleSelectTextFontSize } = toolSettings;
+  const { selectedElements, selectionBounds, selectionAuthors, selectedTextElements } = selection;
+  const { gridMode, setGridMode, showGridMenu, setShowGridMenu, gridMenuRef } = grid;
+  const { showHotkeysModal, setShowHotkeysModal } = hotkeys;
+  const { userName, userColor, isTeacher, canDraw } = user;
+
+  // Only the send-to-board picker reads this (moved here from useCanvasInteractionState).
+  const [sendToBoardTarget, setSendToBoardTarget] = useState<string>('ALL_SUBBOARDS');
   return (
     <>
       {/* Floating Action Bar for Selected / Lassoed Elements */}

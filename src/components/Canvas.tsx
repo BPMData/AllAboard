@@ -316,6 +316,11 @@ export default function Canvas({
     return combined;
   }, [elementsGroupedByUser]);
 
+  const viewport = useStageViewport({
+    elements,
+    background,
+    allGoneNoteIds,
+  });
   const {
     stageScale,
     setStageScale,
@@ -327,16 +332,11 @@ export default function Canvas({
     screenToWorld,
     resetView,
     fitElementsAndBackgroundInView,
-    fitAllContent,
     handleWheel,
-    zoomStep,
     getLocalPosFromEvent,
-  } = useStageViewport({
-    elements,
-    background,
-    allGoneNoteIds,
-  });
+  } = viewport;
 
+  const interaction = useCanvasInteractionState();
   const {
     isSpacePressed,
     setIsSpacePressed,
@@ -361,11 +361,7 @@ export default function Canvas({
     setClipboardElements,
     pastePrompt,
     setPastePrompt,
-    sendToBoardTarget,
-    setSendToBoardTarget,
-    sentFeedback,
     setSentFeedback,
-    screenPos,
     setScreenPos,
     worldPos,
     setWorldPos,
@@ -377,7 +373,7 @@ export default function Canvas({
     setEditingNote,
     noteTextareaRef,
     noteClosedAtRef,
-  } = useCanvasInteractionState();
+  } = interaction;
 
   // Confirmation States
   const [showHotkeysModal, setShowHotkeysModal] = useState(false);
@@ -734,8 +730,6 @@ export default function Canvas({
     customTeacherStampText,
     color,
     strokeWidth,
-    activeTextSize,
-    handleSelectTextFontSize,
   } = toolSettings;
 
   // Compute positioned geometry for each page of the background worksheet
@@ -778,13 +772,7 @@ export default function Canvas({
   );
 
   const {
-    commitEditingNote,
-    openOrTapNoteAt,
-    handleCopySelection,
-    handlePasteElements,
-    handleDuplicateSelection,
-    handleDeleteSelection,
-    handleSendSelectionToBoard,
+    noteSelection,
     handleViewportPointerDown,
     handleViewportPointerMove,
     handleViewportPointerUp,
@@ -887,6 +875,7 @@ export default function Canvas({
     onElementsBatchUpdate,
     onElementsReplace,
   });
+  const { commitEditingNote } = noteSelection;
 
   // Auto-fit when switching between sub-boards
   useEffect(() => {
@@ -1521,50 +1510,16 @@ export default function Canvas({
         </Stage>
 
         <CanvasViewportOverlays
-          selectedElements={selectedElements}
-          selectionBounds={selectionBounds}
-          selectionDragOffset={selectionDragOffset}
-          canDraw={canDraw}
-          dimensions={dimensions}
-          stagePos={stagePos}
-          stageScale={stageScale}
-          selectionAuthors={selectionAuthors}
-          selectedTextElements={selectedTextElements}
-          handleSelectTextFontSize={handleSelectTextFontSize}
-          activeTextSize={activeTextSize}
-          setSelectedIds={setSelectedIds}
-          openOrTapNoteAt={openOrTapNoteAt}
-          handleCopySelection={handleCopySelection}
-          handleDuplicateSelection={handleDuplicateSelection}
-          handleDeleteSelection={handleDeleteSelection}
-          isTeacher={isTeacher}
-          sendToBoardTarget={sendToBoardTarget}
-          setSendToBoardTarget={setSendToBoardTarget}
+          viewport={viewport}
+          interaction={interaction}
+          noteSelection={noteSelection}
+          toolSettings={toolSettings}
+          selection={{ selectedElements, selectionBounds, selectionAuthors, selectedTextElements }}
+          grid={{ gridMode, setGridMode, showGridMenu, setShowGridMenu, gridMenuRef }}
+          hotkeys={{ showHotkeysModal, setShowHotkeysModal }}
+          user={{ userName, userColor, isTeacher, canDraw }}
           activeRoundBoards={activeRoundBoards}
-          handleSendSelectionToBoard={handleSendSelectionToBoard}
-          sentFeedback={sentFeedback}
-          pastePrompt={pastePrompt}
-          clipboardElements={clipboardElements}
-          handlePasteElements={handlePasteElements}
-          setPastePrompt={setPastePrompt}
-          editingNote={editingNote}
-          setEditingNote={setEditingNote}
-          noteTextareaRef={noteTextareaRef}
-          commitEditingNote={commitEditingNote}
           effectiveTool={effectiveTool}
-          screenPos={screenPos}
-          userColor={userColor}
-          userName={userName}
-          gridMenuRef={gridMenuRef}
-          setShowGridMenu={setShowGridMenu}
-          showGridMenu={showGridMenu}
-          gridMode={gridMode}
-          setGridMode={setGridMode}
-          zoomStep={zoomStep}
-          resetView={resetView}
-          fitAllContent={fitAllContent}
-          setShowHotkeysModal={setShowHotkeysModal}
-          showHotkeysModal={showHotkeysModal}
         />
       </div>
     </div>

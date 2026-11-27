@@ -26,8 +26,6 @@ export function useCanvasInteractionState() {
 
   const [pastePrompt, setPastePrompt] = useState<{ worldX: number; worldY: number } | null>(null);
 
-  const [sendToBoardTarget, setSendToBoardTarget] = useState<string>('ALL_SUBBOARDS');
-
   const [sentFeedback, setSentFeedback] = useState<string | null>(null);
 
   const [screenPos, setScreenPos] = useState({ x: -100, y: -100 });
@@ -77,8 +75,6 @@ export function useCanvasInteractionState() {
     setClipboardElements,
     pastePrompt,
     setPastePrompt,
-    sendToBoardTarget,
-    setSendToBoardTarget,
     sentFeedback,
     setSentFeedback,
     screenPos,

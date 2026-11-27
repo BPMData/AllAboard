@@ -310,15 +310,7 @@ export function useCanvasPointerTools({
     []
   );
 
-  const {
-    handleCopySelection,
-    handlePasteElements,
-    handleDuplicateSelection,
-    handleDeleteSelection,
-    handleSendSelectionToBoard,
-    commitEditingNote,
-    openOrTapNoteAt,
-  } = useCanvasNoteSelection({
+  const noteSelection = useCanvasNoteSelection({
     noteTextareaRef,
     editingNote,
     stageScale,
@@ -350,6 +342,14 @@ export function useCanvasPointerTools({
     penWidth,
     textFontSize,
   });
+  const {
+    handleCopySelection,
+    handlePasteElements,
+    handleDuplicateSelection,
+    handleDeleteSelection,
+    commitEditingNote,
+    openOrTapNoteAt,
+  } = noteSelection;
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -1248,13 +1248,7 @@ export function useCanvasPointerTools({
     }
   };
   return {
-    commitEditingNote,
-    openOrTapNoteAt,
-    handleCopySelection,
-    handlePasteElements,
-    handleDuplicateSelection,
-    handleDeleteSelection,
-    handleSendSelectionToBoard,
+    noteSelection,
     handleViewportPointerDown,
     handleViewportPointerMove,
     handleViewportPointerUp,
