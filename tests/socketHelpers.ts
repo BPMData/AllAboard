@@ -2,7 +2,9 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { io as ioClient, Socket } from 'socket.io-client';
+import { io as ioClient, type Socket } from 'socket.io-client';
+import type { ClientToServerEvents, ServerToClientEvents } from '../src/lib/socketContract.ts';
+type TestSocket = Socket<ServerToClientEvents, ClientToServerEvents>;
 import { startServer } from '../server.ts';
 
 export type ServerHandle = Awaited<ReturnType<typeof startServer>>;
@@ -55,20 +57,21 @@ export async function startTestServer(dataDir?: string) {
 
 /** Tracks sockets so a test's afterEach can close them all. */
 export function socketPool() {
-  const open: Socket[] = [];
+  const open: TestSocket[] = [];
   return {
     async join(
       srv: ServerHandle,
       params: { roomId: string; userId: string; name: string; color?: string; teacherPin?: string }
     ): Promise<{ socket: Socket; init: any }> {
-      const socket = ioClient(`http://127.0.0.1:${srv.port}`, {
+      // Tests also send deliberately malformed wire payloads; keep the returned socket permissive.
+      const socket: TestSocket = ioClient(`http://127.0.0.1:${srv.port}`, {
         transports: ['websocket'],
         forceNew: true,
         reconnection: false,
       });
       open.push(socket);
       await waitForEvent(socket, 'connect');
-      const initPromise = waitForEvent(socket, 'init');
+      const initPromise = waitForEvent<Parameters<ServerToClientEvents['init']>[0]>(socket, 'init');
       socket.emit('join-room', { color: '#2563eb', ...params });
       return { socket, init: await initPromise };
     },

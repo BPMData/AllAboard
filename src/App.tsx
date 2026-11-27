@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { io, Socket } from 'socket.io-client';
+import { io, type Socket } from 'socket.io-client';
+import type { ClientToServerEvents, ServerToClientEvents } from './lib/socketContract';
 import {
   CanvasElement,
   ChatMessage,
@@ -35,6 +36,7 @@ import RoomHistoryDropdown from './components/RoomHistoryDropdown';
 import { normalizeRoomCode, sanitizeRoomCodeDraft } from './lib/roomCode';
 import { recordRoomHistory } from './lib/roomHistory';
 import type { LessonRequestEvent } from './lib/lessonPack';
+import type { LessonResponse } from './components/LessonPackModals';
 import type { RoundVariants } from './lib/roundVariants';
 import { motion } from 'motion/react';
 import { LogIn, Users, KeyRound, PlusCircle, Shuffle, Eye, EyeOff, LifeBuoy } from 'lucide-react';
@@ -50,6 +52,8 @@ import {
   type PointBatch,
   type PointQueue,
 } from './lib/pointBatcher';
+
+type AppSocket = Socket<ServerToClientEvents, ClientToServerEvents>;
 
 const STORAGE_KEYS = {
   USER_ID: 'drawchat_user_id',
@@ -119,7 +123,7 @@ function generateFreshRoomCode(): string {
 }
 
 export default function App() {
-  const [socket, setSocket] = useState<Socket | null>(null);
+  const [socket, setSocket] = useState<AppSocket | null>(null);
   /** Our own streaming ink, sent every POINT_FLUSH_MS instead of on every pointer move. */
   const outgoingInkRef = useRef<PointQueue | null>(null);
   const [userId] = useState<string>(() => getOrCreatePersistentUserId());
@@ -339,7 +343,7 @@ export default function App() {
   }, [liveRoomId]);
 
   useEffect(() => {
-    const newSocket = io({
+    const newSocket: AppSocket = io({
       reconnection: true,
       reconnectionAttempts: Infinity,
       reconnectionDelay: 1000,
@@ -408,7 +412,7 @@ export default function App() {
           teacherPin: cleanSavedPin,
         });
         if (cleanSavedPin) {
-          newSocket.emit('teacher:auth', { pin: cleanSavedPin }, (res: { ok: boolean }) => {
+          newSocket.emit('teacher:auth', { pin: cleanSavedPin }, (res) => {
             if (res?.ok) setIsTeacher(true);
           });
         }
@@ -554,7 +558,7 @@ export default function App() {
       }
     );
 
-    newSocket.on('roster-sync', (rosterList: User[]) => {
+    newSocket.on('roster-sync', (rosterList) => {
       setUsers(rosterList);
       const myRecord = rosterList.find((u) => u.userId === userId);
       if (myRecord) {
@@ -571,7 +575,7 @@ export default function App() {
       }
     });
 
-    newSocket.on('room-settings', (settings: RoomSettings) => {
+    newSocket.on('room-settings', (settings) => {
       setRoomSettings(settings);
     });
 
@@ -681,7 +685,7 @@ export default function App() {
       }
     );
 
-    newSocket.on('chat-message', (msg: ChatMessage) => {
+    newSocket.on('chat-message', (msg) => {
       const targetBoardId = msg.boardId || 'main';
       if (targetBoardId !== 'main') {
         setSubBoards((prev) => {
@@ -712,7 +716,7 @@ export default function App() {
       }
     });
 
-    newSocket.on('element-start', (element: CanvasElement) => {
+    newSocket.on('element-start', (element) => {
       const bId = element.boardId || 'main';
       if (bId === 'main') {
         setElements((prev) => {
@@ -883,7 +887,7 @@ export default function App() {
       }
     );
 
-    newSocket.on('board-full', ({ max }: { boardId: string; max: number }) => {
+    newSocket.on('board-full', ({ max }) => {
       window.alert(`This board is full (${max.toLocaleString()} items). Erase or clear some work to keep drawing.`);
     });
 
@@ -919,7 +923,7 @@ export default function App() {
       });
     });
 
-    newSocket.on('cursor-leave', ({ userId: leftUserId }: { userId: string }) => {
+    newSocket.on('cursor-leave', ({ userId: leftUserId }) => {
       setRemoteCursors((prev) => {
         const next = { ...prev };
         delete next[leftUserId];
@@ -948,7 +952,7 @@ export default function App() {
   }, [socket, isTeacher, activeBoardId]);
 
   /** Emit a drawing event after any of our queued ink, so the server sees our actions in order. */
-  const emitDrawing = useCallback((target: Socket, event: string, ...args: unknown[]) => {
+  const emitDrawing = useCallback(<E extends keyof ClientToServerEvents>(target: AppSocket, event: E, ...args: Parameters<ClientToServerEvents[E]>) => {
     outgoingInkRef.current?.flush();
     target.emit(event, ...args);
   }, []);
@@ -1033,7 +1037,7 @@ export default function App() {
         socket.emit(
           'teacher:set-background-multi',
           { boardIds, background: bg, roundTemplateFor },
-          (res: any) => resolve(res || { ok: false, error: 'No response from server.' })
+          (res) => resolve(res || { ok: false, error: 'No response from server.' })
         );
       }),
     [socket]
@@ -1155,21 +1159,22 @@ export default function App() {
     return generateFreshRoomCode();
   }, [checkRoomAvailability]);
 
-  /** Lesson packs: one ack-style wrapper for the four teacher events (export, has-assets, upload-asset, load). */
+  /** Lesson packs: one ack-style wrapper for lesson and worksheet variant requests. */
   const handleTeacherLessonRequest = useCallback(
-    (event: LessonRequestEvent, payload: unknown, timeoutMs = 60_000): Promise<any> =>
+    <E extends LessonRequestEvent>(event: E, payload: Parameters<ClientToServerEvents[E]>[0], timeoutMs = 60_000): Promise<LessonResponse<E>> =>
       new Promise((resolve) => {
         if (!socket || !socket.connected) {
-          resolve({ ok: false, error: 'Not connected to the server. Check your connection and try again.' });
+          resolve({ ok: false, error: 'Not connected to the server. Check your connection and try again.' } as LessonResponse<E>);
           return;
         }
         const timer = setTimeout(
-          () => resolve({ ok: false, error: 'The server took too long to answer. Try again.' }),
+          () => resolve({ ok: false, error: 'The server took too long to answer. Try again.' } as LessonResponse<E>),
           timeoutMs
         );
-        socket.emit(event, payload, (res: any) => {
+        const emit = socket.emit as (event: E, payload: Parameters<ClientToServerEvents[E]>[0], callback: (res: LessonResponse<E>) => void) => unknown;
+        emit.call(socket, event, payload, (res) => {
           clearTimeout(timer);
-          resolve(res && typeof res === 'object' ? res : { ok: false, error: 'No answer from the server.' });
+          resolve(res && typeof res === 'object' ? res : { ok: false, error: 'No answer from the server.' } as LessonResponse<E>);
         });
       }),
     [socket]
@@ -1331,7 +1336,7 @@ export default function App() {
         });
 
         if (cleanPin.length >= 3) {
-          socket.emit('teacher:auth', { pin: cleanPin }, (res: { ok: boolean }) => {
+          socket.emit('teacher:auth', { pin: cleanPin }, (res) => {
             if (res?.ok) setIsTeacher(true);
           });
         }
