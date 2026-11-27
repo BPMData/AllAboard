@@ -1,5 +1,5 @@
 import { Pause, Play, RotateCcw, Timer } from 'lucide-react';
-import React, { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { cn } from '../../lib/utils';
 import type { ClassroomTimerState, TimerControlPayload } from '../../types';
 import { formatTimerMs, parseCustomTimeSeconds } from './canvasHelpers';

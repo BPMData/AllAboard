@@ -21,11 +21,11 @@ import {
   Type,
   Undo2,
 } from 'lucide-react';
-import React from 'react';
+import React, { useRef, useState } from 'react';
 import { getPaletteColors, hlInk } from '../../lib/inkCore';
 import { STAMP_OPTIONS, TEACHER_STAMP_OPTIONS } from '../../lib/stamps';
 import { cn } from '../../lib/utils';
-import { CanvasElement, HollowShapeKind, StampKind, StudentStatus, ToolType } from '../../types';
+import { CanvasElement, StudentStatus } from '../../types';
 import { useClassWorkFiles } from '../useClassWorkFiles';
 import {
   HOLLOW_SHAPE_OPTIONS,
@@ -34,198 +34,166 @@ import {
   TEXT_SIZE_DROPDOWN_PRESETS,
   saveLocal,
 } from './canvasHelpers';
+import type { useCanvasHistory } from './useCanvasHistory';
+import type { useCanvasInteractionState } from './useCanvasInteractionState';
+import type { ToolSettings, ToolState } from './useToolSettings';
 
-import type { HistoryAction } from './canvasHelpers';
-interface Props {
+type Interaction = ReturnType<typeof useCanvasInteractionState>;
+
+/** Toolbar popout menus (open flags, setters, and the refs `Canvas` uses for outside-click closing). */
+export interface ToolbarMenus {
+  showHollowMenu: boolean;
+  setShowHollowMenu: React.Dispatch<React.SetStateAction<boolean>>;
+  hollowMenuRef: React.RefObject<HTMLDivElement>;
+  showHlMenu: boolean;
+  setShowHlMenu: React.Dispatch<React.SetStateAction<boolean>>;
+  hlMenuRef: React.RefObject<HTMLDivElement>;
+  showStatusMenu: boolean;
+  setShowStatusMenu: React.Dispatch<React.SetStateAction<boolean>>;
+  statusMenuRef: React.RefObject<HTMLDivElement>;
+  showTextSizeMenu: boolean;
+  setShowTextSizeMenu: React.Dispatch<React.SetStateAction<boolean>>;
+  textSizeMenuRef: React.RefObject<HTMLDivElement>;
+}
+
+export interface ChatButton {
   isChatHidden: boolean;
   onShowChat: () => void;
   unreadChatCount: number;
-  roomId: string;
-  onReportProblem: () => void;
+}
+
+/** Phones fold the toolbar behind a "Tools" button. */
+export interface PhoneLayout {
   isPhone: boolean;
-  setPhoneToolsOpen: React.Dispatch<React.SetStateAction<boolean>>;
   phoneToolsOpen: boolean;
-  strokeWidth: number;
-  tool: ToolType;
-  color: string;
+  setPhoneToolsOpen: React.Dispatch<React.SetStateAction<boolean>>;
   toolbarCollapsed: boolean;
-  canDraw: boolean;
-  editingNote: {
-    existingId: string | null;
-    worldX: number;
-    worldY: number;
-    value: string;
-    color: string;
-    strokeWidth: number;
-    fontSize: number;
-    openedAt: number;
-  };
+}
+
+export interface NoteEditing {
+  editingNote: Interaction['editingNote'];
+  setEditingNote: Interaction['setEditingNote'];
   commitEditingNote: () => void;
-  performUndo: () => void;
-  setTool: React.Dispatch<React.SetStateAction<ToolType>>;
-  effectiveTool: ToolType;
-  isTeacher: boolean;
-  hollowMenuRef: React.RefObject<HTMLDivElement>;
-  setShowHollowMenu: React.Dispatch<React.SetStateAction<boolean>>;
-  showHollowMenu: boolean;
-  hollowShape: HollowShapeKind;
-  setHollowShape: React.Dispatch<React.SetStateAction<HollowShapeKind>>;
-  hlMenuRef: React.RefObject<HTMLDivElement>;
-  isCoverMode: boolean;
-  setShowHlMenu: React.Dispatch<React.SetStateAction<boolean>>;
-  showHlMenu: boolean;
-  setIsCoverMode: React.Dispatch<React.SetStateAction<boolean>>;
-  hlColor: string;
-  hlStrength: number;
-  setHlStrength: React.Dispatch<React.SetStateAction<number>>;
-  coverColor: string;
-  setCoverColor: React.Dispatch<React.SetStateAction<string>>;
-  canLocalUndo: boolean;
-  canRedo: boolean;
-  performRedo: () => void;
-  confirmClearMine: boolean;
-  setEditingNote: React.Dispatch<
-    React.SetStateAction<{
-      existingId: string | null;
-      worldX: number;
-      worldY: number;
-      value: string;
-      color: string;
-      strokeWidth: number;
-      fontSize: number;
-      openedAt: number;
-    }>
-  >;
-  elements: CanvasElement[];
+  selectedTextElements: CanvasElement[];
+}
+
+export interface ToolbarUser {
   userId: string;
-  allGoneNoteIds: Set<string>;
-  recordUndo: (action: HistoryAction, boardId?: string) => void;
-  setSelectedIds: React.Dispatch<React.SetStateAction<string[]>>;
-  onClearMine: () => void;
-  setConfirmClearMine: React.Dispatch<React.SetStateAction<boolean>>;
-  classWork: ReturnType<typeof useClassWorkFiles>;
-  handleExportPNG: () => void;
-  statusMenuRef: React.RefObject<HTMLDivElement>;
-  setShowStatusMenu: React.Dispatch<React.SetStateAction<boolean>>;
-  showStatusMenu: boolean;
+  userName: string;
+  isTeacher: boolean;
+  canDraw: boolean;
+  nameStampTaken: boolean;
+}
+
+export interface MyStatus {
+  myStatus: StudentStatus;
   myStatusOption:
     | { readonly label: 'Need Help'; readonly className: 'bg-amber-100 text-amber-800 border-amber-300' }
     | { readonly label: 'Got It'; readonly className: 'bg-emerald-100 text-emerald-800 border-emerald-300' }
     | { readonly label: 'Done'; readonly className: 'bg-purple-100 text-purple-800 border-purple-300' };
-  myStatus: StudentStatus;
   onSetStatus: (status: StudentStatus) => void;
-  setStampKind: React.Dispatch<React.SetStateAction<StampKind>>;
-  nameStampTaken: boolean;
-  stampKind: StampKind;
-  userName: string;
-  customTeacherStampText: string;
-  setCustomTeacherStampText: React.Dispatch<React.SetStateAction<string>>;
-  activeSwatches: { color: string; label: string }[];
-  paletteMode: 'pen' | 'hl' | 'cover';
-  handleSelectColor: (nextColor: string) => void;
-  customColorInputRef: React.RefObject<HTMLInputElement>;
-  handleSelectStrokeWidth: (nextWidth: number) => void;
-  hollowWidth: number;
-  hollowWeight: number;
-  handleSelectHollowWeight: (nextWeight: number) => void;
-  textSizeMenuRef: React.RefObject<HTMLDivElement>;
-  setShowTextSizeMenu: React.Dispatch<React.SetStateAction<boolean>>;
-  showTextSizeMenu: boolean;
-  selectedTextElements: CanvasElement[];
-  activeTextPreset:
-    | { readonly label: 'S'; readonly size: 18; readonly title: 'Small text (18px)' }
-    | { readonly label: 'M'; readonly size: 26; readonly title: 'Medium text (26px)' }
-    | { readonly label: 'L'; readonly size: 38; readonly title: 'Large text (38px)' }
-    | { readonly label: 'XL'; readonly size: 54; readonly title: 'Extra-large title text (54px)' }
-    | { readonly label: 'XXL'; readonly size: 72; readonly title: 'Extra-extra-large text (72px)' };
-  activeTextSize: number;
-  handleSelectTextFontSize: (nextSize: number, applyToSelection?: boolean) => void;
-  smoothLevel: number;
-  setSmoothLevel: React.Dispatch<React.SetStateAction<number>>;
-  fingerScrolls: boolean;
-  setFingerScrolls: React.Dispatch<React.SetStateAction<boolean>>;
+}
+
+/** What "Erase yours" needs to find, undo-record and clear the user's own ink. */
+export interface ClearMine {
+  elements: CanvasElement[];
+  allGoneNoteIds: Set<string>;
+  setSelectedIds: React.Dispatch<React.SetStateAction<string[]>>;
+  onClearMine: () => void;
+}
+
+export interface ToolbarRoom {
+  roomId: string;
+  onReportProblem: () => void;
+  handleExportPNG: () => void;
+}
+
+interface Props {
+  history: ReturnType<typeof useCanvasHistory>;
+  toolSettings: ToolSettings;
+  menus: ToolbarMenus;
+  toolState: ToolState;
+  classWork: ReturnType<typeof useClassWorkFiles>;
+  chat: ChatButton;
+  phoneLayout: PhoneLayout;
+  noteEditing: NoteEditing;
+  user: ToolbarUser;
+  status: MyStatus;
+  clearMine: ClearMine;
+  room: ToolbarRoom;
 }
 export function CanvasToolbar({
-  isChatHidden,
-  onShowChat,
-  unreadChatCount,
-  roomId,
-  onReportProblem,
-  isPhone,
-  setPhoneToolsOpen,
-  phoneToolsOpen,
-  strokeWidth,
-  tool,
-  color,
-  toolbarCollapsed,
-  canDraw,
-  editingNote,
-  commitEditingNote,
-  performUndo,
-  setTool,
-  effectiveTool,
-  isTeacher,
-  hollowMenuRef,
-  setShowHollowMenu,
-  showHollowMenu,
-  hollowShape,
-  setHollowShape,
-  hlMenuRef,
-  isCoverMode,
-  setShowHlMenu,
-  showHlMenu,
-  setIsCoverMode,
-  hlColor,
-  hlStrength,
-  setHlStrength,
-  coverColor,
-  setCoverColor,
-  canLocalUndo,
-  canRedo,
-  performRedo,
-  confirmClearMine,
-  setEditingNote,
-  elements,
-  userId,
-  allGoneNoteIds,
-  recordUndo,
-  setSelectedIds,
-  onClearMine,
-  setConfirmClearMine,
+  history,
+  toolSettings,
+  menus,
+  toolState,
   classWork,
-  handleExportPNG,
-  statusMenuRef,
-  setShowStatusMenu,
-  showStatusMenu,
-  myStatusOption,
-  myStatus,
-  onSetStatus,
-  setStampKind,
-  nameStampTaken,
-  stampKind,
-  userName,
-  customTeacherStampText,
-  setCustomTeacherStampText,
-  activeSwatches,
-  paletteMode,
-  handleSelectColor,
-  customColorInputRef,
-  handleSelectStrokeWidth,
-  hollowWidth,
-  hollowWeight,
-  handleSelectHollowWeight,
-  textSizeMenuRef,
-  setShowTextSizeMenu,
-  showTextSizeMenu,
-  selectedTextElements,
-  activeTextPreset,
-  activeTextSize,
-  handleSelectTextFontSize,
-  smoothLevel,
-  setSmoothLevel,
-  fingerScrolls,
-  setFingerScrolls,
+  chat,
+  phoneLayout,
+  noteEditing,
+  user,
+  status,
+  clearMine,
+  room,
 }: Props) {
+  const { recordUndo, canLocalUndo, canRedo, performUndo, performRedo } = history;
+  const {
+    strokeWidth,
+    color,
+    hollowShape,
+    setHollowShape,
+    isCoverMode,
+    setIsCoverMode,
+    hlColor,
+    hlStrength,
+    setHlStrength,
+    coverColor,
+    setCoverColor,
+    stampKind,
+    setStampKind,
+    customTeacherStampText,
+    setCustomTeacherStampText,
+    activeSwatches,
+    paletteMode,
+    handleSelectColor,
+    handleSelectStrokeWidth,
+    hollowWidth,
+    hollowWeight,
+    handleSelectHollowWeight,
+    activeTextPreset,
+    activeTextSize,
+    handleSelectTextFontSize,
+    smoothLevel,
+    setSmoothLevel,
+    fingerScrolls,
+    setFingerScrolls,
+  } = toolSettings;
+  const {
+    showHollowMenu,
+    setShowHollowMenu,
+    hollowMenuRef,
+    showHlMenu,
+    setShowHlMenu,
+    hlMenuRef,
+    showStatusMenu,
+    setShowStatusMenu,
+    statusMenuRef,
+    showTextSizeMenu,
+    setShowTextSizeMenu,
+    textSizeMenuRef,
+  } = menus;
+  const { tool, effectiveTool, setTool } = toolState;
+  const { isChatHidden, onShowChat, unreadChatCount } = chat;
+  const { isPhone, phoneToolsOpen, setPhoneToolsOpen, toolbarCollapsed } = phoneLayout;
+  const { editingNote, setEditingNote, commitEditingNote, selectedTextElements } = noteEditing;
+  const { userId, userName, isTeacher, canDraw, nameStampTaken } = user;
+  const { myStatus, myStatusOption, onSetStatus } = status;
+  const { elements, allGoneNoteIds, setSelectedIds, onClearMine } = clearMine;
+  const { roomId, onReportProblem, handleExportPNG } = room;
+
+  // Only this toolbar reads these, so they live here rather than in Canvas.
+  const [confirmClearMine, setConfirmClearMine] = useState(false);
+  const customColorInputRef = useRef<HTMLInputElement>(null);
   return (
     <>
       <div
