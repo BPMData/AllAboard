@@ -1,4 +1,5 @@
 import type { Socket } from 'socket.io-client';
+import type { ClientToServerEvents, ServerToClientEvents } from '../lib/socketContract';
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { Stage, Layer, Line, Circle, Rect, Text as KonvaText, Group, Image as KonvaImage, Shape } from 'react-konva';
 import {
@@ -193,7 +194,7 @@ interface CanvasProps {
   roundVariants?: Record<string, RoundVariants>;
   users: User[];
   remoteCursors: Record<string, RemoteCursor>;
-  laserSocket: Socket | null;
+  laserSocket: Socket<ServerToClientEvents, ClientToServerEvents> | null;
   onSetStatus: (status: StudentStatus) => void;
   onTeacherClearStatus: (targetUserId?: string) => void;
   isCanvasLocked: boolean;

@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { AlertCircle, BookOpen, Download, Eye, EyeOff, FolderOpen, HardDrive, X } from 'lucide-react';
 import type { BreakoutRoundMeta, RoomBackground } from '../types';
+import type { ClientToServerEvents } from '../lib/socketContract';
 import { cn } from '../lib/utils';
 import {
   LESSON_FILE_ACCEPT,
@@ -31,7 +32,8 @@ import {
   type DriveFolder,
 } from '../lib/googleDrive';
 
-export type LessonRequest = (event: LessonRequestEvent, payload: unknown, timeoutMs?: number) => Promise<any>;
+export type LessonResponse<E extends LessonRequestEvent> = Parameters<NonNullable<Parameters<ClientToServerEvents[E]>[1]>>[0];
+export type LessonRequest = <E extends LessonRequestEvent>(event: E, payload: Parameters<ClientToServerEvents[E]>[0], timeoutMs?: number) => Promise<LessonResponse<E>>;
 
 /** Gmail and many school mail systems refuse attachments over about this size. */
 const EMAIL_LIMIT_BYTES = 25 * 1024 * 1024;

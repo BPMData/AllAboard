@@ -1,4 +1,5 @@
 import React, { useMemo, useState } from 'react';
+import type { LessonRequest } from './LessonPackModals';
 import type { BreakoutRoundMeta, CanvasElement, RoomBackground, SubBoardData, User } from '../types';
 import {
   MAX_PDF_PAGES,
@@ -52,7 +53,7 @@ interface SendWorksheetModalProps {
   roundVariants?: RoundVariants | null;
   users?: User[];
   /** Ack-style teacher request (upload-asset, set-round-variants). Without it, nothing is remembered. */
-  onRequest?: (event: any, payload: unknown, timeoutMs?: number) => Promise<any>;
+  onRequest?: LessonRequest;
 }
 
 const letterIndex = (l: Letter) => LETTERS.indexOf(l);

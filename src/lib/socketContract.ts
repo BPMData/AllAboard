@@ -47,8 +47,8 @@ export interface ClientToServerEvents {
   'teacher:export-lesson': (payload: Record<string, unknown>, callback?: Ack<LessonExportAck>) => void;
   'teacher:has-assets': (payload: { urls: string[] }, callback?: Ack<LessonHasAssetsAck>) => void;
   'teacher:upload-asset': (payload: { url?: string; dataUrl: string }, callback?: Ack<LessonUploadAssetAck>) => void;
-  'teacher:load-lesson': (payload: { lesson: LessonPack; target: 'new' | 'current'; newRoomId?: string; pin?: string }, callback?: Ack<LessonLoadAck>) => void;
-  'update-profile': (payload: { name?: string; color?: string }) => void;
+  'teacher:load-lesson': (payload: { lesson: Omit<LessonPack, 'assets'> & { assets?: LessonPack['assets'] }; target: 'new' | 'current'; newRoomId?: string; pin?: string }, callback?: Ack<LessonLoadAck>) => void;
+  'update-profile': (payload: { userId?: string; name?: string; color?: string }) => void;
   'teacher:rename-user': (payload: { targetUserId: string; newName: string }, callback?: Ack<BasicAck & { newName?: string }>) => void;
   'teacher:delete-message': (payload: { messageId: string; boardId?: string }, callback?: Ack<BasicAck>) => void;
   'teacher:kick-user': (payload: { targetUserId: string; mode?: 'kick' | 'ban'; targetName?: string }, callback?: Ack<BasicAck>) => void;
