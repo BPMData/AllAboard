@@ -1,6 +1,6 @@
 /** Compile-time description of the Socket.IO wire protocol. Runtime validation remains on the server. */
 import type {
-  BreakoutConfig, CanvasElement, ChatMessage, ClassWorkData, ClassroomTimerState, ConfigureBreakoutPayload,
+  BreakoutAction, BreakoutConfig, BreakoutMode, CanvasElement, ChatMessage, ClassWorkData, ClassroomTimerState, ConfigureBreakoutPayload,
   ImportRestoreMode, RemoteCursor, RoomAvailability, RoomBackground, RoomSettings,
   SpotlightPayload, StudentStatus, SubBoardData, TimerControlPayload, User,
 } from '../types.ts';
@@ -11,7 +11,7 @@ import type { RoundVariants } from './roundVariants.ts';
 
 export interface BasicAck { ok: boolean; error?: string }
 export interface AuthAck extends BasicAck { mode?: 'claimed' | 'verified'; pin?: string }
-export interface BreakoutAck extends BasicAck { roundId?: string }
+export interface BreakoutAck extends BasicAck { roundId?: string; action?: BreakoutAction; activeRoundId?: string; mode?: BreakoutMode }
 export interface MultiBgAck extends BasicAck { updated?: number; skipped?: string[] }
 export interface ImportRoomAck extends BasicAck { connectionError?: boolean; elementsCount?: number; messagesCount?: number }
 export interface LessonExportAck extends BasicAck { lesson?: LessonPack; inkCounts?: { teacher: number; all: number } }
