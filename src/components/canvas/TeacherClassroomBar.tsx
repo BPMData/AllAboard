@@ -10,17 +10,13 @@ import {
   Lock,
   MousePointer2,
   Move,
-  Pause,
-  Play,
-  RotateCcw,
   Rows,
-  Timer,
   Trash2,
   Unlock,
   Upload,
   Users,
 } from 'lucide-react';
-import React from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { isPreparedRound } from '../../lib/breakoutRounds';
 import { isGoogleDriveConfigured } from '../../lib/googleConfig';
 import type { SelectionAuthor } from '../../lib/selectionAuthors';
@@ -39,148 +35,189 @@ import {
 } from '../../types';
 import { type LessonRequest } from '../LessonPackModals';
 import { useClassWorkFiles } from '../useClassWorkFiles';
-import { formatTimerMs, parseCustomTimeSeconds } from './canvasHelpers';
+import { ClassroomTimerControl, StudentTimerBadge, timerHasTime } from './ClassroomTimerControl';
+
+/** Teacher-only room actions the bar calls (all from `App.tsx`). */
+export interface TeacherActions {
+  onConfigureBreakout: (
+    payload: ConfigureBreakoutPayload
+  ) => Promise<{ ok: boolean; error?: string; roundId?: string }>;
+  onTeacherTimerControl: (payload: TimerControlPayload) => void;
+  onTeacherUpdateBackground: (patch: Partial<RoomBackground>) => void;
+  onTeacherSetBackground: (bg: RoomBackground | null) => Promise<{ ok: boolean; error?: string }>;
+  onTeacherLessonRequest: LessonRequest;
+  onTeacherToggleLock: (locked: boolean) => void;
+  onTeacherToggleHideCursors: (hide: boolean) => void;
+  onTeacherToggleOneNameStamp: (enabled: boolean) => void;
+  onTeacherClearAll: () => void;
+  onAssignUserToBoard: (targetBoardId: string, targetUserId?: string) => void;
+}
+
+/** Breakout rounds as the teacher is currently viewing them. */
+export interface RoundsView {
+  breakoutConfig: BreakoutConfig;
+  rounds: BreakoutRoundMeta[];
+  activeRound: BreakoutRoundMeta;
+  viewingRound: BreakoutRoundMeta;
+  effectiveViewingRoundId: string;
+  activeRoundBoards: SubBoardData[];
+  teacherVisibleBoards: SubBoardData[];
+  subBoards: Record<string, SubBoardData>;
+  roundShortLabel: (roundId?: string) => string;
+  setTeacherViewingRoundId: React.Dispatch<React.SetStateAction<string>>;
+}
+
+/** Worksheet upload / Drive import state, plus the class-work JSON file input. */
+export interface WorksheetImport {
+  isUploadingWorksheet: boolean;
+  worksheetInputRef: React.RefObject<HTMLInputElement>;
+  fileInputRef: React.RefObject<HTMLInputElement>;
+  driveBusy: string;
+  driveCanCancel: boolean;
+  handleWorksheetFromDrive: () => Promise<void>;
+  handleCancelDriveImport: () => void;
+  worksheetImportScale: number;
+  handleUpdateWorksheetImportScale: (next: number) => void;
+  worksheetError: string;
+}
+
+export interface Moderation {
+  isCanvasLocked: boolean;
+  hideStudentCursors: boolean;
+  oneNameStamp: boolean;
+}
+
+/** The board on screen right now. */
+export interface ActiveBoard {
+  activeBoardId: string;
+  activeBoardTitle: string;
+  onSelectBoard: (boardId: string) => void;
+  elements: CanvasElement[];
+  fullMainElements: CanvasElement[];
+  background: RoomBackground;
+}
+
+export interface LiveGridControls {
+  showLiveGridOverview: boolean;
+  setShowLiveGridOverview: React.Dispatch<React.SetStateAction<boolean>>;
+  pdfExportProgress: { current: number; total: number };
+  handleBatchExportAllPdf: () => Promise<void>;
+}
+
+/** Openers for modals that `Canvas` renders. */
+export interface TeacherModalOpeners {
+  handleOpenBreakoutModal: () => void;
+  setShowTemplateModal: React.Dispatch<React.SetStateAction<boolean>>;
+  setLessonModal: React.Dispatch<React.SetStateAction<'save' | 'load'>>;
+}
+
+export interface ToolState {
+  tool: ToolType;
+  effectiveTool: ToolType;
+  setTool: React.Dispatch<React.SetStateAction<ToolType>>;
+}
+
+export interface InkFocus {
+  focusedInkAuthor: string;
+  setInkFocusKey: React.Dispatch<React.SetStateAction<string>>;
+  boardInkAuthors: SelectionAuthor[];
+}
 
 interface Props {
   isTeacher: boolean;
   toolbarCollapsed: boolean;
-  handleOpenBreakoutModal: () => void;
-  breakoutConfig: BreakoutConfig;
-  activeRoundBoards: SubBoardData[];
-  onConfigureBreakout: (
-    payload: ConfigureBreakoutPayload
-  ) => Promise<{ ok: boolean; error?: string; roundId?: string }>;
-  viewingRound: BreakoutRoundMeta;
-  setTeacherViewingRoundId: React.Dispatch<React.SetStateAction<string>>;
-  activeRound: BreakoutRoundMeta;
-  subBoards: Record<string, SubBoardData>;
-  rounds: BreakoutRoundMeta[];
-  effectiveViewingRoundId: string;
-  activeBoardId: string;
-  onSelectBoard: (boardId: string) => void;
-  setShowLiveGridOverview: React.Dispatch<React.SetStateAction<boolean>>;
-  fullMainElements: CanvasElement[];
-  teacherVisibleBoards: SubBoardData[];
-  roundShortLabel: (roundId?: string) => string;
-  activeBoardTitle: string;
-  showLiveGridOverview: boolean;
-  pdfExportProgress: { current: number; total: number };
-  handleBatchExportAllPdf: () => Promise<void>;
-  timerMenuRef: React.RefObject<HTMLDivElement>;
-  setShowTimerMenu: React.Dispatch<React.SetStateAction<boolean>>;
   timer: ClassroomTimerState;
-  displayRemainingMs: number;
-  showTimerMenu: boolean;
-  onTeacherTimerControl: (payload: TimerControlPayload) => void;
-  customTimeInput: string;
-  setCustomTimeInput: React.Dispatch<React.SetStateAction<string>>;
-  setShowTemplateModal: React.Dispatch<React.SetStateAction<boolean>>;
-  isUploadingWorksheet: boolean;
-  worksheetInputRef: React.RefObject<HTMLInputElement>;
-  background: RoomBackground;
-  driveBusy: string;
-  handleWorksheetFromDrive: () => Promise<void>;
-  driveCanCancel: boolean;
-  handleCancelDriveImport: () => void;
-  worksheetImportScale: number;
-  handleUpdateWorksheetImportScale: (next: number) => void;
-  setTool: React.Dispatch<React.SetStateAction<ToolType>>;
-  tool: ToolType;
-  effectiveTool: ToolType;
-  onTeacherUpdateBackground: (patch: Partial<RoomBackground>) => void;
-  elements: CanvasElement[];
-  confirmRemoveWorksheet: boolean;
-  setConfirmRemoveWorksheet: React.Dispatch<React.SetStateAction<boolean>>;
-  removeWorksheetTimerRef: React.RefObject<NodeJS.Timeout>;
-  onTeacherSetBackground: (bg: RoomBackground | null) => Promise<{ ok: boolean; error?: string }>;
-  worksheetError: string;
-  fileInputRef: React.RefObject<HTMLInputElement>;
-  onTeacherLessonRequest: LessonRequest;
-  setLessonModal: React.Dispatch<React.SetStateAction<'save' | 'load'>>;
   classWork: ReturnType<typeof useClassWorkFiles>;
-  onTeacherToggleLock: (locked: boolean) => void;
-  isCanvasLocked: boolean;
-  onTeacherToggleHideCursors: (hide: boolean) => void;
-  hideStudentCursors: boolean;
-  onTeacherToggleOneNameStamp: (enabled: boolean) => void;
-  oneNameStamp: boolean;
-  focusedInkAuthor: string;
-  setInkFocusKey: React.Dispatch<React.SetStateAction<string>>;
-  boardInkAuthors: SelectionAuthor[];
-  confirmClearAll: boolean;
-  onTeacherClearAll: () => void;
-  setConfirmClearAll: React.Dispatch<React.SetStateAction<boolean>>;
-  onAssignUserToBoard: (targetBoardId: string, targetUserId?: string) => void;
+  teacherActions: TeacherActions;
+  roundsView: RoundsView;
+  worksheetImport: WorksheetImport;
+  moderation: Moderation;
+  board: ActiveBoard;
+  liveGrid: LiveGridControls;
+  modals: TeacherModalOpeners;
+  toolState: ToolState;
+  inkFocus: InkFocus;
 }
 export function TeacherClassroomBar({
   isTeacher,
   toolbarCollapsed,
-  handleOpenBreakoutModal,
-  breakoutConfig,
-  activeRoundBoards,
-  onConfigureBreakout,
-  viewingRound,
-  setTeacherViewingRoundId,
-  activeRound,
-  subBoards,
-  rounds,
-  effectiveViewingRoundId,
-  activeBoardId,
-  onSelectBoard,
-  setShowLiveGridOverview,
-  fullMainElements,
-  teacherVisibleBoards,
-  roundShortLabel,
-  activeBoardTitle,
-  showLiveGridOverview,
-  pdfExportProgress,
-  handleBatchExportAllPdf,
-  timerMenuRef,
-  setShowTimerMenu,
   timer,
-  displayRemainingMs,
-  showTimerMenu,
-  onTeacherTimerControl,
-  customTimeInput,
-  setCustomTimeInput,
-  setShowTemplateModal,
-  isUploadingWorksheet,
-  worksheetInputRef,
-  background,
-  driveBusy,
-  handleWorksheetFromDrive,
-  driveCanCancel,
-  handleCancelDriveImport,
-  worksheetImportScale,
-  handleUpdateWorksheetImportScale,
-  setTool,
-  tool,
-  effectiveTool,
-  onTeacherUpdateBackground,
-  elements,
-  confirmRemoveWorksheet,
-  setConfirmRemoveWorksheet,
-  removeWorksheetTimerRef,
-  onTeacherSetBackground,
-  worksheetError,
-  fileInputRef,
-  onTeacherLessonRequest,
-  setLessonModal,
   classWork,
-  onTeacherToggleLock,
-  isCanvasLocked,
-  onTeacherToggleHideCursors,
-  hideStudentCursors,
-  onTeacherToggleOneNameStamp,
-  oneNameStamp,
-  focusedInkAuthor,
-  setInkFocusKey,
-  boardInkAuthors,
-  confirmClearAll,
-  onTeacherClearAll,
-  setConfirmClearAll,
-  onAssignUserToBoard,
+  teacherActions,
+  roundsView,
+  worksheetImport,
+  moderation,
+  board,
+  liveGrid,
+  modals,
+  toolState,
+  inkFocus,
 }: Props) {
+  const {
+    onConfigureBreakout,
+    onTeacherTimerControl,
+    onTeacherUpdateBackground,
+    onTeacherSetBackground,
+    onTeacherLessonRequest,
+    onTeacherToggleLock,
+    onTeacherToggleHideCursors,
+    onTeacherToggleOneNameStamp,
+    onTeacherClearAll,
+    onAssignUserToBoard,
+  } = teacherActions;
+  const {
+    breakoutConfig,
+    rounds,
+    activeRound,
+    viewingRound,
+    effectiveViewingRoundId,
+    activeRoundBoards,
+    teacherVisibleBoards,
+    subBoards,
+    roundShortLabel,
+    setTeacherViewingRoundId,
+  } = roundsView;
+  const {
+    isUploadingWorksheet,
+    worksheetInputRef,
+    fileInputRef,
+    driveBusy,
+    driveCanCancel,
+    handleWorksheetFromDrive,
+    handleCancelDriveImport,
+    worksheetImportScale,
+    handleUpdateWorksheetImportScale,
+    worksheetError,
+  } = worksheetImport;
+  const { isCanvasLocked, hideStudentCursors, oneNameStamp } = moderation;
+  const { activeBoardId, activeBoardTitle, onSelectBoard, elements, fullMainElements, background } = board;
+  const { showLiveGridOverview, setShowLiveGridOverview, pdfExportProgress, handleBatchExportAllPdf } = liveGrid;
+  const { handleOpenBreakoutModal, setShowTemplateModal, setLessonModal } = modals;
+  const { tool, effectiveTool, setTool } = toolState;
+  const { focusedInkAuthor, setInkFocusKey, boardInkAuthors } = inkFocus;
+
+  // Two-tap confirmations. Only this bar reads them, so they live here rather than in Canvas.
+  const [confirmClearAll, setConfirmClearAll] = useState(false);
+  const [confirmRemoveWorksheet, setConfirmRemoveWorksheet] = useState(false);
+  const removeWorksheetTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (removeWorksheetTimerRef.current) {
+        clearTimeout(removeWorksheetTimerRef.current);
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!background) {
+      if (removeWorksheetTimerRef.current) {
+        clearTimeout(removeWorksheetTimerRef.current);
+        removeWorksheetTimerRef.current = null;
+      }
+      setConfirmRemoveWorksheet(false);
+    }
+  }, [background]);
   return (
     <>
       {isTeacher ? (
@@ -341,167 +378,7 @@ export function TeacherClassroomBar({
 
             <span aria-hidden="true">·</span>
 
-            {/* Teacher Classroom Countdown Timer Button & Popover */}
-            <div ref={timerMenuRef} className="relative">
-              <button
-                type="button"
-                onClick={() => setShowTimerMenu((prev) => !prev)}
-                className={cn(
-                  'flex items-center gap-1.5 px-2.5 py-1 rounded-[2px] text-xs font-semibold transition-colors whitespace-nowrap shrink-0 cursor-pointer border',
-                  timer?.isRunning
-                    ? displayRemainingMs <= 60000
-                      ? 'oh-btn-danger text-white animate-pulse'
-                      : 'oh-btn-dark text-amber-300'
-                    : displayRemainingMs > 0
-                      ? 'bg-amber-200 text-slate-900 border-amber-400'
-                      : 'oh-btn text-slate-800'
-                )}
-                title="Start, pause, or configure the synchronized classroom countdown timer"
-              >
-                <Timer size={13} className={timer?.isRunning ? 'text-amber-300' : 'text-amber-600'} />
-                <span className="font-mono tabular-nums">
-                  {timer?.isRunning || displayRemainingMs > 0
-                    ? `${formatTimerMs(displayRemainingMs)}${!timer?.isRunning ? ' (Paused)' : ''}`
-                    : 'Timer'}
-                </span>
-              </button>
-
-              {showTimerMenu && (
-                <div className="absolute left-0 top-full mt-1.5 z-50 w-72 rounded-[3px] bg-white border-2 border-[#CBD5E1] overflow-hidden text-slate-800 select-text">
-                  <div className="oh-panel-header flex items-center justify-between px-3.5 py-2 border-b border-[#CBD5E1]">
-                    <span className="font-display font-bold text-xs text-slate-900">Classroom Countdown Timer</span>
-                    {(timer?.isRunning || displayRemainingMs > 0) && (
-                      <span className="font-mono tabular-nums text-xs font-bold text-brand-600">
-                        {formatTimerMs(displayRemainingMs)}
-                      </span>
-                    )}
-                  </div>
-
-                  <div className="p-3.5 space-y-3">
-                    {/* Default Preset Buttons: 5, 10, 20, 30 minutes */}
-                    <div>
-                      <span className="block text-[11px] font-medium text-slate-500 mb-1.5">Quick Start Presets:</span>
-                      <div className="grid grid-cols-4 gap-1.5">
-                        {[5, 10, 20, 30].map((mins) => (
-                          <button
-                            key={mins}
-                            type="button"
-                            onClick={() => {
-                              onTeacherTimerControl({
-                                action: 'start',
-                                durationSeconds: mins * 60,
-                              });
-                              setShowTimerMenu(false);
-                            }}
-                            className="py-1.5 px-2 rounded-[2px] border oh-btn text-xs font-mono font-semibold text-slate-800 hover:text-brand-700 transition-colors cursor-pointer"
-                          >
-                            {mins}m
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-
-                    {/* Custom Exact Time Input */}
-                    <form
-                      onSubmit={(e) => {
-                        e.preventDefault();
-                        const secs = parseCustomTimeSeconds(customTimeInput);
-                        if (secs && secs >= 5) {
-                          onTeacherTimerControl({
-                            action: 'start',
-                            durationSeconds: secs,
-                          });
-                          setShowTimerMenu(false);
-                        }
-                      }}
-                      className="space-y-1"
-                    >
-                      <label className="block text-[11px] font-medium text-slate-500">
-                        Exact Time (e.g. <span className="font-mono">7:30</span> or minutes like{' '}
-                        <span className="font-mono">12</span>):
-                      </label>
-                      <div className="flex items-center gap-1.5">
-                        <input
-                          type="text"
-                          value={customTimeInput}
-                          onChange={(e) => setCustomTimeInput(e.target.value)}
-                          placeholder="e.g. 7:30 or 15"
-                          className="flex-1 px-2.5 py-1.5 text-xs font-mono border border-[#CBD5E1] rounded-[2px] focus:outline-none focus:border-brand-600"
-                        />
-                        <button
-                          type="submit"
-                          disabled={!parseCustomTimeSeconds(customTimeInput)}
-                          className="px-3 py-1.5 rounded-[2px] border oh-btn-primary text-xs font-semibold text-white disabled:opacity-40 cursor-pointer whitespace-nowrap"
-                        >
-                          Start
-                        </button>
-                      </div>
-                    </form>
-
-                    {/* Active Timer Controls (Pause/Resume, +1m, Stop) */}
-                    {(timer?.isRunning || displayRemainingMs > 0) && (
-                      <div className="flex items-center gap-1.5 pt-2 border-t border-slate-200">
-                        {timer?.isRunning ? (
-                          <button
-                            type="button"
-                            onClick={() => onTeacherTimerControl({ action: 'pause' })}
-                            className="flex-1 flex items-center justify-center gap-1 py-1.5 px-2 rounded-[2px] border border-amber-300 bg-amber-100 text-amber-900 hover:bg-amber-200 text-xs font-semibold cursor-pointer"
-                          >
-                            <Pause size={12} />
-                            <span>Pause</span>
-                          </button>
-                        ) : (
-                          <button
-                            type="button"
-                            onClick={() => onTeacherTimerControl({ action: 'resume' })}
-                            className="flex-1 flex items-center justify-center gap-1 py-1.5 px-2 rounded-[2px] border oh-btn-emerald text-xs font-semibold text-white cursor-pointer"
-                          >
-                            <Play size={12} />
-                            <span>Resume</span>
-                          </button>
-                        )}
-                        <button
-                          type="button"
-                          onClick={() => onTeacherTimerControl({ action: 'add-minute' })}
-                          className="py-1.5 px-2.5 rounded-[2px] border oh-btn text-xs font-mono font-semibold text-slate-700 cursor-pointer"
-                          title="Add 1 minute"
-                        >
-                          +1m
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            onTeacherTimerControl({ action: 'stop' });
-                            setShowTimerMenu(false);
-                          }}
-                          className="flex items-center justify-center gap-1 py-1.5 px-2.5 rounded-[2px] border border-red-200 bg-red-50 text-red-600 hover:bg-red-100 text-xs font-semibold cursor-pointer"
-                          title="Stop and clear timer"
-                        >
-                          <RotateCcw size={12} />
-                          <span>Stop</span>
-                        </button>
-                      </div>
-                    )}
-
-                    {/* Auto-Lock on Expire Option */}
-                    <label className="flex items-center gap-2 pt-2 border-t border-slate-200 text-xs text-slate-700 cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={Boolean(timer?.autoLockOnExpire)}
-                        onChange={(e) =>
-                          onTeacherTimerControl({
-                            action: 'set-autolock',
-                            autoLockOnExpire: e.target.checked,
-                          })
-                        }
-                        className="rounded-[2px] border-[#CBD5E1] text-brand-600 focus:ring-brand-500"
-                      />
-                      <span>Auto-lock board when time expires</span>
-                    </label>
-                  </div>
-                </div>
-              )}
-            </div>
+            <ClassroomTimerControl timer={timer} onTeacherTimerControl={onTeacherTimerControl} />
 
             <span aria-hidden="true">·</span>
 
@@ -903,7 +780,7 @@ export function TeacherClassroomBar({
         </div>
       ) : (
         /* Student Status Banner (Breakout / Individual Board Indicator, Active Timer, or Lock Banner) */
-        (breakoutConfig.mode !== 'main' || isCanvasLocked || timer?.isRunning || displayRemainingMs > 0) && (
+        (breakoutConfig.mode !== 'main' || isCanvasLocked || timerHasTime(timer)) && (
           <div className="oh-chrome-bar px-4 py-1.5 border-b border-brand-300 flex flex-wrap items-center justify-between gap-2 text-xs text-slate-800 z-10">
             <div className="flex items-center gap-2">
               <span className="font-display font-semibold text-brand-900">Active Board: {activeBoardTitle}</span>
@@ -914,24 +791,7 @@ export function TeacherClassroomBar({
             </div>
 
             <div className="flex items-center gap-3">
-              {(timer?.isRunning || displayRemainingMs > 0) && (
-                <span
-                  className={cn(
-                    'flex items-center gap-1.5 px-2.5 py-0.5 rounded-[2px] border font-mono tabular-nums font-bold text-xs',
-                    timer?.isRunning
-                      ? displayRemainingMs <= 60000
-                        ? 'bg-red-600 border-red-700 text-white animate-pulse'
-                        : 'bg-slate-900 border-[#243044] text-amber-300'
-                      : 'bg-amber-200 border-amber-400 text-slate-900'
-                  )}
-                >
-                  <Timer size={12} />
-                  <span>
-                    {formatTimerMs(displayRemainingMs)}
-                    {!timer?.isRunning ? ' (Paused)' : ''}
-                  </span>
-                </span>
-              )}
+              <StudentTimerBadge timer={timer} />
 
               {breakoutConfig.mode === 'groups' && breakoutConfig.allowSelfSelect && (
                 <div className="flex items-center gap-1.5">
