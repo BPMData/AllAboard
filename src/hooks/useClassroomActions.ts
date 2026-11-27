@@ -511,6 +511,7 @@ export function useClassroomActions({ connection, roomState, roomSetters, lobby 
       ...(roomSettings.bannedUsers || []).map((u) => u.name),
     ].filter((v): v is string => typeof v === 'string' && v.trim().length >= 2);
     // Recomputed when the dialog opens (showProblemReport), so a PIN saved since then is included.
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- showProblemReport re-reads the saved PIN from localStorage on open
   }, [roomId, effectiveRoomId, userName, initialTeacherPin, users, roomSettings.bannedUsers, showProblemReport]);
 
   /** App renders `<ProblemReportModal>` from this while `isOpen`. */

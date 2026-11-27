@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import type { LessonRequest } from './LessonPackModals';
 import type { BreakoutRoundMeta, CanvasElement, RoomBackground, SubBoardData, User } from '../types';
 import {
@@ -80,7 +80,10 @@ export function SendWorksheetModal({
 }: SendWorksheetModalProps) {
   const individual = round.mode === 'individual';
   const saved = individual ? roundVariants : null;
-  const nameOf = (userId: string | undefined) => (userId ? (users.find((u) => u.userId === userId)?.name ?? '') : '');
+  const nameOf = useCallback(
+    (userId: string | undefined) => (userId ? (users.find((u) => u.userId === userId)?.name ?? '') : ''),
+    [users]
+  );
   // Students are dealt out alphabetically by name (the same order the server uses at launch), then by board title.
   const sortedBoards = useMemo(
     () =>
@@ -92,7 +95,7 @@ export function SendWorksheetModal({
           a.title.localeCompare(b.title, undefined, { numeric: true })
         );
       }),
-    [boards, users]
+    [boards, nameOf]
   );
   const [initial] = useState(() => initialVariants(roundWorksheet, saved));
   const [variants, setVariants] = useState<Variant[]>(initial);
@@ -132,7 +135,7 @@ export function SendWorksheetModal({
       }
     }
     return out;
-    // Computed once from what the round had when the form opened.
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- computed once from what the round had when the form opened
   }, []);
 
   const letters = variants.map((v) => v.letter);

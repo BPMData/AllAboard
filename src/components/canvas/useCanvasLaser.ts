@@ -32,8 +32,9 @@ export function useCanvasLaser({ laserSocket, activeBoardId, isTeacher, userId, 
       laserSocket.off('laser-pulse', receive);
     };
   }, [laserSocket, activeBoardId, addLaserPoint, activePointerIdRef]);
+  const hasLaserPoints = laserPoints.length > 0;
   useEffect(() => {
-    if (!laserPoints.length) return;
+    if (!hasLaserPoints) return;
     let frame = 0;
     const tick = () => {
       const now = performance.now();
@@ -43,7 +44,7 @@ export function useCanvasLaser({ laserSocket, activeBoardId, isTeacher, userId, 
     };
     frame = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(frame);
-  }, [laserPoints.length > 0]);
+  }, [hasLaserPoints]);
   const sendLaserPoint = (world: { x: number; y: number }, force = false) => {
     if (!isTeacher || !laserStrokeRef.current) return;
     const now = performance.now();
