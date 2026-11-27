@@ -5,9 +5,24 @@ import { getRoomSettingsPayload, getRosterPayload, serializeSubBoards } from './
 import type { RoomState, SocketMeta, SubBoardState, TypedIo, TypedSocket } from './types.ts';
 
 type DrawingChange = { upsert?: string[]; removed?: string[]; full?: boolean };
-export function createBoardChannels({ io, rooms, socketMeta, scheduleSaveToDisk }: { io: TypedIo; rooms: Map<string, RoomState>; socketMeta: Map<string, SocketMeta>; scheduleSaveToDisk: (room: RoomState, immediate?: boolean) => void }) {
+export function createBoardChannels({
+  io,
+  rooms,
+  socketMeta,
+  scheduleSaveToDisk,
+}: {
+  io: TypedIo;
+  rooms: Map<string, RoomState>;
+  socketMeta: Map<string, SocketMeta>;
+  scheduleSaveToDisk: (room: RoomState, immediate?: boolean) => void;
+}) {
+  /** roomId → boardId → changes since the last digest. */
   const pendingDigests = new Map<string, Map<string, BoardChanges>>();
-  const pendingCursors = new Map<string, Map<string, { socketId: string; cursor: Parameters<ClientToServerEvents['cursor-move']>[0] }>>();
+  /** board channel → userId → latest cursor (and the socket that sent it). */
+  const pendingCursors = new Map<
+    string,
+    Map<string, { socketId: string; cursor: Parameters<ClientToServerEvents['cursor-move']>[0] }>
+  >();
   function boardChannel(roomId: string, boardId: string): string {
     return `${roomId}\u0000board:${boardId}`;
   }
@@ -16,6 +31,7 @@ export function createBoardChannels({ io, rooms, socketMeta, scheduleSaveToDisk 
     return `${roomId}\u0000teachers`;
   }
 
+  /** Viewers of this board. Ephemeral events also use this channel. */
   function boardAudience(roomId: string, boardId: string | undefined): string {
     return boardChannel(roomId, boardId || 'main');
   }
@@ -25,11 +41,7 @@ export function createBoardChannels({ io, rooms, socketMeta, scheduleSaveToDisk 
     return room.subBoards.get(boardId)?.elements ?? null;
   }
 
-  function noteChange(
-    room: RoomState,
-    boardId: string | undefined,
-    change: DrawingChange
-  ) {
+  function noteChange(room: RoomState, boardId: string | undefined, change: DrawingChange) {
     const bId = boardId || 'main';
     let boards = pendingDigests.get(room.id);
     if (!boards) pendingDigests.set(room.id, (boards = new Map()));
@@ -79,6 +91,10 @@ export function createBoardChannels({ io, rooms, socketMeta, scheduleSaveToDisk 
     }
   }
 
+  /**
+   * Puts the socket in the right board channel (students: their assigned board; teachers: the board they view) and,
+   * for teachers, the digest channel. With `catchUp`, a socket that moved is sent the state it missed.
+   */
   function placeSocket(socketId: string, room: RoomState, catchUp: boolean) {
     const meta = socketMeta.get(socketId);
     const socket = io.sockets.sockets.get(socketId);
@@ -126,6 +142,7 @@ export function createBoardChannels({ io, rooms, socketMeta, scheduleSaveToDisk 
     }
   }
 
+  /** Re-places every socket in the room. Call whenever roles, breakout mode or board assignments may have changed. */
   function syncBoardChannels(room: RoomState, catchUp = true) {
     const ids = io.sockets.adapter.rooms.get(room.id);
     if (!ids) return;
@@ -142,6 +159,11 @@ export function createBoardChannels({ io, rooms, socketMeta, scheduleSaveToDisk 
     io.to(room.id).emit('room-settings', getRoomSettingsPayload(room));
   }
 
+  /**
+   * Sub-boards as one user should receive them. Teachers get everything. Students get every board's metadata and
+   * background but only their *own* board's ink and chat, since they never see the rest (and placeSocket sends a
+   * fresh copy when they move). In a 20-board breakout this makes each student's copy ~20x smaller.
+   */
   function subBoardsFor(room: RoomState, userId: string): Record<string, SubBoardState> {
     const all = serializeSubBoards(room.subBoards);
     if (room.usersByUserId.get(userId)?.isTeacher) return all;
@@ -173,11 +195,28 @@ export function createBoardChannels({ io, rooms, socketMeta, scheduleSaveToDisk 
     }
   }
 
+  /** Teacher-only: the round templates and their ink, as sent with `init`, `breakout-sync` and `round-templates-sync`. */
   function teacherTemplatesPayload(room: RoomState) {
-    return { roundTemplates: room.roundTemplates, roundTemplateInk: room.roundTemplateInk, roundVariants: room.roundVariants };
+    return {
+      roundTemplates: room.roundTemplates,
+      roundTemplateInk: room.roundTemplateInk,
+      roundVariants: room.roundVariants,
+    };
   }
+  /** Publish an accepted edit to its viewers, the teacher overview, and the room store. */
   function publishDrawingEdit(socket: TypedSocket) {
-    return function publishDrawingEdit<K extends 'element-start' | 'element-append-points' | 'element-update' | 'elements-batch-updated' | 'elements-batch-added' | 'elements-batch-removed' | 'elements-replaced' | 'element-removed' | 'state-sync'>(
+    return function publishDrawingEdit<
+      K extends
+        | 'element-start'
+        | 'element-append-points'
+        | 'element-update'
+        | 'elements-batch-updated'
+        | 'elements-batch-added'
+        | 'elements-batch-removed'
+        | 'elements-replaced'
+        | 'element-removed'
+        | 'state-sync',
+    >(
       room: RoomState,
       change: DrawingChange,
       event: K,
@@ -192,8 +231,24 @@ export function createBoardChannels({ io, rooms, socketMeta, scheduleSaveToDisk 
       // Socket.IO decorates broadcast acknowledgments; drawing events have no acknowledgments.
       const emit = channel.emit as (event: K, payload: Parameters<ServerToClientEvents[K]>[0]) => boolean;
       emit.call(channel, event, payload);
-    }
-
+    };
   }
-  return { publishDrawingEdit, boardChannel, teacherChannel, boardAudience, boardElementsOf, noteChange, flushDigests, flushCursors, placeSocket, syncBoardChannels, broadcastRoster, broadcastRoomSettings, subBoardsFor, broadcastBreakoutSync, teacherTemplatesPayload, pendingCursors };
+  return {
+    publishDrawingEdit,
+    boardChannel,
+    teacherChannel,
+    boardAudience,
+    boardElementsOf,
+    noteChange,
+    flushDigests,
+    flushCursors,
+    placeSocket,
+    syncBoardChannels,
+    broadcastRoster,
+    broadcastRoomSettings,
+    subBoardsFor,
+    broadcastBreakoutSync,
+    teacherTemplatesPayload,
+    pendingCursors,
+  };
 }

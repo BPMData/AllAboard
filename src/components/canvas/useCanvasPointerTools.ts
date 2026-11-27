@@ -15,12 +15,9 @@ import {
   liveStart,
   pointerKind,
   stampsHitByEraser,
-  translateElement
+  translateElement,
 } from '../../lib/inkCore';
-import {
-  getTeacherStampAppearance,
-  isTeacherStampKind
-} from '../../lib/stamps';
+import { getTeacherStampAppearance, isTeacherStampKind } from '../../lib/stamps';
 import {
   CanvasElement,
   HollowShapeKind,
@@ -28,19 +25,27 @@ import {
   RoomBackground,
   StampKind,
   SubBoardData,
-  ToolType
+  ToolType,
 } from '../../types';
 import { PALM_ERASER_SCREEN_PX } from './canvasHelpers';
 import { useCanvasNoteSelection } from './useCanvasNoteSelection';
 
-
 import type { HistoryAction } from './canvasHelpers';
 interface Options {
-  onCursorMove: (cursor: Omit<RemoteCursor, "updatedAt">) => void;
+  onCursorMove: (cursor: Omit<RemoteCursor, 'updatedAt'>) => void;
   noteTextareaRef: React.RefObject<HTMLTextAreaElement>;
-  editingNote: { existingId: string | null; worldX: number; worldY: number; value: string; color: string; strokeWidth: number; fontSize: number; openedAt: number; };
+  editingNote: {
+    existingId: string | null;
+    worldX: number;
+    worldY: number;
+    value: string;
+    color: string;
+    strokeWidth: number;
+    fontSize: number;
+    openedAt: number;
+  };
   stageScale: number;
-  stagePos: { x: number; y: number; };
+  stagePos: { x: number; y: number };
   selectedElements: CanvasElement[];
   elements: CanvasElement[];
   setClipboardElements: React.Dispatch<React.SetStateAction<CanvasElement[]>>;
@@ -52,27 +57,38 @@ interface Options {
   recordUndo: (action: HistoryAction, boardId?: string) => void;
   onElementsBatchAdd: (elements: CanvasElement[], targetBoardId?: string) => void;
   setSelectedIds: React.Dispatch<React.SetStateAction<string[]>>;
-  setPastePrompt: React.Dispatch<React.SetStateAction<{ worldX: number; worldY: number; }>>;
+  setPastePrompt: React.Dispatch<React.SetStateAction<{ worldX: number; worldY: number }>>;
   onElementsBatchRemove: (ids: string[]) => void;
   isTeacher: boolean;
   subBoards: Record<string, SubBoardData>;
   setSentFeedback: React.Dispatch<React.SetStateAction<string>>;
-  setEditingNote: React.Dispatch<React.SetStateAction<{ existingId: string | null; worldX: number; worldY: number; value: string; color: string; strokeWidth: number; fontSize: number; openedAt: number; }>>;
+  setEditingNote: React.Dispatch<
+    React.SetStateAction<{
+      existingId: string | null;
+      worldX: number;
+      worldY: number;
+      value: string;
+      color: string;
+      strokeWidth: number;
+      fontSize: number;
+      openedAt: number;
+    }>
+  >;
   noteClosedAtRef: React.RefObject<number>;
   onElementRemove: (id: string) => void;
-  onElementUpdate: (patch: Partial<CanvasElement> & { id: string; bringToFront?: boolean; }) => void;
+  onElementUpdate: (patch: Partial<CanvasElement> & { id: string; bringToFront?: boolean }) => void;
   onElementStart: (element: CanvasElement) => void;
   allGoneNoteIds: Set<string>;
   penColor: string;
   setTextFontSize: React.Dispatch<React.SetStateAction<number>>;
   penWidth: number;
   textFontSize: number;
-  setStagePos: React.Dispatch<React.SetStateAction<{ x: number; y: number; }>>;
+  setStagePos: React.Dispatch<React.SetStateAction<{ x: number; y: number }>>;
   setIsSpacePressed: React.Dispatch<React.SetStateAction<boolean>>;
   performRedo: () => void;
   performUndo: () => void;
-  pastePrompt: { worldX: number; worldY: number; };
-  worldPos: { x: number; y: number; };
+  pastePrompt: { worldX: number; worldY: number };
+  worldPos: { x: number; y: number };
   setShowHotkeysModal: React.Dispatch<React.SetStateAction<boolean>>;
   setShowHollowMenu: React.Dispatch<React.SetStateAction<boolean>>;
   setShowHlMenu: React.Dispatch<React.SetStateAction<boolean>>;
@@ -90,13 +106,13 @@ interface Options {
   setShowStatusMenu: React.Dispatch<React.SetStateAction<boolean>>;
   showTextSizeMenu: boolean;
   setShowTextSizeMenu: React.Dispatch<React.SetStateAction<boolean>>;
-  getLocalPosFromEvent: (clientX: number, clientY: number) => { x: number; y: number; };
-  screenToWorld: (sx: number, sy: number) => { x: number; y: number; };
+  getLocalPosFromEvent: (clientX: number, clientY: number) => { x: number; y: number };
+  screenToWorld: (sx: number, sy: number) => { x: number; y: number };
   fingerScrolls: boolean;
   effectiveTool: ToolType;
   containerRef: React.RefObject<HTMLDivElement>;
   laserStrokeRef: React.RefObject<string>;
-  sendLaserPoint: (world: { x: number; y: number; }, force?: boolean) => void;
+  sendLaserPoint: (world: { x: number; y: number }, force?: boolean) => void;
   setIsMovingBg: React.Dispatch<React.SetStateAction<boolean>>;
   selectionBounds: [number, number, number, number];
   selectedIds: string[];
@@ -115,22 +131,22 @@ interface Options {
   hlStrength: number;
   hollowShape: HollowShapeKind;
   hollowWeight: number;
-  setScreenPos: React.Dispatch<React.SetStateAction<{ x: number; y: number; }>>;
-  setWorldPos: React.Dispatch<React.SetStateAction<{ x: number; y: number; }>>;
+  setScreenPos: React.Dispatch<React.SetStateAction<{ x: number; y: number }>>;
+  setWorldPos: React.Dispatch<React.SetStateAction<{ x: number; y: number }>>;
   pointerOverCanvas: boolean;
   setPointerOverCanvas: React.Dispatch<React.SetStateAction<boolean>>;
   isDrawing: boolean;
   isPanning: boolean;
   setHoveredNoteId: React.Dispatch<React.SetStateAction<string>>;
   hoveredNoteId: string;
-  setDraggingNotePreview: React.Dispatch<React.SetStateAction<{ id: string; dx: number; dy: number; }>>;
-  setSelectionDragOffset: React.Dispatch<React.SetStateAction<{ dx: number; dy: number; }>>;
+  setDraggingNotePreview: React.Dispatch<React.SetStateAction<{ id: string; dx: number; dy: number }>>;
+  setSelectionDragOffset: React.Dispatch<React.SetStateAction<{ dx: number; dy: number }>>;
   isMovingBg: boolean;
   onTeacherUpdateBackground: (patch: Partial<RoomBackground>) => void;
   currentElementId: string;
   smoothLevel: number;
   onElementAppendPoints: (id: string, newPoints: number[]) => void;
-  onElementsBatchUpdate: (updates: Array<Partial<CanvasElement> & { id: string; }>, bringToFront?: boolean) => void;
+  onElementsBatchUpdate: (updates: Array<Partial<CanvasElement> & { id: string }>, bringToFront?: boolean) => void;
   onElementsReplace: (groups: ElementGroup<CanvasElement>[]) => void;
 }
 export function useCanvasPointerTools({
@@ -229,7 +245,7 @@ export function useCanvasPointerTools({
   smoothLevel,
   onElementAppendPoints,
   onElementsBatchUpdate,
-  onElementsReplace
+  onElementsReplace,
 }: Options) {
   const panStartRef = useRef<{
     x: number;
@@ -294,25 +310,46 @@ export function useCanvasPointerTools({
     []
   );
 
-  const { handleCopySelection, handlePasteElements, handleDuplicateSelection, handleDeleteSelection, handleSendSelectionToBoard, commitEditingNote, openOrTapNoteAt } = useCanvasNoteSelection({ noteTextareaRef, editingNote, stageScale, stagePos, selectedElements, elements, setClipboardElements, canDraw, clipboardElements, activeBoardId, userId, userName, recordUndo, onElementsBatchAdd, setSelectedIds, setPastePrompt, onElementsBatchRemove, isTeacher, subBoards, setSentFeedback, setEditingNote, noteClosedAtRef, onElementRemove, onElementUpdate, onElementStart, allGoneNoteIds, penColor, setTextFontSize, penWidth, textFontSize });
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+  const {
+    handleCopySelection,
+    handlePasteElements,
+    handleDuplicateSelection,
+    handleDeleteSelection,
+    handleSendSelectionToBoard,
+    commitEditingNote,
+    openOrTapNoteAt,
+  } = useCanvasNoteSelection({
+    noteTextareaRef,
+    editingNote,
+    stageScale,
+    stagePos,
+    selectedElements,
+    elements,
+    setClipboardElements,
+    canDraw,
+    clipboardElements,
+    activeBoardId,
+    userId,
+    userName,
+    recordUndo,
+    onElementsBatchAdd,
+    setSelectedIds,
+    setPastePrompt,
+    onElementsBatchRemove,
+    isTeacher,
+    subBoards,
+    setSentFeedback,
+    setEditingNote,
+    noteClosedAtRef,
+    onElementRemove,
+    onElementUpdate,
+    onElementStart,
+    allGoneNoteIds,
+    penColor,
+    setTextFontSize,
+    penWidth,
+    textFontSize,
+  });
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -506,7 +543,11 @@ export function useCanvasPointerTools({
     if (effectiveTool === 'laser' && isTeacher) {
       activePointerIdRef.current = e.pointerId;
       laserStrokeRef.current = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
-      try { containerRef.current?.setPointerCapture(e.pointerId); } catch { /* Capture may fail if pointer ended. */ }
+      try {
+        containerRef.current?.setPointerCapture(e.pointerId);
+      } catch {
+        /* Capture may fail if pointer ended. */
+      }
       sendLaserPoint(world, true);
       e.preventDefault();
       return;
@@ -570,20 +611,10 @@ export function useCanvasPointerTools({
           loopPoints: [],
         };
       } else {
-        const hitEl = hitElementAtPoint(
-          elements,
-          allGoneNoteIds,
-          world.x,
-          world.y,
-          10 / stageScale,
-          userId,
-          isTeacher
-        );
+        const hitEl = hitElementAtPoint(elements, allGoneNoteIds, world.x, world.y, 10 / stageScale, userId, isTeacher);
         if (hitEl) {
           const prevIds = [...selectedIds];
-          const combinedShiftIds = prevIds.includes(hitEl.id)
-            ? prevIds
-            : [...prevIds, hitEl.id];
+          const combinedShiftIds = prevIds.includes(hitEl.id) ? prevIds : [...prevIds, hitEl.id];
           if (!e.shiftKey) {
             setSelectedIds([hitEl.id]);
           }
@@ -625,15 +656,7 @@ export function useCanvasPointerTools({
 
     // Type tool: drag existing note directly (>= 6px moves it, tap < 6px edits), or drag/tap empty canvas
     if (effectiveTool === 'text' && kind !== 'palm') {
-      const hitNote = hitEditableNote(
-        elements,
-        allGoneNoteIds,
-        world.x,
-        world.y,
-        10 / stageScale,
-        userId,
-        isTeacher
-      );
+      const hitNote = hitEditableNote(elements, allGoneNoteIds, world.x, world.y, 10 / stageScale, userId, isTeacher);
       if (hitNote && hitNote.id !== editingNote?.existingId) {
         if (editingNote) {
           commitEditingNote();
@@ -687,16 +710,13 @@ export function useCanvasPointerTools({
 
     // One-click Stamp placement (when not using palm eraser)
     if (strokeTool === 'stamp') {
-      const effectiveStampKind: StampKind =
-        !isTeacher && isTeacherStampKind(stampKind) ? 'check' : stampKind;
+      const effectiveStampKind: StampKind = !isTeacher && isTeacherStampKind(stampKind) ? 'check' : stampKind;
       if (effectiveStampKind === 'username' && nameStampTaken) {
         setTool('select'); // Their stamp is already down, so let them drag it instead
         return;
       }
       const customText =
-        effectiveStampKind === 'teacher-custom'
-          ? customTeacherStampText.trim().slice(0, 24) || 'FEEDBACK'
-          : undefined;
+        effectiveStampKind === 'teacher-custom' ? customTeacherStampText.trim().slice(0, 24) || 'FEEDBACK' : undefined;
       const teacherMeta = getTeacherStampAppearance(
         effectiveStampKind,
         customText,
@@ -769,17 +789,10 @@ export function useCanvasPointerTools({
     } else {
       // Freehand stroke: solid, hollow, spray, highlighter (see-through or cover), or eraser (personal or palm)
       const effectiveStrokeWidth =
-        kind === 'palm'
-          ? Math.max(12, Math.round((PALM_ERASER_SCREEN_PX / stageScale) * 10) / 10)
-          : strokeWidth;
+        kind === 'palm' ? Math.max(12, Math.round((PALM_ERASER_SCREEN_PX / stageScale) * 10) / 10) : strokeWidth;
 
       const isHlCover = strokeTool === 'highlighter' && isCoverMode;
-      const strokeColor =
-        strokeTool === 'highlighter'
-          ? isHlCover
-            ? coverColor
-            : hlInk(hlColor, hlStrength)
-          : color;
+      const strokeColor = strokeTool === 'highlighter' ? (isHlCover ? coverColor : hlInk(hlColor, hlStrength)) : color;
 
       activeStrokePointsRef.current = [world.x, world.y];
       liveSmoothRef.current = liveStart(world.x, world.y);
@@ -815,36 +828,17 @@ export function useCanvasPointerTools({
     // Highlight hover state when over an editable text note in Type mode or selectable item in Select mode
     if (!isDrawing && !isPanning && !draggingNoteRef.current && !selectGestureRef.current && canDraw) {
       if (effectiveTool === 'text') {
-        const hit = hitEditableNote(
-          elements,
-          allGoneNoteIds,
-          world.x,
-          world.y,
-          8 / stageScale,
-          userId,
-          isTeacher
-        );
+        const hit = hitEditableNote(elements, allGoneNoteIds, world.x, world.y, 8 / stageScale, userId, isTeacher);
         setHoveredNoteId(hit ? hit.id : null);
       } else if (effectiveTool === 'select') {
-        const hit = hitElementAtPoint(
-          elements,
-          allGoneNoteIds,
-          world.x,
-          world.y,
-          10 / stageScale,
-          userId,
-          isTeacher
-        );
+        const hit = hitElementAtPoint(elements, allGoneNoteIds, world.x, world.y, 10 / stageScale, userId, isTeacher);
         if (hit) {
           setHoveredNoteId(hit.id);
         } else if (selectionBounds) {
           const pad = 8 / stageScale;
           const [sx1, sy1, sx2, sy2] = selectionBounds;
           const insideBox =
-            world.x >= sx1 - pad &&
-            world.x <= sx2 + pad &&
-            world.y >= sy1 - pad &&
-            world.y <= sy2 + pad;
+            world.x >= sx1 - pad && world.x <= sx2 + pad && world.y >= sy1 - pad && world.y <= sy2 + pad;
           setHoveredNoteId(insideBox ? '__selection_box__' : null);
         } else {
           setHoveredNoteId(null);
@@ -916,12 +910,7 @@ export function useCanvasPointerTools({
       if (g.mode === 'drag-selection' || g.mode === 'drag-single') {
         if (!g.moved && distClient >= 6) {
           g.moved = true;
-          if (
-            g.mode === 'drag-single' &&
-            g.shiftKey &&
-            g.singleEl &&
-            !g.prevSelectedIds.includes(g.singleEl.id)
-          ) {
+          if (g.mode === 'drag-single' && g.shiftKey && g.singleEl && !g.prevSelectedIds.includes(g.singleEl.id)) {
             setSelectedIds(g.targetIds);
           }
         }
@@ -1005,17 +994,12 @@ export function useCanvasPointerTools({
       // sample the frame pointer event directly with a larger step threshold so React/Konva isn't flooded.
       const rawEvt = e.nativeEvent;
       const coalesced: PointerEvent[] =
-        smoothLevel > 0 &&
-          typeof rawEvt.getCoalescedEvents === 'function' &&
-          rawEvt.getCoalescedEvents().length > 0
+        smoothLevel > 0 && typeof rawEvt.getCoalescedEvents === 'function' && rawEvt.getCoalescedEvents().length > 0
           ? rawEvt.getCoalescedEvents()
           : [rawEvt];
 
       const appended: number[] = [];
-      const minDist =
-        smoothLevel === 0
-          ? Math.max(1.2, 1.5 / stageScale)
-          : Math.max(0.4, 0.7 / stageScale);
+      const minDist = smoothLevel === 0 ? Math.max(1.2, 1.5 / stageScale) : Math.max(0.4, 0.7 / stageScale);
       for (const ev of coalesced) {
         const evPos = getLocalPosFromEvent(ev.clientX, ev.clientY);
         const evWorld = screenToWorld(evPos.x, evPos.y);
@@ -1132,9 +1116,7 @@ export function useCanvasPointerTools({
               const updates = afterItems.map((a) =>
                 a.points ? { id: a.id, points: a.points } : { id: a.id, x: a.x, y: a.y }
               );
-              const bringToFront = !beforeItems.some((el) =>
-                hasSubsequentOverlappingEraser(el, elements)
-              );
+              const bringToFront = !beforeItems.some((el) => hasSubsequentOverlappingEraser(el, elements));
               recordUndo({
                 kind: 'update',
                 before: beforeItems,
@@ -1147,19 +1129,11 @@ export function useCanvasPointerTools({
         } else if (g.singleEl && g.shiftKey) {
           const hitId = g.singleEl.id;
           const prev = g.prevSelectedIds;
-          setSelectedIds(
-            prev.includes(hitId) ? prev.filter((id) => id !== hitId) : [...prev, hitId]
-          );
+          setSelectedIds(prev.includes(hitId) ? prev.filter((id) => id !== hitId) : [...prev, hitId]);
         }
       } else if (g.mode === 'lasso') {
         if (g.moved && g.loopPoints.length >= 6) {
-          const picked = lassoSelectElements(
-            elements,
-            allGoneNoteIds,
-            g.loopPoints,
-            userId,
-            isTeacher
-          );
+          const picked = lassoSelectElements(elements, allGoneNoteIds, g.loopPoints, userId, isTeacher);
           const pickedIds = picked.map((el) => el.id);
           if (g.shiftKey) {
             const merged = new Set([...g.prevSelectedIds, ...pickedIds]);
@@ -1224,12 +1198,7 @@ export function useCanvasPointerTools({
       }
 
       // Catch up smoothed stroke to exact pen-lift point (`liveLiftPoint`)
-      if (
-        e.type === 'pointerup' &&
-        strokeTool !== 'rect' &&
-        strokeTool !== 'circle' &&
-        strokeTool !== 'line'
-      ) {
+      if (e.type === 'pointerup' && strokeTool !== 'rect' && strokeTool !== 'circle' && strokeTool !== 'line') {
         const liftPt = liveLiftPoint(pts, world.x, world.y, Math.max(0.2, 0.5 / stageScale));
         if (liftPt) {
           pts.push(liftPt[0], liftPt[1]);
@@ -1272,19 +1241,23 @@ export function useCanvasPointerTools({
     if (!canDraw) return;
     const pos = getLocalPosFromEvent(e.clientX, e.clientY);
     const world = screenToWorld(pos.x, pos.y);
-    const hit = hitEditableNote(
-      elements,
-      allGoneNoteIds,
-      world.x,
-      world.y,
-      10 / stageScale,
-      userId,
-      isTeacher
-    );
+    const hit = hitEditableNote(elements, allGoneNoteIds, world.x, world.y, 10 / stageScale, userId, isTeacher);
     if (hit) {
       e.preventDefault();
       openOrTapNoteAt(world.x, world.y, hit);
     }
   };
-  return { commitEditingNote, openOrTapNoteAt, handleCopySelection, handlePasteElements, handleDuplicateSelection, handleDeleteSelection, handleSendSelectionToBoard, handleViewportPointerDown, handleViewportPointerMove, handleViewportPointerUp, handleViewportDoubleClick };
+  return {
+    commitEditingNote,
+    openOrTapNoteAt,
+    handleCopySelection,
+    handlePasteElements,
+    handleDuplicateSelection,
+    handleDeleteSelection,
+    handleSendSelectionToBoard,
+    handleViewportPointerDown,
+    handleViewportPointerMove,
+    handleViewportPointerUp,
+    handleViewportDoubleClick,
+  };
 }

@@ -1,16 +1,15 @@
 import React, { useCallback } from 'react';
 import { applyElementGroups, type ElementGroup } from '../lib/elementGroups';
-import {
-  CanvasElement,
-  RemoteCursor,
-  RoomAvailability,
-  SubBoardData
-} from '../types';
-
+import { CanvasElement, RemoteCursor, RoomAvailability, SubBoardData } from '../types';
 
 import type { useRoomSocket } from './useRoomSocket';
 type Setter<T> = React.Dispatch<React.SetStateAction<T>>;
-type RoomPrompt = { source: 'lobby' | 'switch'; availability: RoomAvailability; userName?: string; teacherPin?: string };
+type RoomPrompt = {
+  source: 'lobby' | 'switch';
+  availability: RoomAvailability;
+  userName?: string;
+  teacherPin?: string;
+};
 type PurgePrompt = { targetUserId: string; targetName: string; mode: 'kick' | 'ban' };
 
 interface Options {
@@ -29,10 +28,8 @@ export function useDrawingActions({
   emitDrawing,
   userId,
   setElements,
-  enqueueOutgoingPoints
+  enqueueOutgoingPoints,
 }: Options) {
-
-
   const handleElementStart = useCallback(
     (element: CanvasElement) => {
       const withBoard = { ...element, boardId: activeBoardId };
@@ -55,15 +52,12 @@ export function useDrawingActions({
     [socket, activeBoardId]
   );
 
-
   const handleElementAppendPoints = useCallback(
     (id: string, newPoints: number[]) => {
       if (activeBoardId === 'main') {
         setElements((prev) =>
           prev.map((el) =>
-            el.id === id && Array.isArray(el.points)
-              ? { ...el, points: [...el.points, ...newPoints] }
-              : el
+            el.id === id && Array.isArray(el.points) ? { ...el, points: [...el.points, ...newPoints] } : el
           )
         );
       } else {
@@ -75,9 +69,7 @@ export function useDrawingActions({
             [activeBoardId]: {
               ...sb,
               elements: sb.elements.map((el) =>
-                el.id === id && Array.isArray(el.points)
-                  ? { ...el, points: [...el.points, ...newPoints] }
-                  : el
+                el.id === id && Array.isArray(el.points) ? { ...el, points: [...el.points, ...newPoints] } : el
               ),
             },
           };
@@ -89,7 +81,6 @@ export function useDrawingActions({
     },
     [socket, activeBoardId]
   );
-
 
   const updateActiveBoardElements = useCallback(
     (transform: (list: CanvasElement[]) => CanvasElement[]) => {
@@ -108,7 +99,6 @@ export function useDrawingActions({
     },
     [activeBoardId]
   );
-
 
   const handleElementUpdate = useCallback(
     (patch: Partial<CanvasElement> & { id: string; bringToFront?: boolean }) => {
@@ -132,7 +122,6 @@ export function useDrawingActions({
     },
     [socket, activeBoardId, updateActiveBoardElements]
   );
-
 
   const handleElementsBatchUpdate = useCallback(
     (updates: Array<Partial<CanvasElement> & { id: string }>, bringToFront = false) => {
@@ -163,7 +152,6 @@ export function useDrawingActions({
     },
     [socket, activeBoardId, updateActiveBoardElements]
   );
-
 
   const handleElementsBatchAdd = useCallback(
     (newElements: CanvasElement[], targetBoardId?: string) => {
@@ -205,7 +193,6 @@ export function useDrawingActions({
     [socket, activeBoardId, updateActiveBoardElements]
   );
 
-
   const handleElementsBatchRemove = useCallback(
     (ids: string[]) => {
       if (!ids || ids.length === 0) return;
@@ -217,7 +204,6 @@ export function useDrawingActions({
     },
     [socket, activeBoardId, updateActiveBoardElements]
   );
-
 
   /** Edits that keep stacking order (eraser split/remove and its undo). See src/lib/elementGroups.ts. */
   const handleElementsReplace = useCallback(
@@ -234,7 +220,6 @@ export function useDrawingActions({
     },
     [socket, activeBoardId, updateActiveBoardElements, emitDrawing]
   );
-
 
   const handleElementRemove = useCallback(
     (id: string) => {
@@ -260,7 +245,6 @@ export function useDrawingActions({
     [socket, activeBoardId]
   );
 
-
   const handleCursorMove = useCallback(
     (cursor: Omit<RemoteCursor, 'updatedAt'>) => {
       if (socket) {
@@ -270,20 +254,17 @@ export function useDrawingActions({
     [socket]
   );
 
-
   const handleUndo = useCallback(() => {
     if (socket) {
       emitDrawing(socket, 'undo', { userId, boardId: activeBoardId });
     }
   }, [socket, userId, activeBoardId]);
 
-
   const handleClearMine = useCallback(() => {
     if (socket) {
       emitDrawing(socket, 'clear-user-drawings', { targetUserId: userId, boardId: activeBoardId });
     }
   }, [socket, userId, activeBoardId]);
-
 
   const handleClearUserDrawings = useCallback(
     (targetUserId: string) => {
@@ -305,6 +286,6 @@ export function useDrawingActions({
     handleCursorMove,
     handleUndo,
     handleClearMine,
-    handleClearUserDrawings
+    handleClearUserDrawings,
   };
 }

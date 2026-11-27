@@ -16,7 +16,14 @@ isPreparedRound,
 import { isPhoneViewport } from '../lib/compactLayout';
 import type { ElementGroup } from '../lib/elementGroups';
 import { isGoogleDriveConfigured } from '../lib/googleConfig';
-import { GoogleError,downloadDriveFile,formatDownloadProgress,friendlyGoogleError,isWorksheetMime,pickDriveFile } from '../lib/googleDrive';
+import {
+  GoogleError,
+  downloadDriveFile,
+  formatDownloadProgress,
+  friendlyGoogleError,
+  isWorksheetMime,
+  pickDriveFile,
+} from '../lib/googleDrive';
 import {
 computeNotesGone,
 getNoteFontSize,
@@ -71,7 +78,19 @@ ToolType,
 User,
 type RestoreClassWork
 } from '../types';
-import { EMPTY_ROUND_TEMPLATES,EMPTY_ROUND_VARIANTS,EMPTY_TEMPLATE_INK,PAGE_GAP,TEXT_SIZE_DROPDOWN_PRESETS,getCanvasGridStyle,readLocalColor,readLocalGridMode,readLocalHollowShape,readLocalNum,saveLocal } from './canvas/canvasHelpers';
+import {
+  EMPTY_ROUND_TEMPLATES,
+  EMPTY_ROUND_VARIANTS,
+  EMPTY_TEMPLATE_INK,
+  PAGE_GAP,
+  TEXT_SIZE_DROPDOWN_PRESETS,
+  getCanvasGridStyle,
+  readLocalColor,
+  readLocalGridMode,
+  readLocalHollowShape,
+  readLocalNum,
+  saveLocal,
+} from './canvas/canvasHelpers';
 import { CanvasToolbar } from './canvas/CanvasToolbar';
 import { CanvasViewportOverlays } from './canvas/CanvasViewportOverlays';
 import { InkLayer,MultiplyHighlightLayer,UNFOCUSED_INK_OPACITY,WorksheetPageNode } from './canvas/KonvaLayers';
@@ -362,7 +381,26 @@ export default function Canvas({
     return combined;
   }, [elementsGroupedByUser]);
 
-  const { stageScale, setStageScale, stagePos, setStagePos, stageRef, containerRef, dimensions, screenToWorld, resetView, fitElementsAndBackgroundInView, fitAllContent, handleWheel, zoomStep, getLocalPosFromEvent } = useStageViewport({ elements, background, allGoneNoteIds });
+  const {
+    stageScale,
+    setStageScale,
+    stagePos,
+    setStagePos,
+    stageRef,
+    containerRef,
+    dimensions,
+    screenToWorld,
+    resetView,
+    fitElementsAndBackgroundInView,
+    fitAllContent,
+    handleWheel,
+    zoomStep,
+    getLocalPosFromEvent,
+  } = useStageViewport({
+    elements,
+    background,
+    allGoneNoteIds,
+  });
 
   const {
     isSpacePressed,
@@ -604,7 +642,18 @@ export default function Canvas({
   const [lessonModal, setLessonModal] = useState<'save' | 'load' | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const { laserPoints, laserNow, laserStrokeRef, sendLaserPoint } = useCanvasLaser({ laserSocket, activeBoardId, isTeacher, userId, activePointerIdRef });
+  const {
+    laserPoints,
+    laserNow,
+    laserStrokeRef,
+    sendLaserPoint,
+  } = useCanvasLaser({
+    laserSocket,
+    activeBoardId,
+    isTeacher,
+    userId,
+    activePointerIdRef,
+  });
 
   const canDraw = !isCanvasLocked || isTeacher;
   const effectiveTool: ToolType = !canDraw
@@ -797,7 +846,24 @@ export default function Canvas({
 
   // Per-board action-aware Undo & Redo history helpers
 
-  const { recordUndo, canLocalUndo, canRedo, performUndo, performRedo } = useCanvasHistory({ laserSocket, activeBoardId, onUndo, onElementsBatchRemove, onElementsBatchAdd, onElementsBatchUpdate, onElementsReplace, canDraw, setSelectedIds, setEditingNote });
+  const {
+    recordUndo,
+    canLocalUndo,
+    canRedo,
+    performUndo,
+    performRedo,
+  } = useCanvasHistory({
+    laserSocket,
+    activeBoardId,
+    onUndo,
+    onElementsBatchRemove,
+    onElementsBatchAdd,
+    onElementsBatchUpdate,
+    onElementsReplace,
+    canDraw,
+    setSelectedIds,
+    setEditingNote,
+  });
 
   // Helper to update active color, open note, or selected elements (`restyle`)
   const handleSelectColor = useCallback(
@@ -1230,161 +1296,157 @@ export default function Canvas({
 
       {/* Primary Drawing & Studio Toolbar (`data-keep-note` lets users restyle an open note without closing it) */}
       <CanvasToolbar
-  {...{
-    isChatHidden,
-    onShowChat,
-    unreadChatCount,
-    roomId,
-    onReportProblem,
-    isPhone,
-    setPhoneToolsOpen,
-    phoneToolsOpen,
-    strokeWidth,
-    tool,
-    color,
-    toolbarCollapsed,
-    canDraw,
-    editingNote,
-    commitEditingNote,
-    performUndo,
-    setTool,
-    effectiveTool,
-    isTeacher,
-    hollowMenuRef,
-    setShowHollowMenu,
-    showHollowMenu,
-    hollowShape,
-    setHollowShape,
-    hlMenuRef,
-    isCoverMode,
-    setShowHlMenu,
-    showHlMenu,
-    setIsCoverMode,
-    hlColor,
-    hlStrength,
-    setHlStrength,
-    coverColor,
-    setCoverColor,
-    canLocalUndo,
-    canRedo,
-    performRedo,
-    confirmClearMine,
-    setEditingNote,
-    elements,
-    userId,
-    allGoneNoteIds,
-    recordUndo,
-    setSelectedIds,
-    onClearMine,
-    setConfirmClearMine,
-    classWork,
-    handleExportPNG,
-    statusMenuRef,
-    setShowStatusMenu,
-    showStatusMenu,
-    myStatusOption,
-    myStatus,
-    onSetStatus,
-    setStampKind,
-    nameStampTaken,
-    stampKind,
-    userName,
-    customTeacherStampText,
-    setCustomTeacherStampText,
-    activeSwatches,
-    paletteMode,
-    handleSelectColor,
-    customColorInputRef,
-    handleSelectStrokeWidth,
-    hollowWidth,
-    hollowWeight,
-    handleSelectHollowWeight,
-    textSizeMenuRef,
-    setShowTextSizeMenu,
-    showTextSizeMenu,
-    selectedTextElements,
-    activeTextPreset,
-    activeTextSize,
-    handleSelectTextFontSize,
-    smoothLevel,
-    setSmoothLevel,
-    fingerScrolls,
-    setFingerScrolls
-  }}
-/>
+        isChatHidden={isChatHidden}
+        onShowChat={onShowChat}
+        unreadChatCount={unreadChatCount}
+        roomId={roomId}
+        onReportProblem={onReportProblem}
+        isPhone={isPhone}
+        setPhoneToolsOpen={setPhoneToolsOpen}
+        phoneToolsOpen={phoneToolsOpen}
+        strokeWidth={strokeWidth}
+        tool={tool}
+        color={color}
+        toolbarCollapsed={toolbarCollapsed}
+        canDraw={canDraw}
+        editingNote={editingNote}
+        commitEditingNote={commitEditingNote}
+        performUndo={performUndo}
+        setTool={setTool}
+        effectiveTool={effectiveTool}
+        isTeacher={isTeacher}
+        hollowMenuRef={hollowMenuRef}
+        setShowHollowMenu={setShowHollowMenu}
+        showHollowMenu={showHollowMenu}
+        hollowShape={hollowShape}
+        setHollowShape={setHollowShape}
+        hlMenuRef={hlMenuRef}
+        isCoverMode={isCoverMode}
+        setShowHlMenu={setShowHlMenu}
+        showHlMenu={showHlMenu}
+        setIsCoverMode={setIsCoverMode}
+        hlColor={hlColor}
+        hlStrength={hlStrength}
+        setHlStrength={setHlStrength}
+        coverColor={coverColor}
+        setCoverColor={setCoverColor}
+        canLocalUndo={canLocalUndo}
+        canRedo={canRedo}
+        performRedo={performRedo}
+        confirmClearMine={confirmClearMine}
+        setEditingNote={setEditingNote}
+        elements={elements}
+        userId={userId}
+        allGoneNoteIds={allGoneNoteIds}
+        recordUndo={recordUndo}
+        setSelectedIds={setSelectedIds}
+        onClearMine={onClearMine}
+        setConfirmClearMine={setConfirmClearMine}
+        classWork={classWork}
+        handleExportPNG={handleExportPNG}
+        statusMenuRef={statusMenuRef}
+        setShowStatusMenu={setShowStatusMenu}
+        showStatusMenu={showStatusMenu}
+        myStatusOption={myStatusOption}
+        myStatus={myStatus}
+        onSetStatus={onSetStatus}
+        setStampKind={setStampKind}
+        nameStampTaken={nameStampTaken}
+        stampKind={stampKind}
+        userName={userName}
+        customTeacherStampText={customTeacherStampText}
+        setCustomTeacherStampText={setCustomTeacherStampText}
+        activeSwatches={activeSwatches}
+        paletteMode={paletteMode}
+        handleSelectColor={handleSelectColor}
+        customColorInputRef={customColorInputRef}
+        handleSelectStrokeWidth={handleSelectStrokeWidth}
+        hollowWidth={hollowWidth}
+        hollowWeight={hollowWeight}
+        handleSelectHollowWeight={handleSelectHollowWeight}
+        textSizeMenuRef={textSizeMenuRef}
+        setShowTextSizeMenu={setShowTextSizeMenu}
+        showTextSizeMenu={showTextSizeMenu}
+        selectedTextElements={selectedTextElements}
+        activeTextPreset={activeTextPreset}
+        activeTextSize={activeTextSize}
+        handleSelectTextFontSize={handleSelectTextFontSize}
+        smoothLevel={smoothLevel}
+        setSmoothLevel={setSmoothLevel}
+        fingerScrolls={fingerScrolls}
+        setFingerScrolls={setFingerScrolls}
+      />
 
       {/* Teacher Classroom Moderation, Breakout Switchboard & Worksheet Deck OR Student Sub-Board Bar */}
       <TeacherClassroomBar
-  {...{
-    isTeacher,
-    toolbarCollapsed,
-    handleOpenBreakoutModal,
-    breakoutConfig,
-    activeRoundBoards,
-    onConfigureBreakout,
-    viewingRound,
-    setTeacherViewingRoundId,
-    activeRound,
-    subBoards,
-    rounds,
-    effectiveViewingRoundId,
-    activeBoardId,
-    onSelectBoard,
-    setShowLiveGridOverview,
-    fullMainElements,
-    teacherVisibleBoards,
-    roundShortLabel,
-    activeBoardTitle,
-    showLiveGridOverview,
-    pdfExportProgress,
-    handleBatchExportAllPdf,
-    timerMenuRef,
-    setShowTimerMenu,
-    timer,
-    displayRemainingMs,
-    showTimerMenu,
-    onTeacherTimerControl,
-    customTimeInput,
-    setCustomTimeInput,
-    setShowTemplateModal,
-    isUploadingWorksheet,
-    worksheetInputRef,
-    background,
-    driveBusy,
-    handleWorksheetFromDrive,
-    driveCanCancel,
-    handleCancelDriveImport,
-    worksheetImportScale,
-    handleUpdateWorksheetImportScale,
-    setTool,
-    tool,
-    effectiveTool,
-    onTeacherUpdateBackground,
-    elements,
-    confirmRemoveWorksheet,
-    setConfirmRemoveWorksheet,
-    removeWorksheetTimerRef,
-    onTeacherSetBackground,
-    worksheetError,
-    fileInputRef,
-    onTeacherLessonRequest,
-    setLessonModal,
-    classWork,
-    onTeacherToggleLock,
-    isCanvasLocked,
-    onTeacherToggleHideCursors,
-    hideStudentCursors,
-    onTeacherToggleOneNameStamp,
-    oneNameStamp,
-    focusedInkAuthor,
-    setInkFocusKey,
-    boardInkAuthors,
-    confirmClearAll,
-    onTeacherClearAll,
-    setConfirmClearAll,
-    onAssignUserToBoard
-  }}
-/>
+        isTeacher={isTeacher}
+        toolbarCollapsed={toolbarCollapsed}
+        handleOpenBreakoutModal={handleOpenBreakoutModal}
+        breakoutConfig={breakoutConfig}
+        activeRoundBoards={activeRoundBoards}
+        onConfigureBreakout={onConfigureBreakout}
+        viewingRound={viewingRound}
+        setTeacherViewingRoundId={setTeacherViewingRoundId}
+        activeRound={activeRound}
+        subBoards={subBoards}
+        rounds={rounds}
+        effectiveViewingRoundId={effectiveViewingRoundId}
+        activeBoardId={activeBoardId}
+        onSelectBoard={onSelectBoard}
+        setShowLiveGridOverview={setShowLiveGridOverview}
+        fullMainElements={fullMainElements}
+        teacherVisibleBoards={teacherVisibleBoards}
+        roundShortLabel={roundShortLabel}
+        activeBoardTitle={activeBoardTitle}
+        showLiveGridOverview={showLiveGridOverview}
+        pdfExportProgress={pdfExportProgress}
+        handleBatchExportAllPdf={handleBatchExportAllPdf}
+        timerMenuRef={timerMenuRef}
+        setShowTimerMenu={setShowTimerMenu}
+        timer={timer}
+        displayRemainingMs={displayRemainingMs}
+        showTimerMenu={showTimerMenu}
+        onTeacherTimerControl={onTeacherTimerControl}
+        customTimeInput={customTimeInput}
+        setCustomTimeInput={setCustomTimeInput}
+        setShowTemplateModal={setShowTemplateModal}
+        isUploadingWorksheet={isUploadingWorksheet}
+        worksheetInputRef={worksheetInputRef}
+        background={background}
+        driveBusy={driveBusy}
+        handleWorksheetFromDrive={handleWorksheetFromDrive}
+        driveCanCancel={driveCanCancel}
+        handleCancelDriveImport={handleCancelDriveImport}
+        worksheetImportScale={worksheetImportScale}
+        handleUpdateWorksheetImportScale={handleUpdateWorksheetImportScale}
+        setTool={setTool}
+        tool={tool}
+        effectiveTool={effectiveTool}
+        onTeacherUpdateBackground={onTeacherUpdateBackground}
+        elements={elements}
+        confirmRemoveWorksheet={confirmRemoveWorksheet}
+        setConfirmRemoveWorksheet={setConfirmRemoveWorksheet}
+        removeWorksheetTimerRef={removeWorksheetTimerRef}
+        onTeacherSetBackground={onTeacherSetBackground}
+        worksheetError={worksheetError}
+        fileInputRef={fileInputRef}
+        onTeacherLessonRequest={onTeacherLessonRequest}
+        setLessonModal={setLessonModal}
+        classWork={classWork}
+        onTeacherToggleLock={onTeacherToggleLock}
+        isCanvasLocked={isCanvasLocked}
+        onTeacherToggleHideCursors={onTeacherToggleHideCursors}
+        hideStudentCursors={hideStudentCursors}
+        onTeacherToggleOneNameStamp={onTeacherToggleOneNameStamp}
+        oneNameStamp={oneNameStamp}
+        focusedInkAuthor={focusedInkAuthor}
+        setInkFocusKey={setInkFocusKey}
+        boardInkAuthors={boardInkAuthors}
+        confirmClearAll={confirmClearAll}
+        onTeacherClearAll={onTeacherClearAll}
+        setConfirmClearAll={setConfirmClearAll}
+        onAssignUserToBoard={onAssignUserToBoard}
+      />
 
       {/* Teacher Live Grid Overview of All Student / Group Boards */}
       {isTeacher && showLiveGridOverview && (
@@ -1783,53 +1845,51 @@ export default function Canvas({
         </Stage>
 
         <CanvasViewportOverlays
-  {...{
-    selectedElements,
-    selectionBounds,
-    selectionDragOffset,
-    canDraw,
-    dimensions,
-    stagePos,
-    stageScale,
-    selectionAuthors,
-    selectedTextElements,
-    handleSelectTextFontSize,
-    activeTextSize,
-    setSelectedIds,
-    openOrTapNoteAt,
-    handleCopySelection,
-    handleDuplicateSelection,
-    handleDeleteSelection,
-    isTeacher,
-    sendToBoardTarget,
-    setSendToBoardTarget,
-    activeRoundBoards,
-    handleSendSelectionToBoard,
-    sentFeedback,
-    pastePrompt,
-    clipboardElements,
-    handlePasteElements,
-    setPastePrompt,
-    editingNote,
-    setEditingNote,
-    noteTextareaRef,
-    commitEditingNote,
-    effectiveTool,
-    screenPos,
-    userColor,
-    userName,
-    gridMenuRef,
-    setShowGridMenu,
-    showGridMenu,
-    gridMode,
-    setGridMode,
-    zoomStep,
-    resetView,
-    fitAllContent,
-    setShowHotkeysModal,
-    showHotkeysModal
-  }}
-/>
+          selectedElements={selectedElements}
+          selectionBounds={selectionBounds}
+          selectionDragOffset={selectionDragOffset}
+          canDraw={canDraw}
+          dimensions={dimensions}
+          stagePos={stagePos}
+          stageScale={stageScale}
+          selectionAuthors={selectionAuthors}
+          selectedTextElements={selectedTextElements}
+          handleSelectTextFontSize={handleSelectTextFontSize}
+          activeTextSize={activeTextSize}
+          setSelectedIds={setSelectedIds}
+          openOrTapNoteAt={openOrTapNoteAt}
+          handleCopySelection={handleCopySelection}
+          handleDuplicateSelection={handleDuplicateSelection}
+          handleDeleteSelection={handleDeleteSelection}
+          isTeacher={isTeacher}
+          sendToBoardTarget={sendToBoardTarget}
+          setSendToBoardTarget={setSendToBoardTarget}
+          activeRoundBoards={activeRoundBoards}
+          handleSendSelectionToBoard={handleSendSelectionToBoard}
+          sentFeedback={sentFeedback}
+          pastePrompt={pastePrompt}
+          clipboardElements={clipboardElements}
+          handlePasteElements={handlePasteElements}
+          setPastePrompt={setPastePrompt}
+          editingNote={editingNote}
+          setEditingNote={setEditingNote}
+          noteTextareaRef={noteTextareaRef}
+          commitEditingNote={commitEditingNote}
+          effectiveTool={effectiveTool}
+          screenPos={screenPos}
+          userColor={userColor}
+          userName={userName}
+          gridMenuRef={gridMenuRef}
+          setShowGridMenu={setShowGridMenu}
+          showGridMenu={showGridMenu}
+          gridMode={gridMode}
+          setGridMode={setGridMode}
+          zoomStep={zoomStep}
+          resetView={resetView}
+          fitAllContent={fitAllContent}
+          setShowHotkeysModal={setShowHotkeysModal}
+          showHotkeysModal={showHotkeysModal}
+        />
       </div>
     </div>
   );

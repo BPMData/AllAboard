@@ -92,6 +92,6 @@ export function useCanvasInteractionState() {
     editingNote,
     setEditingNote,
     noteTextareaRef,
-    noteClosedAtRef
+    noteClosedAtRef,
   };
 }

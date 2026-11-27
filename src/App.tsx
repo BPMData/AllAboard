@@ -16,7 +16,13 @@ import {
   readStoredChatWidth,
   storeChatHiddenChoice,
 } from './lib/chatSidebar';
-import { STORAGE_KEYS, getInitialRoomId, getOrCreatePersistentUserId, getOrCreatePersistentUserKey, hasInitialUrlRoomParam } from './lib/identity';
+import {
+  STORAGE_KEYS,
+  getInitialRoomId,
+  getOrCreatePersistentUserId,
+  getOrCreatePersistentUserKey,
+  hasInitialUrlRoomParam,
+} from './lib/identity';
 import { normalizeRoomCode } from './lib/roomCode';
 import type { RoundVariants } from './lib/roundVariants';
 import {

@@ -48,8 +48,8 @@ Teachers are identified by a per-room **PIN**, not a login.
 | `server/roomPersistence.ts` | — | Backup selection, room hydration, persistence, and housekeeping. |
 | `server/boardChannels.ts` | — | Board channels, digest and cursor batching, and drawing edit publication. |
 | `server/httpRoutes.ts` | — | Health, report, room availability, and asset HTTP routes. |
-| `server/breakoutHandlers.ts`, `server/lessonPackHandlers.ts` | — | Breakout and lesson domain helpers. |
-| `server/registerBreakoutHandlers.ts`, `server/registerLessonHandlers.ts`, `server/drawingHandlers.ts`, `server/moderationHandlers.ts` | — | Socket event registration by subsystem. |
+| `server/breakoutHelpers.ts`, `server/lessonPackHelpers.ts` | — | Breakout and lesson domain helpers. |
+| `server/breakoutHandlers.ts`, `server/lessonPackHandlers.ts`, `server/drawingHandlers.ts`, `server/moderationHandlers.ts` | — | Socket event registration by subsystem. |
 | `roomStore.ts` | ~350 | SQLite store: one row per room plus content-addressed assets (`assets`, `room_assets`). Has a JSON fallback if `node:sqlite` is missing. Fails open to `os.tmpdir()`. |
 | `backupMirror.ts` | ~380 | `BackupMirror` (batch, assets-first, retry, flush on SIGTERM) over `BackupBackend`: `GcsBackend` (Cloud Storage JSON API + metadata token) or `DirBackend` (folder). |
 | `src/App.tsx` | ~600 | Client root: room state, derived board state, and wiring for the lobby, chat, canvas, and actions. |

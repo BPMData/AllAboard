@@ -35,6 +35,7 @@ export function deserializeSubBoards(raw?: Record<string, SubBoardState>): Map<s
   return map;
 }
 
+/** The room's PIN hash. A legacy plain-text PIN is hashed here, once, when its room loads. */
 export function storedPinHash(item: SerializedRoom): string | null {
   if (typeof item.teacherPinHash === 'string' && isHashedPin(item.teacherPinHash)) return item.teacherPinHash;
   if (typeof item.teacherPin === 'string' && item.teacherPin) {
@@ -106,6 +107,7 @@ export function getRoomSettingsPayload(room: RoomState) {
   };
 }
 
+/** A stored `roundTemplateInk` (SQLite row): only array values. */
 export function storedTemplateInk(raw: unknown): Record<string, any[]> {
   const out: Record<string, any[]> = {};
   if (!raw || typeof raw !== 'object') return out;
@@ -115,6 +117,7 @@ export function storedTemplateInk(raw: unknown): Record<string, any[]> {
   return out;
 }
 
+/** A stored `roundVariants` (SQLite row): only valid records. Backgrounds are interned by internRoomAssets. */
 export function storedRoundVariants(raw: unknown): Record<string, RoundVariants> {
   const out: Record<string, RoundVariants> = {};
   if (!raw || typeof raw !== 'object') return out;
@@ -125,6 +128,10 @@ export function storedRoundVariants(raw: unknown): Record<string, RoundVariants>
   return out;
 }
 
+/**
+ * Imported `roundTemplateInk`: only keys naming a round in `cfg`, each a list of sound elements (no name stamps) at
+ * most `MAX_BOARD_ELEMENTS` long, with fresh server ids.
+ */
 export function cleanImportedTemplateInk(raw: unknown, cfg: BreakoutConfigLike): Record<string, any[]> {
   const out: Record<string, any[]> = {};
   if (!raw || typeof raw !== 'object') return out;
@@ -155,6 +162,7 @@ export function createRoomSerialization(store: RoomStore) {
     return bg ? internBackground(store, bg) : null;
   }
 
+  /** Imported `roundTemplates`: only keys naming a round in `cfg`, each value a background (interned) or null. */
   function cleanImportedRoundTemplates(raw: unknown, cfg: BreakoutConfigLike): Record<string, any | null> {
     const out: Record<string, any | null> = {};
     if (!raw || typeof raw !== 'object') return out;
@@ -167,6 +175,7 @@ export function createRoomSerialization(store: RoomStore) {
     return out;
   }
 
+  /** A variants record from a client or a file: checked, worksheets interned. null when it carries nothing. */
   function cleanRoundVariants(raw: unknown): RoundVariants | null {
     const v = normalizeRoundVariants(raw);
     if (!v) return null;
@@ -174,10 +183,15 @@ export function createRoomSerialization(store: RoomStore) {
     return hasVariantContent(v) ? v : null;
   }
 
+  /** Imported `roundVariants`: only keys naming an individual round in `cfg`. */
   function cleanImportedRoundVariants(raw: unknown, cfg: BreakoutConfigLike): Record<string, RoundVariants> {
     const out: Record<string, RoundVariants> = {};
     if (!raw || typeof raw !== 'object') return out;
-    const ids = new Set(getRounds(cfg).filter((r) => r.mode === 'individual').map((r) => r.id));
+    const ids = new Set(
+      getRounds(cfg)
+        .filter((r) => r.mode === 'individual')
+        .map((r) => r.id)
+    );
     for (const [key, value] of Object.entries(raw as Record<string, unknown>)) {
       if (!ids.has(key)) continue;
       const v = cleanRoundVariants(value);
@@ -199,8 +213,6 @@ export const USER_KEY_PATTERN = /^[0-9a-f]{64}$/;
 /** Group boards per breakout round (the UI offers up to 8; lesson packs allow up to 30). */
 export const MAX_GROUPS_PER_ROUND = 30;
 
-
-
 /**
  * Proves a join comes from the browser that first used this userId in this room. userIds are public (they're in the
  * roster), so the private key is what stops someone taking over a classmate's or teacher's identity.
@@ -216,20 +228,3 @@ export function checkUserKey(keyHashes: Map<string, string>, userId: string, raw
   }
   return timingSafeEqual(Buffer.from(stored, 'hex'), Buffer.from(hash, 'hex')) ? 'matched' : 'rejected';
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-

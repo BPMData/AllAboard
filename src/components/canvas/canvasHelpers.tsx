@@ -1,26 +1,10 @@
-import {
-  Circle as CircleIcon,
-  Diamond,
-  Grid,
-  Square,
-  Star,
-  Triangle
-} from 'lucide-react';
+import { Circle as CircleIcon, Diamond, Grid, Square, Star, Triangle } from 'lucide-react';
 import React from 'react';
 import type { ElementGroup } from '../../lib/elementGroups';
-import {
-  TEXT_SIZE_PRESETS
-} from '../../lib/inkCore';
+import { TEXT_SIZE_PRESETS } from '../../lib/inkCore';
 import type { RoundVariants } from '../../lib/roundVariants';
 import { DEFAULT_PAGE_GAP } from '../../lib/worksheetLayout';
-import {
-  CanvasElement,
-  GridMode,
-  HollowShapeKind,
-  RoomBackground,
-  StudentStatus
-} from '../../types';
-
+import { CanvasElement, GridMode, HollowShapeKind, RoomBackground, StudentStatus } from '../../types';
 
 export type HistoryAction =
   | { kind: 'add'; items: CanvasElement[] }
@@ -72,12 +56,12 @@ export const HOLLOW_SHAPE_OPTIONS: Array<{
   dx: number;
   dy: number;
 }> = [
-    { kind: 'circle', label: 'Circle', dx: -62, dy: 26 },
-    { kind: 'square', label: 'Square', dx: -35, dy: 50 },
-    { kind: 'triangle', label: 'Triangle', dx: 0, dy: 60 },
-    { kind: 'diamond', label: 'Diamond', dx: 35, dy: 50 },
-    { kind: 'star', label: 'Star', dx: 62, dy: 26 },
-  ];
+  { kind: 'circle', label: 'Circle', dx: -62, dy: 26 },
+  { kind: 'square', label: 'Square', dx: -35, dy: 50 },
+  { kind: 'triangle', label: 'Triangle', dx: 0, dy: 60 },
+  { kind: 'diamond', label: 'Diamond', dx: 35, dy: 50 },
+  { kind: 'star', label: 'Star', dx: 62, dy: 26 },
+];
 
 export const STATUS_RADIAL_OPTIONS: Array<{
   status: StudentStatus;
@@ -86,11 +70,23 @@ export const STATUS_RADIAL_OPTIONS: Array<{
   dx: number;
   dy: number;
 }> = [
-    { status: 'need-help', label: 'Need Help', pillClass: 'bg-amber-100 text-amber-900 border-amber-400', dx: 40, dy: 30 },
-    { status: 'got-it', label: 'Got It', pillClass: 'bg-emerald-100 text-emerald-900 border-emerald-400', dx: 100, dy: 64 },
-    { status: 'done', label: 'Done', pillClass: 'bg-purple-100 text-purple-900 border-purple-400', dx: 158, dy: 60 },
-    { status: 'none', label: 'Clear', pillClass: 'bg-slate-800 text-slate-100 border-slate-500', dx: 214, dy: 28 },
-  ];
+  {
+    status: 'need-help',
+    label: 'Need Help',
+    pillClass: 'bg-amber-100 text-amber-900 border-amber-400',
+    dx: 40,
+    dy: 30,
+  },
+  {
+    status: 'got-it',
+    label: 'Got It',
+    pillClass: 'bg-emerald-100 text-emerald-900 border-emerald-400',
+    dx: 100,
+    dy: 64,
+  },
+  { status: 'done', label: 'Done', pillClass: 'bg-purple-100 text-purple-900 border-purple-400', dx: 158, dy: 60 },
+  { status: 'none', label: 'Clear', pillClass: 'bg-slate-800 text-slate-100 border-slate-500', dx: 214, dy: 28 },
+];
 
 export const TEXT_SIZE_DROPDOWN_PRESETS = [
   ...TEXT_SIZE_PRESETS,
@@ -100,13 +96,7 @@ export const TEXT_SIZE_DROPDOWN_PRESETS = [
 export function readLocalHollowShape(key: string, fallback: HollowShapeKind): HollowShapeKind {
   try {
     const raw = localStorage.getItem(key);
-    if (
-      raw === 'circle' ||
-      raw === 'square' ||
-      raw === 'triangle' ||
-      raw === 'diamond' ||
-      raw === 'star'
-    ) {
+    if (raw === 'circle' || raw === 'square' || raw === 'triangle' || raw === 'diamond' || raw === 'star') {
       return raw;
     }
     return fallback;
@@ -129,11 +119,11 @@ export const GRID_MODE_OPTIONS: Array<{
   dx: number;
   dy: number;
 }> = [
-    { mode: 'blank', label: 'Blank', dx: -54, dy: -26 },
-    { mode: 'dots', label: 'Dot Grid', dx: -20, dy: -54 },
-    { mode: 'graph', label: 'Graph Paper (90°)', dx: 20, dy: -54 },
-    { mode: 'isometric', label: 'Isometric (3D)', dx: 54, dy: -26 },
-  ];
+  { mode: 'blank', label: 'Blank', dx: -54, dy: -26 },
+  { mode: 'dots', label: 'Dot Grid', dx: -20, dy: -54 },
+  { mode: 'graph', label: 'Graph Paper (90°)', dx: 20, dy: -54 },
+  { mode: 'isometric', label: 'Isometric (3D)', dx: 54, dy: -26 },
+];
 
 export function readLocalGridMode(key: string, fallback: GridMode): GridMode {
   try {
@@ -175,7 +165,16 @@ export function GridModeIcon({ mode, size = 15 }: { mode: GridMode; size?: numbe
   }
   // Isometric 3D lattice icon
   return (
-    <svg width={size} height={size} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.35" strokeLinecap="round" strokeLinejoin="round">
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 16 16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.35"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
       <path d="M8 1.75L13.75 5V11L8 14.25L2.25 11V5L8 1.75Z" />
       <path d="M2.25 5L8 8.25L13.75 5" />
       <path d="M8 8.25V14.25" />

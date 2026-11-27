@@ -6,22 +6,27 @@ import {
   getSelectionBounds,
   hitEditableNote,
   noteSize,
-  translateElement
+  translateElement,
 } from '../../lib/inkCore';
-import {
-  CanvasElement,
-  SubBoardData
-} from '../../types';
+import { CanvasElement, SubBoardData } from '../../types';
 import { saveLocal } from './canvasHelpers';
-
 
 import type { HistoryAction } from './canvasHelpers';
 
 interface Options {
   noteTextareaRef: React.RefObject<HTMLTextAreaElement>;
-  editingNote: { existingId: string | null; worldX: number; worldY: number; value: string; color: string; strokeWidth: number; fontSize: number; openedAt: number; };
+  editingNote: {
+    existingId: string | null;
+    worldX: number;
+    worldY: number;
+    value: string;
+    color: string;
+    strokeWidth: number;
+    fontSize: number;
+    openedAt: number;
+  };
   stageScale: number;
-  stagePos: { x: number; y: number; };
+  stagePos: { x: number; y: number };
   selectedElements: CanvasElement[];
   elements: CanvasElement[];
   setClipboardElements: React.Dispatch<React.SetStateAction<CanvasElement[]>>;
@@ -33,15 +38,26 @@ interface Options {
   recordUndo: (action: HistoryAction, boardId?: string) => void;
   onElementsBatchAdd: (elements: CanvasElement[], targetBoardId?: string) => void;
   setSelectedIds: React.Dispatch<React.SetStateAction<string[]>>;
-  setPastePrompt: React.Dispatch<React.SetStateAction<{ worldX: number; worldY: number; }>>;
+  setPastePrompt: React.Dispatch<React.SetStateAction<{ worldX: number; worldY: number }>>;
   onElementsBatchRemove: (ids: string[]) => void;
   isTeacher: boolean;
   subBoards: Record<string, SubBoardData>;
   setSentFeedback: React.Dispatch<React.SetStateAction<string>>;
-  setEditingNote: React.Dispatch<React.SetStateAction<{ existingId: string | null; worldX: number; worldY: number; value: string; color: string; strokeWidth: number; fontSize: number; openedAt: number; }>>;
+  setEditingNote: React.Dispatch<
+    React.SetStateAction<{
+      existingId: string | null;
+      worldX: number;
+      worldY: number;
+      value: string;
+      color: string;
+      strokeWidth: number;
+      fontSize: number;
+      openedAt: number;
+    }>
+  >;
   noteClosedAtRef: React.RefObject<number>;
   onElementRemove: (id: string) => void;
-  onElementUpdate: (patch: Partial<CanvasElement> & { id: string; bringToFront?: boolean; }) => void;
+  onElementUpdate: (patch: Partial<CanvasElement> & { id: string; bringToFront?: boolean }) => void;
   onElementStart: (element: CanvasElement) => void;
   allGoneNoteIds: Set<string>;
   penColor: string;
@@ -79,7 +95,7 @@ export function useCanvasNoteSelection({
   penColor,
   setTextFontSize,
   penWidth,
-  textFontSize
+  textFontSize,
 }: Options) {
   const resizeNoteTextarea = useCallback(() => {
     const el = noteTextareaRef.current;
@@ -225,12 +241,7 @@ export function useCanvasNoteSelection({
       }
       const existingFont = getNoteFontSize(existing);
       const moved = note.worldX !== (existing.x || 0) || note.worldY !== (existing.y || 0);
-      if (
-        trimmed === existing.text &&
-        note.color === existing.color &&
-        note.fontSize === existingFont &&
-        !moved
-      ) {
+      if (trimmed === existing.text && note.color === existing.color && note.fontSize === existingFont && !moved) {
         return;
       }
       const [w, h] = noteSize(trimmed, note.fontSize);
@@ -359,5 +370,13 @@ export function useCanvasNoteSelection({
       textFontSize,
     ]
   );
-  return { handleCopySelection, handlePasteElements, handleDuplicateSelection, handleDeleteSelection, handleSendSelectionToBoard, commitEditingNote, openOrTapNoteAt };
+  return {
+    handleCopySelection,
+    handlePasteElements,
+    handleDuplicateSelection,
+    handleDeleteSelection,
+    handleSendSelectionToBoard,
+    commitEditingNote,
+    openOrTapNoteAt,
+  };
 }

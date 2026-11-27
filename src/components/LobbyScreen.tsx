@@ -67,7 +67,7 @@ export default function LobbyScreen({
   handleConfirmCreateFreshRoom,
   handleCustomRoomFromModal,
   handleCancelRoomPrompt,
-  problemReportModal
+  problemReportModal,
 }: LobbyScreenProps) {
   return (
     <div
@@ -92,9 +92,7 @@ export default function LobbyScreen({
               referrerPolicy="no-referrer"
               className="w-6 h-6 rounded-[2px] border border-[#CBD5E1] shrink-0 object-contain"
             />
-            <h1 className="font-display text-base font-bold tracking-tight text-slate-900 truncate">
-              AllAboard
-            </h1>
+            <h1 className="font-display text-base font-bold tracking-tight text-slate-900 truncate">AllAboard</h1>
           </div>
           <span className="px-2 py-0.5 rounded-[2px] bg-brand-50 border border-brand-200 font-mono text-xs font-semibold text-brand-800 truncate max-w-[12rem]">
             #{effectiveRoomId}
@@ -110,10 +108,7 @@ export default function LobbyScreen({
             )}
 
             <div>
-              <label
-                htmlFor="display-name-input"
-                className="block text-xs font-semibold text-slate-700 mb-1.5"
-              >
+              <label htmlFor="display-name-input" className="block text-xs font-semibold text-slate-700 mb-1.5">
                 Your Display Name
               </label>
               <input
@@ -131,10 +126,7 @@ export default function LobbyScreen({
 
             <div>
               <div className="flex items-center justify-between gap-2 mb-1.5">
-                <label
-                  htmlFor="lobby-room-code-input"
-                  className="text-xs font-semibold text-slate-700"
-                >
+                <label htmlFor="lobby-room-code-input" className="text-xs font-semibold text-slate-700">
                   Room Code
                 </label>
                 <RoomHistoryDropdown
@@ -235,8 +227,9 @@ export default function LobbyScreen({
                       spellCheck={false}
                       data-lpignore="true"
                       data-1p-ignore="true"
-                      className={`w-full pl-3 pr-9 py-1.5 bg-slate-50 border border-[#CBD5E1] rounded-[2px] text-xs text-slate-900 font-mono placeholder:text-slate-400 focus:bg-white focus:outline-none focus:border-amber-500${showInitialTeacherPin ? '' : ' pin-masked'
-                        }`}
+                      className={`w-full pl-3 pr-9 py-1.5 bg-slate-50 border border-[#CBD5E1] rounded-[2px] text-xs text-slate-900 font-mono placeholder:text-slate-400 focus:bg-white focus:outline-none focus:border-amber-500${
+                        showInitialTeacherPin ? '' : ' pin-masked'
+                      }`}
                     />
                     <button
                       type="button"
@@ -269,10 +262,11 @@ export default function LobbyScreen({
             <button
               type="submit"
               disabled={!userName.trim() || isCheckingRoom}
-              className={`w-full py-2 px-4 text-sm font-semibold rounded-[2px] border transition-colors flex items-center justify-center gap-2 ${!userName.trim() || isCheckingRoom
+              className={`w-full py-2 px-4 text-sm font-semibold rounded-[2px] border transition-colors flex items-center justify-center gap-2 ${
+                !userName.trim() || isCheckingRoom
                   ? 'bg-slate-100 border-[#CBD5E1] text-slate-400 cursor-not-allowed'
                   : 'oh-btn-primary text-white cursor-pointer'
-                }`}
+              }`}
             >
               <LogIn size={16} />
               <span>{isCheckingRoom ? 'Checking Room...' : 'Join Classroom'}</span>
@@ -293,9 +287,7 @@ export default function LobbyScreen({
       {pendingRoomPrompt && (
         <RoomExistsModal
           availability={pendingRoomPrompt.availability}
-          isJoiningAsTeacher={Boolean(
-            pendingRoomPrompt.teacherPin && pendingRoomPrompt.teacherPin.length >= 3
-          )}
+          isJoiningAsTeacher={Boolean(pendingRoomPrompt.teacherPin && pendingRoomPrompt.teacherPin.length >= 3)}
           isBusy={isCheckingRoom}
           onJoinAnyway={handleConfirmJoinAnyway}
           onCreateFreshRoom={handleConfirmCreateFreshRoom}

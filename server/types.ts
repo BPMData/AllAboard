@@ -114,6 +114,23 @@ export interface SerializedRoom {
 
 export type TypedIo = Server<ClientToServerEvents, ServerToClientEvents>;
 export type TypedSocket = Socket<ClientToServerEvents, ServerToClientEvents>;
-export interface SocketMeta { roomId: string; userId: string; channel?: string; viewBoardId?: string; inTeachers?: boolean }
+export interface SocketMeta {
+  roomId: string;
+  userId: string;
+  channel?: string;
+  viewBoardId?: string;
+  inTeachers?: boolean;
+}
 
-export type ServerContext = { io: TypedIo; store: import('../roomStore.ts').RoomStore; backup: import('../backupMirror.ts').BackupMirror | null; rooms: Map<string, RoomState>; socketMeta: Map<string, SocketMeta>; pinFailures: ReturnType<typeof import('../socketGuards.ts').createFailureLimiter> } & ReturnType<typeof import('./roomSerialization.ts').createRoomSerialization> & ReturnType<typeof import('./roomPersistence.ts').createRoomPersistence> & ReturnType<typeof import('./boardChannels.ts').createBoardChannels> & ReturnType<typeof import('./breakoutHandlers.ts').createBreakoutHelpers> & ReturnType<typeof import('./lessonPackHandlers.ts').createLessonPackHelpers>;
+export type ServerContext = {
+  io: TypedIo;
+  store: import('../roomStore.ts').RoomStore;
+  backup: import('../backupMirror.ts').BackupMirror | null;
+  rooms: Map<string, RoomState>;
+  socketMeta: Map<string, SocketMeta>;
+  pinFailures: ReturnType<typeof import('../socketGuards.ts').createFailureLimiter>;
+} & ReturnType<typeof import('./roomSerialization.ts').createRoomSerialization> &
+  ReturnType<typeof import('./roomPersistence.ts').createRoomPersistence> &
+  ReturnType<typeof import('./boardChannels.ts').createBoardChannels> &
+  ReturnType<typeof import('./breakoutHelpers.ts').createBreakoutHelpers> &
+  ReturnType<typeof import('./lessonPackHelpers.ts').createLessonPackHelpers>;

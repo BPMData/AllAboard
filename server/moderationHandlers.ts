@@ -1,16 +1,36 @@
-import {
-  MAX_PIN_LENGTH,
-  MIN_PIN_LENGTH,
-  hashPin,
-  verifyPin
-} from '../socketGuards.ts';
+import { MAX_PIN_LENGTH, MIN_PIN_LENGTH, hashPin, verifyPin } from '../socketGuards.ts';
 import { isAnonymousAuthorId } from '../src/lib/anonymousInk.ts';
 import type { StudentStatus } from '../src/types.ts';
-import { MAX_CHAT_CHARS, checkUserKey, getRoomSettingsPayload, getRosterPayload, normalizeRoomId } from './roomSerialization.ts';
+import {
+  MAX_CHAT_CHARS,
+  checkUserKey,
+  getRoomSettingsPayload,
+  getRosterPayload,
+  normalizeRoomId,
+} from './roomSerialization.ts';
 
 import type { ServerContext, TypedSocket } from './types.ts';
 export function registerModerationHandlers(socket: TypedSocket, ctx: ServerContext) {
-  const { io, rooms, socketMeta, pinFailures, getRoomAvailability, getOrCreateRoom, scheduleSaveToDisk, teacherChannel, broadcastRoster, startAutoIndividualRound, ensureIndividualBoardForUser, placeSocket, subBoardsFor, teacherTemplatesPayload, broadcastRoomSettings, broadcastBreakoutSync, boardChannel } = ctx;
+  const {
+    io,
+    rooms,
+    socketMeta,
+    pinFailures,
+    getRoomAvailability,
+    getOrCreateRoom,
+    scheduleSaveToDisk,
+    teacherChannel,
+    broadcastRoster,
+    startAutoIndividualRound,
+    ensureIndividualBoardForUser,
+    placeSocket,
+    subBoardsFor,
+    teacherTemplatesPayload,
+    broadcastRoomSettings,
+    broadcastBreakoutSync,
+    boardChannel,
+  } = ctx;
+  /** A PIN this socket already proved, so the reconnect pair (join-room + teacher:auth) hashes once, not twice. */
   let provenPin: string | null = null;
   const PIN_BLOCKED_ERROR = 'Too many wrong Teacher PINs for this room. Wait a few minutes and try again.';
   socket.on('check-room', (payload: { roomId?: string } | undefined, callback) => {
@@ -190,7 +210,8 @@ export function registerModerationHandlers(socket: TypedSocket, ctx: ServerConte
         pinFailures.fail(room.id);
         callback?.({
           ok: false,
-          error: 'Incorrect Teacher PIN for this room. Need a fresh board? Click "New Room" to create a new room where you can set the PIN first.',
+          error:
+            'Incorrect Teacher PIN for this room. Need a fresh board? Click "New Room" to create a new room where you can set the PIN first.',
         });
         return;
       }
@@ -206,7 +227,8 @@ export function registerModerationHandlers(socket: TypedSocket, ctx: ServerConte
     const room = meta && rooms.get(meta.roomId);
     const record = meta && room?.usersByUserId.get(meta.userId);
     const status = payload?.status;
-    if (!room || !record || record.isTeacher || !['none', 'need-help', 'got-it', 'done'].includes(status as string)) return;
+    if (!room || !record || record.isTeacher || !['none', 'need-help', 'got-it', 'done'].includes(status as string))
+      return;
     record.status = status as StudentStatus;
     record.statusUpdatedAt = Date.now();
     broadcastRoster(room);
@@ -280,7 +302,9 @@ export function registerModerationHandlers(socket: TypedSocket, ctx: ServerConte
       return;
     }
 
-    const cleanName = String(newName || '').trim().slice(0, 28);
+    const cleanName = String(newName || '')
+      .trim()
+      .slice(0, 28);
     if (!targetUserId || !cleanName) {
       callback?.({ ok: false, error: 'A valid target user and name are required.' });
       return;
@@ -367,11 +391,7 @@ export function registerModerationHandlers(socket: TypedSocket, ctx: ServerConte
   socket.on(
     'teacher:kick-user',
     (
-      {
-        targetUserId,
-        mode = 'kick',
-        targetName,
-      }: { targetUserId: string; mode?: 'kick' | 'ban'; targetName?: string },
+      { targetUserId, mode = 'kick', targetName }: { targetUserId: string; mode?: 'kick' | 'ban'; targetName?: string },
       callback
     ) => {
       const meta = socketMeta.get(socket.id);
@@ -395,8 +415,7 @@ export function registerModerationHandlers(socket: TypedSocket, ctx: ServerConte
       }
 
       const targetRecord = room.usersByUserId.get(targetUserId);
-      const resolvedName =
-        targetRecord?.name || room.lockedNames[targetUserId] || targetName || 'Student';
+      const resolvedName = targetRecord?.name || room.lockedNames[targetUserId] || targetName || 'Student';
 
       if (mode === 'ban') {
         room.bannedUsers[targetUserId] = {
@@ -625,9 +644,7 @@ export function registerModerationHandlers(socket: TypedSocket, ctx: ServerConte
           remainingMs: durationMs,
           endsAt: now + durationMs,
           autoLockOnExpire:
-            typeof payload.autoLockOnExpire === 'boolean'
-              ? payload.autoLockOnExpire
-              : room.timer.autoLockOnExpire,
+            typeof payload.autoLockOnExpire === 'boolean' ? payload.autoLockOnExpire : room.timer.autoLockOnExpire,
         };
       } else if (action === 'pause') {
         if (room.timer.isRunning && room.timer.endsAt !== null) {
