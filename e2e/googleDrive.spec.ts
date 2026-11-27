@@ -90,25 +90,53 @@ async function installFakeGoogle(page: Page, opts: FakeGoogleOptions = {}) {
         this.calls[name] = args;
         return this;
       }
-      setIncludeFolders(...a: unknown[]) { return this.rec('setIncludeFolders', a); }
-      setSelectFolderEnabled(...a: unknown[]) { return this.rec('setSelectFolderEnabled', a); }
-      setMimeTypes(...a: unknown[]) { return this.rec('setMimeTypes', a); }
-      setLabel(...a: unknown[]) { return this.rec('setLabel', a); }
-      setOwnedByMe(...a: unknown[]) { return this.rec('setOwnedByMe', a); }
-      setParent(...a: unknown[]) { return this.rec('setParent', a); }
-      setMode(...a: unknown[]) { return this.rec('setMode', a); }
+      setIncludeFolders(...a: unknown[]) {
+        return this.rec('setIncludeFolders', a);
+      }
+      setSelectFolderEnabled(...a: unknown[]) {
+        return this.rec('setSelectFolderEnabled', a);
+      }
+      setMimeTypes(...a: unknown[]) {
+        return this.rec('setMimeTypes', a);
+      }
+      setLabel(...a: unknown[]) {
+        return this.rec('setLabel', a);
+      }
+      setOwnedByMe(...a: unknown[]) {
+        return this.rec('setOwnedByMe', a);
+      }
+      setParent(...a: unknown[]) {
+        return this.rec('setParent', a);
+      }
+      setMode(...a: unknown[]) {
+        return this.rec('setMode', a);
+      }
     }
 
     class FakePickerBuilder {
       private cb: ((data: any) => void) | null = null;
       private title: string | null = null;
       private views: FakeDocsView[] = [];
-      setOAuthToken() { return this; }
-      setDeveloperKey() { return this; }
-      setAppId() { return this; }
-      setTitle(t: string) { this.title = t; return this; }
-      addView(v: FakeDocsView) { this.views.push(v); return this; }
-      setOrigin() { return this; }
+      setOAuthToken() {
+        return this;
+      }
+      setDeveloperKey() {
+        return this;
+      }
+      setAppId() {
+        return this;
+      }
+      setTitle(t: string) {
+        this.title = t;
+        return this;
+      }
+      addView(v: FakeDocsView) {
+        this.views.push(v);
+        return this;
+      }
+      setOrigin() {
+        return this;
+      }
       setCallback(cb: (data: any) => void) {
         this.cb = cb;
         return this;
@@ -223,7 +251,9 @@ test.describe('Google Drive integration (stubbed Google)', () => {
     ]);
   });
 
-  test('Slides / PDF from Drive exports a Google Slides deck via /export?mimeType=application%2Fpdf', async ({ page }) => {
+  test('Slides / PDF from Drive exports a Google Slides deck via /export?mimeType=application%2Fpdf', async ({
+    page,
+  }) => {
     await page.goto('/');
     const pdfBuf = await makePdfBuffer(page, 2);
 
@@ -312,7 +342,9 @@ test.describe('Google Drive integration (stubbed Google)', () => {
 
     await expect(page.getByRole('button', { name: 'Slides / PDF from Drive', exact: true })).toBeEnabled();
     await expect(page.getByRole('button', { name: 'Cancel', exact: true })).toHaveCount(0);
-    await expect(page.getByText(/Could not import from Drive|Google took too long|Google Drive request failed/)).toHaveCount(0);
+    await expect(
+      page.getByText(/Could not import from Drive|Google took too long|Google Drive request failed/)
+    ).toHaveCount(0);
   });
 
   test('hanging Slides export times out with Download-as-PDF advice', async ({ page }) => {
@@ -573,21 +605,35 @@ test.describe('Google Drive integration (stubbed Google)', () => {
     const asset = '/api/assets/' + 'a'.repeat(64);
     const png = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+nmR8AAAAASUVORK5CYII=';
     let missing = true;
-    await page.route('**' + asset, route => route.fulfill(missing
-      ? { status: 404, body: '' }
-      : { contentType: 'image/png', body: Buffer.from(png, 'base64') }));
-    const snapshot = { elements: [], messages: [], background: {
-      id: 'worksheet', fileName: 'Fractions.png', pages: [{ dataUrl: asset, width: 1, height: 1 }],
-      layout: 'stack', scale: 1, x: 0, y: 0, opacity: 1,
-    } };
+    await page.route('**' + asset, (route) =>
+      route.fulfill(
+        missing ? { status: 404, body: '' } : { contentType: 'image/png', body: Buffer.from(png, 'base64') }
+      )
+    );
+    const snapshot = {
+      elements: [],
+      messages: [],
+      background: {
+        id: 'worksheet',
+        fileName: 'Fractions.png',
+        pages: [{ dataUrl: asset, width: 1, height: 1 }],
+        layout: 'stack',
+        scale: 1,
+        x: 0,
+        y: 0,
+        opacity: 1,
+      },
+    };
     await page.locator('input[accept=".json,application/json"]').setInputFiles({
-      name: 'class.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(snapshot)),
+      name: 'class.json',
+      mimeType: 'application/json',
+      buffer: Buffer.from(JSON.stringify(snapshot)),
     });
     await page.getByRole('button', { name: 'Restore Room Snapshot' }).click();
     await expect(page.getByTitle('Remove background worksheet from this board')).toBeVisible();
 
     const downloads: string[] = [];
-    page.on('download', download => downloads.push(download.suggestedFilename()));
+    page.on('download', (download) => downloads.push(download.suggestedFilename()));
     await page.getByRole('button', { name: 'Save class work', exact: true }).click();
     await expect(page.getByRole('alert').filter({ hasText: 'Fractions.png (page 1)' })).toBeVisible();
     expect(downloads).toHaveLength(0);
@@ -602,15 +648,17 @@ test.describe('Google Drive integration (stubbed Google)', () => {
     await drive.click();
     await page.getByRole('button', { name: 'Replace', exact: true }).click();
     await expect(page.getByRole('alert').filter({ hasText: 'Fractions.png (page 1)' })).toBeVisible();
-    expect(uploads.map(upload => upload.method)).toEqual(['POST', 'PUT']);
+    expect(uploads.map((upload) => upload.method)).toEqual(['POST', 'PUT']);
     missing = false;
     await page.getByRole('button', { name: 'Retry save' }).click();
     await expect(page.getByText(/Saved .* to My Drive/)).toBeVisible();
-    expect(uploads.map(upload => upload.method)).toEqual(['POST', 'PUT', 'PATCH', 'PUT']);
+    expect(uploads.map((upload) => upload.method)).toEqual(['POST', 'PUT', 'PATCH', 'PUT']);
     expect(uploads[3].meta.assets[asset]).toBe(local.assets[asset]);
   });
 
-  test('Save Room to Drive asks for a name and folder, then replaces the same file on the next save', async ({ page }) => {
+  test('Save Room to Drive asks for a name and folder, then replaces the same file on the next save', async ({
+    page,
+  }) => {
     await installFakeGoogle(page);
     const requests = await fakeDriveUploads(page);
     const room = uniqueRoom('gd-save');
@@ -735,11 +783,16 @@ test.describe('Google Drive integration (stubbed Google)', () => {
     await expect(page.getByText(`Saved ${todayFileName(room)} to My Drive`)).toBeVisible();
     expect(requests.map((r) => r.method)).toEqual(['PATCH', 'POST', 'PUT']);
 
-    const stored = await page.evaluate((r) => JSON.parse(localStorage.getItem(`drawchat_drive_save_${r}`) || '{}'), room);
+    const stored = await page.evaluate(
+      (r) => JSON.parse(localStorage.getItem(`drawchat_drive_save_${r}`) || '{}'),
+      room
+    );
     expect(stored.fileId).toBe('drive-file-42');
   });
 
-  test('Slides / PDF from Drive converts a .pptx via temporary Slides file and deletes the temp copy', async ({ page }) => {
+  test('Slides / PDF from Drive converts a .pptx via temporary Slides file and deletes the temp copy', async ({
+    page,
+  }) => {
     await page.goto('/');
     const pdfBuf = await makePdfBuffer(page, 2);
     const pptxMime = 'application/vnd.openxmlformats-officedocument.presentationml.presentation';
@@ -867,7 +920,9 @@ test.describe('Google Drive integration (stubbed Google)', () => {
     await expect(page.getByText('Please choose a Google Slides presentation or a PDF.')).toBeVisible();
   });
 
-  test('Switch Google account prompts select_account, updates Drive email chip, and scopes saved folder per account', async ({ page }) => {
+  test('Switch Google account prompts select_account, updates Drive email chip, and scopes saved folder per account', async ({
+    page,
+  }) => {
     await installFakeGoogle(page);
     const room = uniqueRoom('gd-switch');
     await fakeDriveUploads(page);
@@ -943,9 +998,7 @@ test.describe('Google Drive integration (stubbed Google)', () => {
     await page.getByRole('button', { name: 'Create', exact: true }).click();
 
     await expect(page.getByTestId('drive-save-folder')).toHaveText('Period 4');
-    expect(folderCreates).toEqual([
-      { name: 'Period 4', mimeType: 'application/vnd.google-apps.folder' },
-    ]);
+    expect(folderCreates).toEqual([{ name: 'Period 4', mimeType: 'application/vnd.google-apps.folder' }]);
 
     await page.getByRole('button', { name: 'Save', exact: true }).click();
     await expect(page.getByText(`Saved ${todayFileName(room)} to Period 4`)).toBeVisible();

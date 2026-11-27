@@ -9,7 +9,16 @@ const PNG_1PX =
   'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
 
 function bg(dataUrl: string) {
-  return { id: 'bg1', fileName: 'w.pdf', pages: [{ dataUrl, width: 1, height: 1 }], x: 0, y: 0, scale: 1, layout: 'stack', opacity: 1 };
+  return {
+    id: 'bg1',
+    fileName: 'w.pdf',
+    pages: [{ dataUrl, width: 1, height: 1 }],
+    x: 0,
+    y: 0,
+    scale: 1,
+    layout: 'stack',
+    opacity: 1,
+  };
 }
 
 describe('RoomStore', () => {

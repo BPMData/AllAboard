@@ -3,6 +3,7 @@
 > **For Code 6.1 Terra:** Read `CLAUDE.md`, `docs/ARCHITECTURE.md`, and `docs/DEPLOYMENT.md` first. Every merge to `main` deploys to Cloud Run.
 > **Behavior-preserving refactor only.** Do not change Socket.IO event names, payload shapes, HTTP routes, error strings, rate limits, backup bucket behavior (`DEFAULT_BACKUP_BUCKET`), or `StartServerOptions` / `startServer()` return shape.
 > **Strict Node 22 rules (`tsconfig.json` has `erasableSyntaxOnly: true`):**
+>
 > - Every file in `server/` must use **strictly erasable TypeScript** (no `enum`, `namespace`, parameter properties, or `import x = require()`).
 > - Use `import type` for type-only imports and **explicit `.ts` extensions** on all relative imports.
 > - Never import React, CSS, Playwright, or devDependencies into `server.ts` or `server/`.
@@ -29,6 +30,7 @@
    - Move `registerHttpRoutes(app, deps)` for `/healthz`, `/api/report`, `/api/rooms/:roomId` (`getRoomAvailability`), and `/api/assets/:hash`.
 
 ### Phase 1 Checkpoint
+
 ```sh
 npm run lint
 npm test
@@ -54,6 +56,7 @@ node -e "import('./server.ts').then(() => console.log('OK'))"
      - `publishDrawingEdit` (activity timestamp, `scheduleSaveToDisk`, digest tracking, board-audience emit)
 
 ### Phase 2 Checkpoint
+
 ```sh
 npm run lint
 npm test
@@ -77,6 +80,7 @@ node -e "import('./server.ts').then(() => console.log('OK'))"
      - `teacher:import-room`, `teacher:export-lesson`, `teacher:has-assets`, `teacher:upload-asset`, `teacher:load-lesson`.
 
 ### Phase 3 Checkpoint
+
 ```sh
 npm run lint
 npm test
@@ -98,6 +102,7 @@ node -e "import('./server.ts').then(() => console.log('OK'))"
 4. Update `docs/ARCHITECTURE.md` §3 with the new `server/*.ts` files.
 
 ### Final Verification
+
 ```sh
 npm run lint
 npm test

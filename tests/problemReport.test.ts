@@ -65,7 +65,8 @@ describe('problem reports: privacy', () => {
   });
 
   it('scrubs room codes, PINs, names, emails, links and phone numbers from the description', () => {
-    const raw = 'Room bright-fox-12, PIN 4829, Jayden and maria@x.com saw it at https://allaboard.app/?room=bright-fox-12, call 203-555-0199. In 2026.';
+    const raw =
+      'Room bright-fox-12, PIN 4829, Jayden and maria@x.com saw it at https://allaboard.app/?room=bright-fox-12, call 203-555-0199. In 2026.';
     const out = scrubPublicText(raw, ['bright-fox-12', 'Jayden']);
     for (const secret of ['bright-fox-12', '4829', 'Jayden', 'maria@x.com', 'https://', '555-0199']) {
       assert.ok(!out.includes(secret), `${secret} in ${out}`);
@@ -78,7 +79,10 @@ describe('problem reports: privacy', () => {
   });
 
   it('prepareReportForSending scrubs the description but sends private fields as typed', () => {
-    const sent = prepareReportForSending(base({ whatHappened: 'Jayden lost his work', comments: 'Jayden is fine to contact' }), ['Jayden']);
+    const sent = prepareReportForSending(
+      base({ whatHappened: 'Jayden lost his work', comments: 'Jayden is fine to contact' }),
+      ['Jayden']
+    );
     assert.equal(sent.whatHappened, '[removed] lost his work');
     assert.equal(sent.comments, 'Jayden is fine to contact');
   });
@@ -147,16 +151,22 @@ describe('problem reports: fallback', () => {
 describe('problem reports: user agent', () => {
   it('names common school devices', () => {
     assert.deepEqual(
-      describeUserAgent('Mozilla/5.0 (X11; CrOS x86_64 14541.0.0) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36'),
-      { browser: 'Chrome 131', os: 'ChromeOS' },
+      describeUserAgent(
+        'Mozilla/5.0 (X11; CrOS x86_64 14541.0.0) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36'
+      ),
+      { browser: 'Chrome 131', os: 'ChromeOS' }
     );
     assert.deepEqual(
-      describeUserAgent('Mozilla/5.0 (iPad; CPU OS 17_2 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.2 Mobile/15E148 Safari/604.1'),
-      { browser: 'Safari 17', os: 'iOS' },
+      describeUserAgent(
+        'Mozilla/5.0 (iPad; CPU OS 17_2 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.2 Mobile/15E148 Safari/604.1'
+      ),
+      { browser: 'Safari 17', os: 'iOS' }
     );
     assert.deepEqual(
-      describeUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36 Edg/131.0.0.0'),
-      { browser: 'Edge 131', os: 'Windows' },
+      describeUserAgent(
+        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36 Edg/131.0.0.0'
+      ),
+      { browser: 'Edge 131', os: 'Windows' }
     );
   });
 });

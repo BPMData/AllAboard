@@ -140,12 +140,7 @@ export function liveAddPoint(
 /**
  * Catch up to the exact pen-lift point at the end of a smoothed stroke.
  */
-export function liveLiftPoint(
-  points: number[],
-  x: number,
-  y: number,
-  minDist = 0.5
-): [number, number] | null {
+export function liveLiftPoint(points: number[], x: number, y: number, minDist = 0.5): [number, number] | null {
   const n = points.length;
   const px = Math.round(x * 10) / 10;
   const py = Math.round(y * 10) / 10;
@@ -161,7 +156,11 @@ export function liveLiftPoint(
  * Single taps (p.length < 4) draw a round filled dot; longer strokes connect sample midpoints
  * with quadratic Bézier curves so corners come out round instead of jagged.
  */
-export function traceSmoothStrokePath(ctx: CanvasRenderingContext2D | any, points: number[], strokeWidth: number): 'dot' | 'stroke' | 'none' {
+export function traceSmoothStrokePath(
+  ctx: CanvasRenderingContext2D | any,
+  points: number[],
+  strokeWidth: number
+): 'dot' | 'stroke' | 'none' {
   if (!points || points.length < 2) return 'none';
   ctx.beginPath();
   if (points.length < 4) {
@@ -357,7 +356,17 @@ function sweptPieceHull(piece: number[], ax: number, ay: number, bx: number, by:
   pts.sort((p, q) => p[0] - q[0] || p[1] - q[1]);
   const lower: Array<[number, number]> = [];
   for (const p of pts) {
-    while (lower.length >= 2 && cross(lower[lower.length - 2][0], lower[lower.length - 2][1], lower[lower.length - 1][0], lower[lower.length - 1][1], p[0], p[1]) <= 0) {
+    while (
+      lower.length >= 2 &&
+      cross(
+        lower[lower.length - 2][0],
+        lower[lower.length - 2][1],
+        lower[lower.length - 1][0],
+        lower[lower.length - 1][1],
+        p[0],
+        p[1]
+      ) <= 0
+    ) {
       lower.pop();
     }
     lower.push(p);
@@ -365,7 +374,17 @@ function sweptPieceHull(piece: number[], ax: number, ay: number, bx: number, by:
   const upper: Array<[number, number]> = [];
   for (let i = pts.length - 1; i >= 0; i--) {
     const p = pts[i];
-    while (upper.length >= 2 && cross(upper[upper.length - 2][0], upper[upper.length - 2][1], upper[upper.length - 1][0], upper[upper.length - 1][1], p[0], p[1]) <= 0) {
+    while (
+      upper.length >= 2 &&
+      cross(
+        upper[upper.length - 2][0],
+        upper[upper.length - 2][1],
+        upper[upper.length - 1][0],
+        upper[upper.length - 1][1],
+        p[0],
+        p[1]
+      ) <= 0
+    ) {
       upper.pop();
     }
     upper.push(p);
@@ -447,7 +466,10 @@ export function getHollowSweepGeometry(
   return geom;
 }
 
-function tracePolygon(target: { moveTo(x: number, y: number): void; lineTo(x: number, y: number): void; closePath(): void }, poly: number[]): void {
+function tracePolygon(
+  target: { moveTo(x: number, y: number): void; lineTo(x: number, y: number): void; closePath(): void },
+  poly: number[]
+): void {
   target.moveTo(poly[0], poly[1]);
   for (let i = 2; i < poly.length; i += 2) target.lineTo(poly[i], poly[i + 1]);
   target.closePath();
@@ -619,9 +641,10 @@ export function drawHollowElementCached(
   shapeKind: HollowShapeKind = 'circle',
   makeCanvas: (w: number, h: number) => any = defaultMakeCanvas
 ): void {
-  const m = points && points.length >= 4 && shapeKind !== 'circle' && typeof ctx.getTransform === 'function'
-    ? ctx.getTransform()
-    : null;
+  const m =
+    points && points.length >= 4 && shapeKind !== 'circle' && typeof ctx.getTransform === 'function'
+      ? ctx.getTransform()
+      : null;
   // Only plain scale + translate (never rotated or skewed): that is all the ink layers use.
   if (!m || m.b !== 0 || m.c !== 0 || !(m.a > 0) || Math.abs(m.a - m.d) > 1e-9) {
     drawHollowElementOnCtx(ctx, points, outerSize, lineWeight, color, shapeKind);
@@ -838,10 +861,7 @@ export function inkBox(pts: number[], pad: number): [number, number, number, num
 /**
  * True if two axis-aligned bounding boxes [x0, y0, x1, y1] overlap.
  */
-export function boxesMeet(
-  a: [number, number, number, number],
-  b: [number, number, number, number]
-): boolean {
+export function boxesMeet(a: [number, number, number, number], b: [number, number, number, number]): boolean {
   return a[0] <= b[2] && b[0] <= a[2] && a[1] <= b[3] && b[1] <= a[3];
 }
 
@@ -872,7 +892,7 @@ export function pointInLoop(x: number, y: number, loop: number[]): boolean {
   let inside = false;
   for (let i = 0, j = loop.length - 2; i < loop.length; j = i, i += 2) {
     if (
-      (loop[i + 1] > y) !== (loop[j + 1] > y) &&
+      loop[i + 1] > y !== loop[j + 1] > y &&
       x < ((loop[j] - loop[i]) * (y - loop[i + 1])) / (loop[j + 1] - loop[i + 1]) + loop[i]
     ) {
       inside = !inside;
@@ -932,9 +952,7 @@ export function getElementBounds(el: CanvasElement): [number, number, number, nu
 /**
  * Compute the union bounding box [x0, y0, x1, y1] of a set of elements, or null if empty.
  */
-export function getSelectionBounds(
-  elements: CanvasElement[]
-): [number, number, number, number] | null {
+export function getSelectionBounds(elements: CanvasElement[]): [number, number, number, number] | null {
   if (!elements || elements.length === 0) return null;
   let x0 = Infinity;
   let y0 = Infinity;
@@ -953,11 +971,7 @@ export function getSelectionBounds(
 /**
  * True if the user owns the element or is a verified teacher.
  */
-export function canUserModifyElement(
-  el: CanvasElement,
-  currentUserId: string,
-  isTeacher: boolean
-): boolean {
+export function canUserModifyElement(el: CanvasElement, currentUserId: string, isTeacher: boolean): boolean {
   return isTeacher || el.userId === currentUserId;
 }
 
@@ -965,22 +979,14 @@ export function canUserModifyElement(
  * True if `el` is a freehand stroke whose `points` can be split/trimmed by subsequent eraser strokes.
  */
 export function isFreehandStroke(el: CanvasElement): boolean {
-  return (
-    el.tool === 'solid' ||
-    el.tool === 'hollow' ||
-    el.tool === 'spray' ||
-    el.tool === 'highlighter'
-  );
+  return el.tool === 'solid' || el.tool === 'hollow' || el.tool === 'spray' || el.tool === 'highlighter';
 }
 
 /**
  * Compute the remaining visible polyline runs of `el` after applying subsequent eraser strokes
  * from the same user (mirrors OverBoard's `seenNow` / `applyErasers`).
  */
-export function getVisibleStrokeRuns(
-  el: CanvasElement,
-  allElements: CanvasElement[]
-): number[][] {
+export function getVisibleStrokeRuns(el: CanvasElement, allElements: CanvasElement[]): number[][] {
   if (!isFreehandStroke(el)) {
     return el.points && el.points.length >= 2 ? [el.points] : [];
   }
@@ -1000,12 +1006,7 @@ export function getVisibleStrokeRuns(
 
   for (let j = idx + 1; j < allElements.length; j++) {
     const er = allElements[j];
-    if (
-      er.tool !== 'eraser' ||
-      er.userId !== el.userId ||
-      !er.points ||
-      er.points.length < 2
-    ) {
+    if (er.tool !== 'eraser' || er.userId !== el.userId || !er.points || er.points.length < 2) {
       continue;
     }
     const r = Math.max(8, (er.strokeWidth || 6) * 1.5) / 2;
@@ -1040,10 +1041,7 @@ export function getVisibleStrokeRuns(
  * Expand `el` into its remaining visible pieces after subsequent erasers from the same user.
  * Returns `[el]` unchanged when no points were erased, `[]` if fully erased, or split copies otherwise.
  */
-export function expandElementVisiblePieces(
-  el: CanvasElement,
-  allElements: CanvasElement[]
-): CanvasElement[] {
+export function expandElementVisiblePieces(el: CanvasElement, allElements: CanvasElement[]): CanvasElement[] {
   if (!isFreehandStroke(el)) return [el];
   const runs = getVisibleStrokeRuns(el, allElements);
   if (runs.length === 0) return [];
@@ -1052,10 +1050,7 @@ export function expandElementVisiblePieces(
   }
   return runs.map((pts, idx) => ({
     ...el,
-    id:
-      idx === 0
-        ? el.id
-        : `${el.id}_p${idx}_${Math.random().toString(36).substring(2, 6)}`,
+    id: idx === 0 ? el.id : `${el.id}_p${idx}_${Math.random().toString(36).substring(2, 6)}`,
     points: [...pts],
   }));
 }
@@ -1063,22 +1058,14 @@ export function expandElementVisiblePieces(
 /**
  * True if a subsequent eraser stroke from the same user overlaps `el`'s bounding box.
  */
-export function hasSubsequentOverlappingEraser(
-  el: CanvasElement,
-  allElements: CanvasElement[]
-): boolean {
+export function hasSubsequentOverlappingEraser(el: CanvasElement, allElements: CanvasElement[]): boolean {
   if (el.tool === 'text' || el.tool === 'eraser') return false;
   const idx = allElements.findIndex((item) => item.id === el.id);
   if (idx === -1) return false;
   const elBounds = getElementBounds(el);
   for (let j = idx + 1; j < allElements.length; j++) {
     const er = allElements[j];
-    if (
-      er.tool === 'eraser' &&
-      er.userId === el.userId &&
-      er.points &&
-      er.points.length >= 2
-    ) {
+    if (er.tool === 'eraser' && er.userId === el.userId && er.points && er.points.length >= 2) {
       const r = Math.max(8, (er.strokeWidth || 6) * 1.5) / 2;
       if (boxesMeet(elBounds, inkBox(er.points, r))) {
         return true;
@@ -1154,15 +1141,9 @@ export function hitElementAtPoint(
       const rx1 = Math.max(el.x || 0, (el.x || 0) + (el.width || 0));
       const ry1 = Math.max(el.y || 0, (el.y || 0) + (el.height || 0));
       const reach = pad + tol;
-      if (
-        x >= rx0 - reach &&
-        x <= rx1 + reach &&
-        y >= ry0 - reach &&
-        y <= ry1 + reach
-      ) {
+      if (x >= rx0 - reach && x <= rx1 + reach && y >= ry0 - reach && y <= ry1 + reach) {
         if (rx1 - rx0 < 24 || ry1 - ry0 < 24) return el;
-        const inHollowInterior =
-          x > rx0 + reach && x < rx1 - reach && y > ry0 + reach && y < ry1 - reach;
+        const inHollowInterior = x > rx0 + reach && x < rx1 - reach && y > ry0 + reach && y < ry1 - reach;
         if (!inHollowInterior) return el;
       }
       continue;
@@ -1220,12 +1201,7 @@ export function lassoSelectElements(
     const b = getElementBounds(el);
     if (!boxesMeet(lb, b)) continue;
 
-    if (
-      el.tool === 'text' ||
-      el.tool === 'stamp' ||
-      el.tool === 'rect' ||
-      el.tool === 'circle'
-    ) {
+    if (el.tool === 'text' || el.tool === 'stamp' || el.tool === 'rect' || el.tool === 'circle') {
       const cx = (b[0] + b[2]) / 2;
       const cy = (b[1] + b[3]) / 2;
       if (pointInLoop(cx, cy, loop)) {

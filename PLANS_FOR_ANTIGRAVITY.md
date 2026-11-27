@@ -43,12 +43,12 @@ All four go through the **existing** socket event `teacher:configure-breakout`, 
 new `action` field. (The old spec said `breakout:configure`. That event does not exist,
 so do not create it.)
 
-| `action`           | What it does                                                                                      | Touches drawings? |
-|--------------------|---------------------------------------------------------------------------------------------------|-------------------|
-| `'new-round'`      | Creates round N+1 with fresh boards, makes it active, sets `mode` to `'individual'`/`'groups'`.    | Creates empty boards only |
-| `'resume'`         | Sets `activeRoundId` to a round (default: the current active round) and `mode` to that round's mode. Can also apply group/assignment edits. | **Never** |
-| `'update-current'` | Edits the active round: group titles, student→group assignments, `allowSelfSelect`, `chatScope`. Does **not** change `mode`. | **Never** |
-| `'return-to-main'` | Sets `mode = 'main'`. Nothing else.                                                                 | **Never** |
+| `action`           | What it does                                                                                                                                | Touches drawings?         |
+| ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------- |
+| `'new-round'`      | Creates round N+1 with fresh boards, makes it active, sets `mode` to `'individual'`/`'groups'`.                                             | Creates empty boards only |
+| `'resume'`         | Sets `activeRoundId` to a round (default: the current active round) and `mode` to that round's mode. Can also apply group/assignment edits. | **Never**                 |
+| `'update-current'` | Edits the active round: group titles, student→group assignments, `allowSelfSelect`, `chatScope`. Does **not** change `mode`.                | **Never**                 |
+| `'return-to-main'` | Sets `mode = 'main'`. Nothing else.                                                                                                         | **Never**                 |
 
 ### 0.4 Hard rules for the implementer
 
@@ -62,17 +62,17 @@ so do not create it.)
 
 ### 0.5 Files you will touch
 
-| File | Phase | What changes |
-|---|---|---|
-| `src/types.ts` | 1 | New types + new optional fields |
-| `src/lib/breakoutRounds.ts` (**new**) | 2 | Pure helper functions shared by server and client |
-| `tests/breakoutRounds.test.ts` (**new**) | 2 | Unit tests for the helpers |
-| `server.ts` | 3 | Migration, `teacher:configure-breakout`, `breakout:join-board`, late joiners, renames, `ALL_SUBBOARDS`, import |
-| `tests/server.test.ts` | 4 | Update one assertion, add round tests |
-| `src/App.tsx` | 5 | `activeBoardId`, `handleConfigureBreakout` type, rename handler |
-| `src/lib/batchPdfExport.ts` | 6 | Optional `fileLabel` param (1-line change) |
-| `src/components/Canvas.tsx` | 6 | Round selector, quick buttons, board lists, modal wiring, PDF export |
-| `src/components/CanvasModals.tsx` | 7 | `BreakoutManagerModal` tabs, `LiveGridOverview` boards + live reassignment |
+| File                                     | Phase | What changes                                                                                                   |
+| ---------------------------------------- | ----- | -------------------------------------------------------------------------------------------------------------- |
+| `src/types.ts`                           | 1     | New types + new optional fields                                                                                |
+| `src/lib/breakoutRounds.ts` (**new**)    | 2     | Pure helper functions shared by server and client                                                              |
+| `tests/breakoutRounds.test.ts` (**new**) | 2     | Unit tests for the helpers                                                                                     |
+| `server.ts`                              | 3     | Migration, `teacher:configure-breakout`, `breakout:join-board`, late joiners, renames, `ALL_SUBBOARDS`, import |
+| `tests/server.test.ts`                   | 4     | Update one assertion, add round tests                                                                          |
+| `src/App.tsx`                            | 5     | `activeBoardId`, `handleConfigureBreakout` type, rename handler                                                |
+| `src/lib/batchPdfExport.ts`              | 6     | Optional `fileLabel` param (1-line change)                                                                     |
+| `src/components/Canvas.tsx`              | 6     | Round selector, quick buttons, board lists, modal wiring, PDF export                                           |
+| `src/components/CanvasModals.tsx`        | 7     | `BreakoutManagerModal` tabs, `LiveGridOverview` boards + live reassignment                                     |
 
 ### 0.6 Baseline
 
@@ -91,9 +91,9 @@ Directly **above** `export interface SubBoardData`, add:
 export type SubBoardKind = 'individual' | 'group';
 
 export interface BreakoutRoundMeta {
-  id: string;                       // 'r1', 'r2', ...
-  number: number;                   // 1, 2, ...
-  title: string;                    // 'Round 2 · Groups · Frayer Model'
+  id: string; // 'r1', 'r2', ...
+  number: number; // 1, 2, ...
+  title: string; // 'Round 2 · Groups · Frayer Model'
   mode: 'individual' | 'groups';
   createdAt: number;
 }
@@ -109,14 +109,14 @@ export interface BreakoutGroupDraft {
 /** Payload of the `teacher:configure-breakout` socket event. Every field is optional. */
 export interface ConfigureBreakoutPayload {
   action?: BreakoutAction;
-  mode?: BreakoutMode;                       // used by 'new-round' (and legacy callers)
-  roundId?: string;                          // used by 'resume' (defaults to active round)
+  mode?: BreakoutMode; // used by 'new-round' (and legacy callers)
+  roundId?: string; // used by 'resume' (defaults to active round)
   allowSelfSelect?: boolean;
   chatScope?: 'unified' | 'board';
-  copyWorksheet?: boolean;                   // 'new-round' only
-  customBackground?: RoomBackground | null;  // 'new-round' only
-  groups?: BreakoutGroupDraft[];             // 'new-round': ids ignored. 'resume'/'update-current': ids must be real board ids
-  templateLabel?: string;                    // 'new-round' only, used in the round title
+  copyWorksheet?: boolean; // 'new-round' only
+  customBackground?: RoomBackground | null; // 'new-round' only
+  groups?: BreakoutGroupDraft[]; // 'new-round': ids ignored. 'resume'/'update-current': ids must be real board ids
+  templateLabel?: string; // 'new-round' only, used in the round title
 }
 ```
 
@@ -127,8 +127,8 @@ Change `SubBoardData` to:
 ```ts
 export interface SubBoardData {
   id: string;
-  roundId?: string;        // 'r1', 'r2', ... (always set by the server after migration)
-  kind?: SubBoardKind;     // 'individual' | 'group' (always set by the server after migration)
+  roundId?: string; // 'r1', 'r2', ... (always set by the server after migration)
+  kind?: SubBoardKind; // 'individual' | 'group' (always set by the server after migration)
   title: string;
   assignedUserIds: string[];
   elements: CanvasElement[];
@@ -164,13 +164,7 @@ exactly.**
 // Pure helpers for multi-round breakout boards. Shared by server.ts and the React client.
 // RULE: never infer a board's round or kind from its id. Use `roundId` / `kind`.
 
-import type {
-  BreakoutAction,
-  BreakoutMode,
-  BreakoutRoundMeta,
-  ConfigureBreakoutPayload,
-  SubBoardKind,
-} from '../types';
+import type { BreakoutAction, BreakoutMode, BreakoutRoundMeta, ConfigureBreakoutPayload, SubBoardKind } from '../types';
 
 /** Minimal board shape. Works for both server SubBoardState and client SubBoardData. */
 export interface BoardLike {
@@ -211,11 +205,7 @@ export function makeGroupBoardId(roundId: string, groupIndex: number): string {
   return `${roundId}_grp_${groupIndex + 1}`;
 }
 
-export function buildRoundTitle(
-  roundNumber: number,
-  mode: 'individual' | 'groups',
-  templateLabel?: string
-): string {
+export function buildRoundTitle(roundNumber: number, mode: 'individual' | 'groups', templateLabel?: string): string {
   const modeLabel = mode === 'groups' ? 'Groups' : 'Individual';
   const label = typeof templateLabel === 'string' ? templateLabel.trim().slice(0, 40) : '';
   return label ? `Round ${roundNumber} · ${modeLabel} · ${label}` : `Round ${roundNumber} · ${modeLabel}`;
@@ -233,10 +223,7 @@ export function getRounds(config: BreakoutConfigLike): BreakoutRoundMeta[] {
   return Array.isArray(config.rounds) ? [...config.rounds].sort((a, b) => a.number - b.number) : [];
 }
 
-export function getRoundById(
-  config: BreakoutConfigLike,
-  roundId: string | null | undefined
-): BreakoutRoundMeta | null {
+export function getRoundById(config: BreakoutConfigLike, roundId: string | null | undefined): BreakoutRoundMeta | null {
   if (!roundId) return null;
   return getRounds(config).find((r) => r.id === roundId) || null;
 }
@@ -270,10 +257,7 @@ export function getBoardsInRound<B extends BoardLike>(
 }
 
 /** Every board in every round, ordered by round number, then sorted inside each round. */
-export function getAllBoardsByRound<B extends BoardLike>(
-  boards: BoardCollection<B>,
-  config: BreakoutConfigLike
-): B[] {
+export function getAllBoardsByRound<B extends BoardLike>(boards: BoardCollection<B>, config: BreakoutConfigLike): B[] {
   const order = new Map(getRounds(config).map((r) => [r.id, r.number] as const));
   return toBoardList(boards)
     .slice()
@@ -322,9 +306,7 @@ export function normalizeBreakoutConfig(raw: unknown): BreakoutConfigLike {
       )
     : [];
   const activeRoundId =
-    typeof r.activeRoundId === 'string' && rounds.some((x) => x.id === r.activeRoundId)
-      ? r.activeRoundId
-      : undefined;
+    typeof r.activeRoundId === 'string' && rounds.some((x) => x.id === r.activeRoundId) ? r.activeRoundId : undefined;
   return {
     mode,
     activeRoundId,
@@ -412,10 +394,7 @@ export function migrateLegacyBreakout<B extends BoardLike>(
  * - same mode as the active round      -> 'update-current' (+ server switches mode on)
  * - different mode                     -> 'new-round'
  */
-export function resolveBreakoutAction(
-  payload: ConfigureBreakoutPayload,
-  config: BreakoutConfigLike
-): BreakoutAction {
+export function resolveBreakoutAction(payload: ConfigureBreakoutPayload, config: BreakoutConfigLike): BreakoutAction {
   if (payload.action) return payload.action;
   if (payload.mode === 'main') return 'return-to-main';
   const active = getActiveRound(config);
@@ -424,7 +403,7 @@ export function resolveBreakoutAction(
 }
 ```
 
-> Note on `resolveBreakoutAction`: a legacy call with the *same* mode maps to `'resume'`
+> Note on `resolveBreakoutAction`: a legacy call with the _same_ mode maps to `'resume'`
 > (not `'update-current'`), because legacy callers expected that call to also send
 > students into breakout mode.
 
@@ -433,18 +412,18 @@ export function resolveBreakoutAction(
 Use the same style as `tests/inkCore.test.ts` (`node:test` + `node:assert/strict`).
 Write **at least** these test cases:
 
-| # | Test name | Setup | Assert |
-|---|---|---|---|
-| 1 | `makes round and board ids` | — | `makeRoundId(2) === 'r2'`, `makeIndividualBoardId('r2','u1') === 'r2_ind_u1'`, `makeGroupBoardId('r2',0) === 'r2_grp_1'` |
-| 2 | `getNextRoundNumber starts at 1 and follows the max` | config with no rounds → 1; with rounds numbered 1 and 3 → 4 | |
-| 3 | `migrates legacy individual boards into r1` | Map with `ind_a`, `ind_b` (no roundId/kind); config `normalizeBreakoutConfig({mode:'individual'})` | both boards `roundId==='r1'`, `kind==='individual'`; `config.activeRoundId==='r1'`; `config.rounds.length===1`; `config.rounds[0].mode==='individual'`; function returned `true` |
-| 4 | `migrates mixed legacy boards into two rounds, active kind last` | Map with `ind_a` and `grp_1`; config mode `'groups'` | `ind_a.roundId==='r1'`, `grp_1.roundId==='r2'`, `activeRoundId==='r2'`, `mode==='groups'` |
-| 5 | `migration is idempotent` | run test 3's migration twice | second call returns `false`; still one round |
-| 6 | `migration with no boards forces mode main` | empty Map; config `{mode:'groups'}` | `mode==='main'`, `activeRoundId===undefined` |
-| 7 | `findStudentBoardId routes only within the active round` | boards `r1_ind_u1` (r1, individual, [u1]) and `r2_ind_u1` (r2, individual, [u1]); config `{mode:'individual', activeRoundId:'r2', rounds:[r1meta,r2meta]}` | returns `'r2_ind_u1'`; with `mode:'main'` returns `'main'` |
-| 8 | `findStudentBoardId falls back to first group` | r1 group boards `r1_grp_1` [u2], `r1_grp_2` [u3]; mode groups, active r1; userId `u9` | returns `'r1_grp_1'`; userId `u3` returns `'r1_grp_2'` |
-| 9 | `resolveBreakoutAction maps legacy payloads` | | `{mode:'main'}` → `'return-to-main'`; no rounds + `{mode:'individual'}` → `'new-round'`; active individual round + `{mode:'individual'}` → `'resume'`; active individual round + `{mode:'groups'}` → `'new-round'`; `{action:'update-current'}` → `'update-current'` |
-| 10 | `getAllBoardsByRound orders by round number` | boards in r2 and r1 inserted in reverse order | r1 boards come first |
+| #   | Test name                                                        | Setup                                                                                                                                                      | Assert                                                                                                                                                                                                                                                               |
+| --- | ---------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | `makes round and board ids`                                      | —                                                                                                                                                          | `makeRoundId(2) === 'r2'`, `makeIndividualBoardId('r2','u1') === 'r2_ind_u1'`, `makeGroupBoardId('r2',0) === 'r2_grp_1'`                                                                                                                                             |
+| 2   | `getNextRoundNumber starts at 1 and follows the max`             | config with no rounds → 1; with rounds numbered 1 and 3 → 4                                                                                                |                                                                                                                                                                                                                                                                      |
+| 3   | `migrates legacy individual boards into r1`                      | Map with `ind_a`, `ind_b` (no roundId/kind); config `normalizeBreakoutConfig({mode:'individual'})`                                                         | both boards `roundId==='r1'`, `kind==='individual'`; `config.activeRoundId==='r1'`; `config.rounds.length===1`; `config.rounds[0].mode==='individual'`; function returned `true`                                                                                     |
+| 4   | `migrates mixed legacy boards into two rounds, active kind last` | Map with `ind_a` and `grp_1`; config mode `'groups'`                                                                                                       | `ind_a.roundId==='r1'`, `grp_1.roundId==='r2'`, `activeRoundId==='r2'`, `mode==='groups'`                                                                                                                                                                            |
+| 5   | `migration is idempotent`                                        | run test 3's migration twice                                                                                                                               | second call returns `false`; still one round                                                                                                                                                                                                                         |
+| 6   | `migration with no boards forces mode main`                      | empty Map; config `{mode:'groups'}`                                                                                                                        | `mode==='main'`, `activeRoundId===undefined`                                                                                                                                                                                                                         |
+| 7   | `findStudentBoardId routes only within the active round`         | boards `r1_ind_u1` (r1, individual, [u1]) and `r2_ind_u1` (r2, individual, [u1]); config `{mode:'individual', activeRoundId:'r2', rounds:[r1meta,r2meta]}` | returns `'r2_ind_u1'`; with `mode:'main'` returns `'main'`                                                                                                                                                                                                           |
+| 8   | `findStudentBoardId falls back to first group`                   | r1 group boards `r1_grp_1` [u2], `r1_grp_2` [u3]; mode groups, active r1; userId `u9`                                                                      | returns `'r1_grp_1'`; userId `u3` returns `'r1_grp_2'`                                                                                                                                                                                                               |
+| 9   | `resolveBreakoutAction maps legacy payloads`                     |                                                                                                                                                            | `{mode:'main'}` → `'return-to-main'`; no rounds + `{mode:'individual'}` → `'new-round'`; active individual round + `{mode:'individual'}` → `'resume'`; active individual round + `{mode:'groups'}` → `'new-round'`; `{action:'update-current'}` → `'update-current'` |
+| 10  | `getAllBoardsByRound orders by round number`                     | boards in r2 and r1 inserted in reverse order                                                                                                              | r1 boards come first                                                                                                                                                                                                                                                 |
 
 Import with: `import { ... } from '../src/lib/breakoutRounds';`
 
@@ -525,6 +504,7 @@ migrateLegacyBreakout(subBoards, breakoutConfig);
 ```
 
 Then in the `rooms.set(...)` object:
+
 - replace `subBoards: deserializeSubBoards(item.subBoards),` with `subBoards,`
 - replace the whole `breakoutConfig: item.breakoutConfig || { ... },` with `breakoutConfig,`
 - add `roundTemplates: item.roundTemplates && typeof item.roundTemplates === 'object' ? item.roundTemplates : {},`
@@ -564,11 +544,7 @@ function getRoundTemplate(room: RoomState, roundId: string): any | null {
 }
 
 /** Creates `<roundId>_ind_<userId>` if this user has no individual board in that round. Returns true if created. */
-function provisionIndividualBoard(
-  room: RoomState,
-  roundId: string,
-  user: { userId: string; name: string }
-): boolean {
+function provisionIndividualBoard(room: RoomState, roundId: string, user: { userId: string; name: string }): boolean {
   const existing = getBoardsInRound(room.subBoards, roundId).find(
     (sb) => sb.kind === 'individual' && sb.assignedUserIds.includes(user.userId)
   );
@@ -658,9 +634,7 @@ socket.on('teacher:configure-breakout', (payload: ConfigureBreakoutPayload, call
     cfg.mode = 'main';
   } else if (action === 'resume' || action === 'update-current') {
     const round =
-      action === 'resume'
-        ? getRoundById(cfg, safePayload.roundId || cfg.activeRoundId)
-        : getActiveRound(cfg);
+      action === 'resume' ? getRoundById(cfg, safePayload.roundId || cfg.activeRoundId) : getActiveRound(cfg);
     if (!round) {
       callback?.({ ok: false, error: 'There is no breakout round to resume or edit yet.' });
       return;
@@ -688,8 +662,8 @@ socket.on('teacher:configure-breakout', (payload: ConfigureBreakoutPayload, call
       safePayload.customBackground !== undefined
         ? safePayload.customBackground
         : safePayload.copyWorksheet
-        ? room.background
-        : null;
+          ? room.background
+          : null;
     room.roundTemplates[roundId] = cloneBackground(templateBg);
 
     const roundMeta: BreakoutRoundMeta = {
@@ -712,7 +686,7 @@ socket.on('teacher:configure-breakout', (payload: ConfigureBreakoutPayload, call
           id,
           roundId,
           kind: 'group',
-          title: (typeof g.title === 'string' && g.title.trim()) ? g.title.trim().slice(0, 40) : `Group ${i + 1}`,
+          title: typeof g.title === 'string' && g.title.trim() ? g.title.trim().slice(0, 40) : `Group ${i + 1}`,
           assignedUserIds: assigned,
           elements: [],
           background: cloneBackground(templateBg),
@@ -794,7 +768,7 @@ if (renamedBoard) broadcastBreakoutSync(room);
 ### 3.12 `teacher:rename-user` (~line 956)
 
 Inside `for (const sb of room.subBoards.values())`, replace
-`if (sb.id === \`ind_${targetUserId}\`) {` with:
+`if (sb.id === \`ind\_${targetUserId}\`) {` with:
 
 ```ts
 if (sb.kind === 'individual' && sb.assignedUserIds[0] === targetUserId) {
@@ -872,7 +846,17 @@ async function setupClass(roomId: string) {
 }
 
 function stroke(id: string, boardId: string, userId: string) {
-  return { id, boardId, userId, userName: userId, tool: 'solid', color: '#000', strokeWidth: 4, points: [0, 0, 10, 10], timestamp: Date.now() };
+  return {
+    id,
+    boardId,
+    userId,
+    userName: userId,
+    tool: 'solid',
+    color: '#000',
+    strokeWidth: 4,
+    points: [0, 0, 10, 10],
+    timestamp: Date.now(),
+  };
 }
 ```
 
@@ -882,12 +866,14 @@ After a fire-and-forget emit (`element-start`), `await delay(50)`.
 Write these tests:
 
 **T1 – resume preserves strokes**
+
 1. `emitAck(teacher, 'teacher:configure-breakout', { action: 'new-round', mode: 'individual', chatScope: 'unified' })` → `ok === true`, `activeRoundId === 'r1'`.
 2. `s1.emit('element-start', stroke('k1', 'r1_ind_s1', 's1'))`, then `await delay(50)`.
 3. `emitAck(teacher, ..., { action: 'return-to-main' })`. Capture the `breakout-sync` it triggers on `teacher`. Assert `breakoutConfig.mode === 'main'` and `subBoards['r1_ind_s1'].elements.length === 1`.
 4. `emitAck(teacher, ..., { action: 'resume' })`. Capture `breakout-sync`. Assert `mode === 'individual'`, `activeRoundId === 'r1'`, and `subBoards['r1_ind_s1'].elements.length === 1`.
 
 **T2 – new round archives the old round**
+
 1. Launch r1 individual, then draw `k1` on `r1_ind_s1` as in T1.
 2. `emitAck(..., { action: 'new-round', mode: 'groups', groups: [{ id: 'grp_1', title: 'Red', assignedUserIds: ['s1'] }, { id: 'grp_2', title: 'Blue', assignedUserIds: ['s2', 's1'] }] })`.
 3. From the `breakout-sync`, assert:
@@ -898,16 +884,19 @@ Write these tests:
    - `subBoards['r1_ind_s1'].elements.length === 1` and `subBoards['r1_ind_s1'].roundId === 'r1'`
 
 **T3 – join-board only moves within the active round**
+
 1. Launch r1 groups (`grp` drafts with s1 in group 1, s2 in group 2), then launch r2 groups with the same drafts.
 2. `teacher.emit('breakout:join-board', { targetBoardId: 'r2_grp_2', targetUserId: 's1' })`. Capture `breakout-sync`. Assert `r2_grp_2` includes `s1`, `r2_grp_1` does not, and `r1_grp_1` **still** includes `s1`.
 3. `teacher.emit('breakout:join-board', { targetBoardId: 'r1_grp_2', targetUserId: 's2' })`, then `await delay(100)`. Get a fresh state with any later `breakout-sync` (for example, emit `{ action: 'update-current' }` with `emitAck` and capture its sync). Assert `r1_grp_2.assignedUserIds` is unchanged (the archived round was ignored).
 
 **T4 – late joiner gets a board in the active round with the round's worksheet**
+
 1. Launch r1 individual with `customBackground: { id: 'bg1', fileName: 'frayer.png', pages: [], x: 0, y: 0, scale: 1, layout: 'row', opacity: 1 }`.
 2. Register `waitForEvent(teacher, 'breakout-sync')`, then `joinTracked({ roomId, userId: 's3', name: 'Lee' })`.
 3. Assert `subBoards['r1_ind_s3']` exists, `roundId === 'r1'`, and `background.fileName === 'frayer.png'`.
 
 **T5 – ALL_SUBBOARDS only hits the active round**
+
 1. Launch r1 individual, then launch r2 individual.
 2. Teacher emits `elements-batch-add` with `boardId: 'ALL_SUBBOARDS'` (copy the element shape from the existing test). Capture `breakout-sync`.
 3. Assert `r2_ind_s1.elements.length === 1` and `r1_ind_s1.elements.length === 0`.
@@ -930,6 +919,7 @@ write `path.join(tmpDir, 'rooms-store.json')` yourself:
 
 Check how `loadRoomsFromDisk` reads the file (`parsed.rooms`) and match that shape exactly.
 Then join as `s1` and assert from `init`:
+
 - `init.subBoards['ind_s1'].roundId === 'r1'` and `.kind === 'individual'`
 - `init.roomSettings.breakoutConfig.activeRoundId === 'r1'`
 - `init.subBoards['ind_s1'].elements.length === 1`
@@ -1056,7 +1046,7 @@ const activeRoundBoards = useMemo(
 const effectiveViewingRoundId: string | 'all' | null =
   teacherViewingRoundId === 'all' || getRoundById(breakoutConfig, teacherViewingRoundId)
     ? teacherViewingRoundId
-    : breakoutConfig.activeRoundId ?? null;
+    : (breakoutConfig.activeRoundId ?? null);
 
 const teacherVisibleBoards = useMemo(
   () =>
@@ -1078,6 +1068,7 @@ const roundShortLabel = (roundId?: string) => {
 ```
 
 Notes:
+
 - In the **student** "Switch Group" dropdown (~line 4206), use
   `activeRoundBoards.filter((sb) => sb.kind === 'group')`.
 - In the "Send to board" dropdown (~line 4604), change the label
@@ -1090,9 +1081,7 @@ Replace `handleOpenBreakoutModal` with:
 
 ```ts
 const loadDraftGroupsFromActiveRound = useCallback((): boolean => {
-  const current = activeRound
-    ? getBoardsInRound(subBoards, activeRound.id).filter((sb) => sb.kind === 'group')
-    : [];
+  const current = activeRound ? getBoardsInRound(subBoards, activeRound.id).filter((sb) => sb.kind === 'group') : [];
   if (current.length === 0) return false;
   setDraftGroupCount(current.length);
   setDraftGroups(current.map((sb) => ({ id: sb.id, title: sb.title, assignedUserIds: [...sb.assignedUserIds] })));
@@ -1131,26 +1120,30 @@ Directly **after** the "Breakout / Individual Mode Launcher" `<button>` and its 
 add:
 
 ```tsx
-{breakoutConfig.mode !== 'main' && (
-  <button
-    type="button"
-    onClick={() => onConfigureBreakout({ action: 'return-to-main' })}
-    className="flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium transition-colors whitespace-nowrap shrink-0 cursor-pointer bg-white text-slate-800 border border-amber-300 hover:bg-amber-100/60"
-    title="Pull every student back to the Main Board. Their breakout work is kept."
-  >
-    Bring All to Main
-  </button>
-)}
-{breakoutConfig.mode === 'main' && activeRound && (
-  <button
-    type="button"
-    onClick={() => onConfigureBreakout({ action: 'resume', roundId: activeRound.id })}
-    className="flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium transition-colors whitespace-nowrap shrink-0 cursor-pointer bg-white text-blue-800 border border-blue-300 hover:bg-blue-50"
-    title={`Send students back to ${activeRound.title} with their work intact`}
-  >
-    Resume Round {activeRound.number}
-  </button>
-)}
+{
+  breakoutConfig.mode !== 'main' && (
+    <button
+      type="button"
+      onClick={() => onConfigureBreakout({ action: 'return-to-main' })}
+      className="flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium transition-colors whitespace-nowrap shrink-0 cursor-pointer bg-white text-slate-800 border border-amber-300 hover:bg-amber-100/60"
+      title="Pull every student back to the Main Board. Their breakout work is kept."
+    >
+      Bring All to Main
+    </button>
+  );
+}
+{
+  breakoutConfig.mode === 'main' && activeRound && (
+    <button
+      type="button"
+      onClick={() => onConfigureBreakout({ action: 'resume', roundId: activeRound.id })}
+      className="flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium transition-colors whitespace-nowrap shrink-0 cursor-pointer bg-white text-blue-800 border border-blue-300 hover:bg-blue-50"
+      title={`Send students back to ${activeRound.title} with their work intact`}
+    >
+      Resume Round {activeRound.number}
+    </button>
+  );
+}
 ```
 
 ### 6.6 Teacher bar: round selector and board dropdown (~line 3761)
@@ -1161,43 +1154,54 @@ Inside the `{Object.keys(subBoards).length > 0 && ( <div ...> ... )}` block:
    selector (it renders only when there is more than one round):
 
 ```tsx
-{rounds.length > 1 && (
-  <>
-    <span className="text-[11px] text-slate-500">Round:</span>
-    <select
-      aria-label="Breakout round to view"
-      value={effectiveViewingRoundId ?? ''}
-      onChange={(e) => {
-        const v = e.target.value;
-        setTeacherViewingRoundId(v === breakoutConfig.activeRoundId ? null : v);
-      }}
-      className="text-xs font-semibold text-slate-900 bg-transparent focus:outline-none cursor-pointer pr-1"
-    >
-      {rounds.map((r) => (
-        <option key={r.id} value={r.id}>
-          {r.title}{r.id === breakoutConfig.activeRoundId ? ' (live)' : ''}
-        </option>
-      ))}
-      <option value="all">All Rounds</option>
-    </select>
-    <span className="text-slate-300" aria-hidden="true">|</span>
-  </>
-)}
+{
+  rounds.length > 1 && (
+    <>
+      <span className="text-[11px] text-slate-500">Round:</span>
+      <select
+        aria-label="Breakout round to view"
+        value={effectiveViewingRoundId ?? ''}
+        onChange={(e) => {
+          const v = e.target.value;
+          setTeacherViewingRoundId(v === breakoutConfig.activeRoundId ? null : v);
+        }}
+        className="text-xs font-semibold text-slate-900 bg-transparent focus:outline-none cursor-pointer pr-1"
+      >
+        {rounds.map((r) => (
+          <option key={r.id} value={r.id}>
+            {r.title}
+            {r.id === breakoutConfig.activeRoundId ? ' (live)' : ''}
+          </option>
+        ))}
+        <option value="all">All Rounds</option>
+      </select>
+      <span className="text-slate-300" aria-hidden="true">
+        |
+      </span>
+    </>
+  );
+}
 ```
 
 2. In the **board** `<select>`, replace the `(Object.values(subBoards) as SubBoardData[]).map(...)`
    options with:
 
 ```tsx
-{activeBoardId !== 'main' && !teacherVisibleBoards.some((sb) => sb.id === activeBoardId) && (
-  <option value={activeBoardId}>{roundShortLabel(subBoards[activeBoardId]?.roundId)} · {activeBoardTitle}</option>
-)}
-{teacherVisibleBoards.map((sb) => (
-  <option key={sb.id} value={sb.id}>
-    {effectiveViewingRoundId === 'all' ? `${roundShortLabel(sb.roundId)} · ` : ''}
-    {sb.title} ({sb.elements.length} items)
-  </option>
-))}
+{
+  activeBoardId !== 'main' && !teacherVisibleBoards.some((sb) => sb.id === activeBoardId) && (
+    <option value={activeBoardId}>
+      {roundShortLabel(subBoards[activeBoardId]?.roundId)} · {activeBoardTitle}
+    </option>
+  );
+}
+{
+  teacherVisibleBoards.map((sb) => (
+    <option key={sb.id} value={sb.id}>
+      {effectiveViewingRoundId === 'all' ? `${roundShortLabel(sb.roundId)} · ` : ''}
+      {sb.title} ({sb.elements.length} items)
+    </option>
+  ));
+}
 ```
 
 (The first option stops the controlled `<select>` from showing the wrong value when the
@@ -1217,8 +1221,8 @@ const fileLabel =
   effectiveViewingRoundId === 'all'
     ? 'all-rounds'
     : effectiveViewingRoundId
-    ? `round-${getRoundById(breakoutConfig, effectiveViewingRoundId)?.number ?? ''}`
-    : 'boards';
+      ? `round-${getRoundById(breakoutConfig, effectiveViewingRoundId)?.number ?? ''}`
+      : 'boards';
 ```
 
 Then pass `fileLabel` into `exportAllBoardsToPdf({ ..., fileLabel })`.
@@ -1308,25 +1312,29 @@ interface LiveGridOverviewProps {
    round:
 
 ```tsx
-{sb.kind === 'group' && sb.roundId === activeRoundId && sb.assignedUserIds.length > 0 && (
-  <div className="space-y-1" onClick={(e) => e.stopPropagation()}>
-    {sb.assignedUserIds.map((uid) => (
-      <div key={uid} className="flex items-center justify-between gap-2 text-[11px]">
-        <span className="text-slate-700 truncate">{users.find((u) => u.userId === uid)?.name || 'Student'}</span>
-        <select
-          aria-label="Move student to another group"
-          value={sb.id}
-          onChange={(e) => onAssignUserToBoard(e.target.value, uid)}
-          className="bg-slate-50 border border-slate-300 rounded px-1.5 py-0.5 text-[11px] text-slate-800 cursor-pointer"
-        >
-          {activeRoundGroupBoards.map((g) => (
-            <option key={g.id} value={g.id}>{g.title}</option>
-          ))}
-        </select>
-      </div>
-    ))}
-  </div>
-)}
+{
+  sb.kind === 'group' && sb.roundId === activeRoundId && sb.assignedUserIds.length > 0 && (
+    <div className="space-y-1" onClick={(e) => e.stopPropagation()}>
+      {sb.assignedUserIds.map((uid) => (
+        <div key={uid} className="flex items-center justify-between gap-2 text-[11px]">
+          <span className="text-slate-700 truncate">{users.find((u) => u.userId === uid)?.name || 'Student'}</span>
+          <select
+            aria-label="Move student to another group"
+            value={sb.id}
+            onChange={(e) => onAssignUserToBoard(e.target.value, uid)}
+            className="bg-slate-50 border border-slate-300 rounded px-1.5 py-0.5 text-[11px] text-slate-800 cursor-pointer"
+          >
+            {activeRoundGroupBoards.map((g) => (
+              <option key={g.id} value={g.id}>
+                {g.title}
+              </option>
+            ))}
+          </select>
+        </div>
+      ))}
+    </div>
+  );
+}
 ```
 
 `e.stopPropagation()` is **required**. Without it, clicking the select also triggers the
@@ -1352,43 +1360,57 @@ onChangeDraftRoundAction: (next: 'update-current' | 'new-round') => void;
 ```ts
 const isEditing = Boolean(activeRound) && draftRoundAction === 'update-current';
 const templateLabelFor = (choice: typeof draftWorksheetChoice): string =>
-  choice === 'frayer' ? 'Frayer Model'
-  : choice === 'checkin' ? 'Task Pulse Check'
-  : choice === 'corners' ? 'Four Corners'
-  : choice === 'current' && fullMainBackground ? 'Copy of Main'
-  : 'Blank';
+  choice === 'frayer'
+    ? 'Frayer Model'
+    : choice === 'checkin'
+      ? 'Task Pulse Check'
+      : choice === 'corners'
+        ? 'Four Corners'
+        : choice === 'current' && fullMainBackground
+          ? 'Copy of Main'
+          : 'Blank';
 ```
 
 3. **Round tabs.** Directly below the header `<div>` (the one with the X close button),
    add the block below. It renders only when a round exists:
 
 ```tsx
-{activeRound && (
-  <div className="grid grid-cols-2 gap-2.5">
-    <button
-      type="button"
-      onClick={() => onChangeDraftRoundAction('update-current')}
-      className={cn(
-        "p-3 rounded-xl border text-left transition-colors cursor-pointer",
-        draftRoundAction === 'update-current' ? "bg-blue-50/80 border-blue-600" : "bg-white border-slate-200 hover:border-slate-300"
-      )}
-    >
-      <div className="font-display font-semibold text-xs text-slate-900">Resume / Edit {activeRound.title}</div>
-      <p className="text-[11px] text-slate-500 mt-0.5">Keep every board and drawing. Change groups or chat settings.</p>
-    </button>
-    <button
-      type="button"
-      onClick={() => onChangeDraftRoundAction('new-round')}
-      className={cn(
-        "p-3 rounded-xl border text-left transition-colors cursor-pointer",
-        draftRoundAction === 'new-round' ? "bg-blue-50/80 border-blue-600" : "bg-white border-slate-200 hover:border-slate-300"
-      )}
-    >
-      <div className="font-display font-semibold text-xs text-slate-900">Start New Round {nextRoundNumber}</div>
-      <p className="text-[11px] text-slate-500 mt-0.5">Fresh boards and a new worksheet. Round {activeRound.number} is archived, not deleted.</p>
-    </button>
-  </div>
-)}
+{
+  activeRound && (
+    <div className="grid grid-cols-2 gap-2.5">
+      <button
+        type="button"
+        onClick={() => onChangeDraftRoundAction('update-current')}
+        className={cn(
+          'p-3 rounded-xl border text-left transition-colors cursor-pointer',
+          draftRoundAction === 'update-current'
+            ? 'bg-blue-50/80 border-blue-600'
+            : 'bg-white border-slate-200 hover:border-slate-300'
+        )}
+      >
+        <div className="font-display font-semibold text-xs text-slate-900">Resume / Edit {activeRound.title}</div>
+        <p className="text-[11px] text-slate-500 mt-0.5">
+          Keep every board and drawing. Change groups or chat settings.
+        </p>
+      </button>
+      <button
+        type="button"
+        onClick={() => onChangeDraftRoundAction('new-round')}
+        className={cn(
+          'p-3 rounded-xl border text-left transition-colors cursor-pointer',
+          draftRoundAction === 'new-round'
+            ? 'bg-blue-50/80 border-blue-600'
+            : 'bg-white border-slate-200 hover:border-slate-300'
+        )}
+      >
+        <div className="font-display font-semibold text-xs text-slate-900">Start New Round {nextRoundNumber}</div>
+        <p className="text-[11px] text-slate-500 mt-0.5">
+          Fresh boards and a new worksheet. Round {activeRound.number} is archived, not deleted.
+        </p>
+      </button>
+    </div>
+  );
+}
 ```
 
 4. **Mode cards.** Delete the **"Whole-Class Main Board"** card (the first button in the
@@ -1396,12 +1418,15 @@ const templateLabelFor = (choice: typeof draftWorksheetChoice): string =>
    grid in `{!isEditing && ( ... )}`. Right after it, add:
 
 ```tsx
-{isEditing && activeRound && (
-  <p className="text-xs text-slate-600 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2">
-    {activeRound.mode === 'groups' ? 'Group round' : 'Individual round'} · Students' drawings and worksheets are never changed here.
-    {activeRound.mode === 'individual' && ' Students who join late automatically get their own board.'}
-  </p>
-)}
+{
+  isEditing && activeRound && (
+    <p className="text-xs text-slate-600 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2">
+      {activeRound.mode === 'groups' ? 'Group round' : 'Individual round'} · Students' drawings and worksheets are never
+      changed here.
+      {activeRound.mode === 'individual' && ' Students who join late automatically get their own board.'}
+    </p>
+  );
+}
 ```
 
 5. **Groups panel.** Keep the existing `{draftBreakoutMode === 'groups' && (...)}` panel,
@@ -1416,11 +1441,14 @@ const templateLabelFor = (choice: typeof draftWorksheetChoice): string =>
 7. **"Archive" notice.** Directly above the footer, add:
 
 ```tsx
-{activeRound && !isEditing && (
-  <p className="text-[11px] text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
-    {activeRound.title} will be archived. Nothing is deleted. You can still open and export it from the Round selector.
-  </p>
-)}
+{
+  activeRound && !isEditing && (
+    <p className="text-[11px] text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+      {activeRound.title} will be archived. Nothing is deleted. You can still open and export it from the Round
+      selector.
+    </p>
+  );
+}
 ```
 
 8. **Footer.** Replace the whole footer `<div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100">…</div>` with:
@@ -1439,7 +1467,10 @@ const templateLabelFor = (choice: typeof draftWorksheetChoice): string =>
       type="button"
       onClick={async () => {
         const res = await onConfigureBreakout({ action: 'return-to-main' });
-        if (!res.ok) { window.alert(res.error || 'Could not return to the Main Board.'); return; }
+        if (!res.ok) {
+          window.alert(res.error || 'Could not return to the Main Board.');
+          return;
+        }
         onClose();
         onShowLiveGridOverview(false);
       }}
@@ -1462,9 +1493,12 @@ const templateLabelFor = (choice: typeof draftWorksheetChoice): string =>
         };
       } else {
         let customBg: RoomBackground | null | undefined = undefined;
-        if (draftWorksheetChoice === 'frayer') customBg = generateTemplateBackground('frayer-model', draftWorksheetTopic);
-        else if (draftWorksheetChoice === 'checkin') customBg = generateTemplateBackground('checkin-columns', draftWorksheetTopic);
-        else if (draftWorksheetChoice === 'corners') customBg = generateTemplateBackground('four-corners', draftWorksheetTopic);
+        if (draftWorksheetChoice === 'frayer')
+          customBg = generateTemplateBackground('frayer-model', draftWorksheetTopic);
+        else if (draftWorksheetChoice === 'checkin')
+          customBg = generateTemplateBackground('checkin-columns', draftWorksheetTopic);
+        else if (draftWorksheetChoice === 'corners')
+          customBg = generateTemplateBackground('four-corners', draftWorksheetTopic);
         else if (draftWorksheetChoice === 'none') customBg = null;
         payload = {
           action: 'new-round',
@@ -1478,7 +1512,10 @@ const templateLabelFor = (choice: typeof draftWorksheetChoice): string =>
         };
       }
       const res = await onConfigureBreakout(payload);
-      if (!res.ok) { window.alert(res.error || 'Could not update breakout boards.'); return; }
+      if (!res.ok) {
+        window.alert(res.error || 'Could not update breakout boards.');
+        return;
+      }
       onClose();
       onShowLiveGridOverview(payload.action !== 'update-current');
     }}
@@ -1534,18 +1571,18 @@ If anything else prints, replace it with a `kind`/`roundId` helper.
 
 ## Appendix A: Architecture decisions (already made; do not revisit)
 
-| # | Decision | Why |
-|---|---|---|
-| A1 | **Explicit `roundId` + `kind` fields on every board. Never parse IDs.** | The old code mixed ID parsing into ~10 places. Explicit fields make legacy and new IDs work the same way and remove a whole class of bugs. |
-| A2 | **Legacy boards keep their IDs** (`ind_x`, `grp_1`). Only `roundId: 'r1'` and `kind` are added. | Renaming keys would also mean rewriting `boardId` inside every element and chat message. That is risky and gains nothing because of A1. |
-| A3 | ID format `r<N>_ind_<userId>` / `r<N>_grp_<n>` (underscore, not `:`). | Board IDs end up in PNG/PDF filenames and DOM attributes. `:` is unsafe in filenames on Windows. |
-| A4 | **One existing event** (`teacher:configure-breakout`) plus an `action` field. Old payloads with no `action` are mapped by `resolveBreakoutAction`. | No new socket surface. Old clients and the existing test keep working. |
-| A5 | `resume` / `update-current` / `return-to-main` **never** write `elements`, `background`, or `messages`. To change a worksheet, start a new round. | Makes "zero work lost" a structural guarantee rather than a careful-coding one. The old `copyWorksheet` re-apply on existing boards silently overwrote backgrounds. |
-| A6 | Only the **active round** is mutable through breakout tools (`join-board`, `ALL_SUBBOARDS`, group edits). Archived rounds are read-only through those paths. | Archived work cannot be changed by accident. The teacher can still open and annotate an archived board directly from the switcher. |
-| A7 | Per-round template stored server-side in `room.roundTemplates` (persisted, **not** broadcast). | Late-joining students need the round's worksheet even if no board existed at launch. It is not broadcast because worksheets can be MBs of data URLs. It falls back to cloning a sibling board's background (for example, after a snapshot import). |
-| A8 | Pure helper module `src/lib/breakoutRounds.ts` imported by both server and client. | One implementation of routing and migration logic, unit-testable without sockets. |
-| A9 | The teacher's round browsing (`teacherViewingRoundId`) is **local UI state**, separate from the live `activeRoundId`. | The teacher can look at Round 1 while students work in Round 2. |
-| A10 | Student-to-group moves in the Live Grid use the existing `breakout:join-board` (immediate). Moves inside the modal are drafts saved with **Save Changes**. | This matches how each surface already behaves. |
+| #   | Decision                                                                                                                                                     | Why                                                                                                                                                                                                                                                |
+| --- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| A1  | **Explicit `roundId` + `kind` fields on every board. Never parse IDs.**                                                                                      | The old code mixed ID parsing into ~10 places. Explicit fields make legacy and new IDs work the same way and remove a whole class of bugs.                                                                                                         |
+| A2  | **Legacy boards keep their IDs** (`ind_x`, `grp_1`). Only `roundId: 'r1'` and `kind` are added.                                                              | Renaming keys would also mean rewriting `boardId` inside every element and chat message. That is risky and gains nothing because of A1.                                                                                                            |
+| A3  | ID format `r<N>_ind_<userId>` / `r<N>_grp_<n>` (underscore, not `:`).                                                                                        | Board IDs end up in PNG/PDF filenames and DOM attributes. `:` is unsafe in filenames on Windows.                                                                                                                                                   |
+| A4  | **One existing event** (`teacher:configure-breakout`) plus an `action` field. Old payloads with no `action` are mapped by `resolveBreakoutAction`.           | No new socket surface. Old clients and the existing test keep working.                                                                                                                                                                             |
+| A5  | `resume` / `update-current` / `return-to-main` **never** write `elements`, `background`, or `messages`. To change a worksheet, start a new round.            | Makes "zero work lost" a structural guarantee rather than a careful-coding one. The old `copyWorksheet` re-apply on existing boards silently overwrote backgrounds.                                                                                |
+| A6  | Only the **active round** is mutable through breakout tools (`join-board`, `ALL_SUBBOARDS`, group edits). Archived rounds are read-only through those paths. | Archived work cannot be changed by accident. The teacher can still open and annotate an archived board directly from the switcher.                                                                                                                 |
+| A7  | Per-round template stored server-side in `room.roundTemplates` (persisted, **not** broadcast).                                                               | Late-joining students need the round's worksheet even if no board existed at launch. It is not broadcast because worksheets can be MBs of data URLs. It falls back to cloning a sibling board's background (for example, after a snapshot import). |
+| A8  | Pure helper module `src/lib/breakoutRounds.ts` imported by both server and client.                                                                           | One implementation of routing and migration logic, unit-testable without sockets.                                                                                                                                                                  |
+| A9  | The teacher's round browsing (`teacherViewingRoundId`) is **local UI state**, separate from the live `activeRoundId`.                                        | The teacher can look at Round 1 while students work in Round 2.                                                                                                                                                                                    |
+| A10 | Student-to-group moves in the Live Grid use the existing `breakout:join-board` (immediate). Moves inside the modal are drafts saved with **Save Changes**.   | This matches how each surface already behaves.                                                                                                                                                                                                     |
 
 ## Appendix B: Out of scope (do NOT build)
 

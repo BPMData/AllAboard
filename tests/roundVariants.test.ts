@@ -20,7 +20,16 @@ const sheet = (url: string): RoomBackground =>
 const withExtra = (patch: Partial<RoundVariants>): RoundVariants => ({ ...emptyRoundVariants(), ...patch });
 
 const stamp = (userId: string, x: number, y: number): CanvasElement =>
-  ({ id: `s-${userId}`, boardId: 'main', userId, tool: 'stamp', stamp: 'username', x, y, timestamp: 1 }) as CanvasElement;
+  ({
+    id: `s-${userId}`,
+    boardId: 'main',
+    userId,
+    tool: 'stamp',
+    stamp: 'username',
+    x,
+    y,
+    timestamp: 1,
+  }) as CanvasElement;
 
 const ctx = (userId: string, name = userId, late = false, mainElements: CanvasElement[] = []) => ({
   userId,
@@ -42,7 +51,10 @@ describe('roundVariants', () => {
       overrides: { '  Alex ': 2, bea: 7 },
       assigned: { u1: 1 },
     })!;
-    assert.deepEqual(v.extra.map((bg) => bg?.fileName ?? null), ['b', null, 'd']);
+    assert.deepEqual(
+      v.extra.map((bg) => bg?.fileName ?? null),
+      ['b', null, 'd']
+    );
     assert.equal(v.rule, 'corner');
     assert.deepEqual(v.cornerMap, { tl: 3, tr: 1, bl: 2, br: 3, none: 1 });
     assert.equal(v.lateJoiners, 'a');
@@ -85,15 +97,30 @@ describe('roundVariants', () => {
     assert.ok(sameWorksheet(sheet('/api/assets/x'), sheet('/api/assets/x')));
     assert.ok(!sameWorksheet(sheet('/api/assets/x'), sheet('/api/assets/y')));
     assert.ok(sameWorksheet(null, undefined));
-    const bg = { fileName: 'f', pages: [{ dataUrl: 'data:image/png;base64,AA', width: 1, height: 1 }, { dataUrl: '/api/assets/k', width: 1, height: 1 }] } as RoomBackground;
+    const bg = {
+      fileName: 'f',
+      pages: [
+        { dataUrl: 'data:image/png;base64,AA', width: 1, height: 1 },
+        { dataUrl: '/api/assets/k', width: 1, height: 1 },
+      ],
+    } as RoomBackground;
     const uploaded: string[] = [];
-    const out = await uploadWorksheetPages(bg, async (d) => { uploaded.push(d); return '/api/assets/new'; });
-    assert.deepEqual(out!.pages.map((p) => p.dataUrl), ['/api/assets/new', '/api/assets/k']);
+    const out = await uploadWorksheetPages(bg, async (d) => {
+      uploaded.push(d);
+      return '/api/assets/new';
+    });
+    assert.deepEqual(
+      out!.pages.map((p) => p.dataUrl),
+      ['/api/assets/new', '/api/assets/k']
+    );
     assert.equal(uploaded.length, 1);
   });
 
   it('describes a round with variants', () => {
     assert.equal(variantsNote(null), '');
-    assert.equal(variantsNote(withExtra({ extra: [sheet('b'), null, sheet('d')], rule: 'corner' })), ' + worksheets B, D (by name-stamp corner)');
+    assert.equal(
+      variantsNote(withExtra({ extra: [sheet('b'), null, sheet('d')], rule: 'corner' })),
+      ' + worksheets B, D (by name-stamp corner)'
+    );
   });
 });

@@ -176,8 +176,28 @@ test.describe('batch PDF export (in browser)', () => {
           roomId,
           mainElements: [
             stroke('m1', 'teacher'),
-            { id: 'n1', userId: 'teacher', userName: 'T', tool: 'text', color: '#000', strokeWidth: 4, x: 10, y: 120, text: 'Hello\nclass' },
-            { id: 's1', userId: 'teacher', userName: 'T', tool: 'stamp', stamp: 'username', color: '#2563eb', strokeWidth: 4, x: 200, y: 200 },
+            {
+              id: 'n1',
+              userId: 'teacher',
+              userName: 'T',
+              tool: 'text',
+              color: '#000',
+              strokeWidth: 4,
+              x: 10,
+              y: 120,
+              text: 'Hello\nclass',
+            },
+            {
+              id: 's1',
+              userId: 'teacher',
+              userName: 'T',
+              tool: 'stamp',
+              stamp: 'username',
+              color: '#2563eb',
+              strokeWidth: 4,
+              x: 200,
+              y: 200,
+            },
           ],
           mainBackground: null,
           subBoards: [
@@ -327,7 +347,9 @@ test.describe('worksheet UI', () => {
     expect(saved.background.pages).toHaveLength(10);
   });
 
-  test('PDF page-range modal shows thumbnails, click & shift-click selection, and imports selected range', async ({ page }) => {
+  test('PDF page-range modal shows thumbnails, click & shift-click selection, and imports selected range', async ({
+    page,
+  }) => {
     await joinRoom(page, uniqueRoom('pdf32thumbs'), 'Ms T', '4829');
 
     const pdfBase64 = await page.evaluate(async (exporter) => {
@@ -417,7 +439,9 @@ test.describe('worksheet UI', () => {
     await expect(page.getByTestId('pdf-thumb-40').locator('img')).toBeVisible();
   });
 
-  test('6-page PDF defaults to Grid, switches to Row without confirm when empty, and fits all pages', async ({ page }) => {
+  test('6-page PDF defaults to Grid, switches to Row without confirm when empty, and fits all pages', async ({
+    page,
+  }) => {
     await joinRoom(page, uniqueRoom('layout6'), 'Ms T', '4829');
 
     const pdfBase64 = await page.evaluate(async (exporter) => {

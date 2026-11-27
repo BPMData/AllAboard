@@ -6,7 +6,12 @@ async function watchReports(page: Page, answer?: { status: number; body: unknown
   const bodies: any[] = [];
   await page.route('**/api/report', async (route) => {
     bodies.push(route.request().postDataJSON());
-    if (answer) await route.fulfill({ status: answer.status, contentType: 'application/json', body: JSON.stringify(answer.body) });
+    if (answer)
+      await route.fulfill({
+        status: answer.status,
+        contentType: 'application/json',
+        body: JSON.stringify(answer.body),
+      });
     else await route.continue();
   });
   return bodies;
@@ -56,7 +61,7 @@ test('lobby: guided report shows public vs private, sends only on Send, and link
   await expect(dialogOf(page).getByRole('heading', { name: 'Thanks, your report was sent' })).toBeVisible();
   await expect(dialogOf(page).getByRole('link', { name: /See the public report \(#123\)/ })).toHaveAttribute(
     'href',
-    'https://github.com/BPMData/AllAboard/issues/123',
+    'https://github.com/BPMData/AllAboard/issues/123'
   );
   expect(reports).toHaveLength(1);
   expect(JSON.stringify(reports[0])).not.toContain(room);
@@ -78,7 +83,10 @@ test('in a room: when sending fails, offers copy, download and email to the shar
 
   await expect(dialogOf(page).getByRole('heading', { name: 'The report wasn’t sent' })).toBeVisible();
   await expect(dialogOf(page).getByText(/overboard\.reporting@gmail\.com/)).toBeVisible();
-  await expect(dialogOf(page).getByRole('link', { name: 'Open an email' })).toHaveAttribute('href', /^mailto:overboard\.reporting@gmail\.com\?subject=/);
+  await expect(dialogOf(page).getByRole('link', { name: 'Open an email' })).toHaveAttribute(
+    'href',
+    /^mailto:overboard\.reporting@gmail\.com\?subject=/
+  );
   const download = page.waitForEvent('download');
   await button(page, 'Download report').click();
   expect((await download).suggestedFilename()).toMatch(/^allaboard-problem-report-.*\.txt$/);

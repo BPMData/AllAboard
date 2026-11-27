@@ -27,12 +27,7 @@ import {
   type PdfThumbnailHandle,
 } from '../lib/worksheetLoader';
 import { clampPageRange, type PageRange } from '../lib/pageRange';
-import {
-  normalizeJsonFileName,
-  replacesLastSave,
-  type DriveFolder,
-  type DriveSaveRecord,
-} from '../lib/googleDrive';
+import { normalizeJsonFileName, replacesLastSave, type DriveFolder, type DriveSaveRecord } from '../lib/googleDrive';
 import { AlertCircle, Check, Download, FolderOpen, Shuffle, X } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { StudentStatusBadge } from './StudentStatusBadge';
@@ -123,9 +118,7 @@ export function LiveGridOverview({
   const viewingRoundBoards = viewingRound ? boards.filter((sb) => sb.roundId === viewingRound.id) : [];
 
   const canSendClassToViewingRound = Boolean(
-    viewingRound &&
-      onSendClassToRound &&
-      (currentMode === 'main' || viewingRound.id !== activeRoundId)
+    viewingRound && onSendClassToRound && (currentMode === 'main' || viewingRound.id !== activeRoundId)
   );
 
   return (
@@ -137,7 +130,8 @@ export function LiveGridOverview({
               Live Classroom Boards Overview — {roundLabel} ({boards.length + 1} Boards)
             </h2>
             <p className="text-xs text-slate-500">
-              Click any student or group board below to jump onto their canvas, give feedback, or project it to the class.
+              Click any student or group board below to jump onto their canvas, give feedback, or project it to the
+              class.
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
@@ -200,17 +194,15 @@ export function LiveGridOverview({
               onClose();
             }}
             className={cn(
-              "bg-white rounded-[3px] border p-4 cursor-pointer transition-colors flex flex-col justify-between gap-3",
-              activeBoardId === 'main' ? "border-brand-600 ring-2 ring-brand-600/20" : "border-[#CBD5E1] hover:border-slate-400"
+              'bg-white rounded-[3px] border p-4 cursor-pointer transition-colors flex flex-col justify-between gap-3',
+              activeBoardId === 'main'
+                ? 'border-brand-600 ring-2 ring-brand-600/20'
+                : 'border-[#CBD5E1] hover:border-slate-400'
             )}
           >
             <div className="flex items-center justify-between">
-              <span className="font-display font-bold text-sm text-slate-900">
-                Main Class Board
-              </span>
-              <span className="font-mono tabular-nums text-xs text-slate-500">
-                {fullMainElements.length} items
-              </span>
+              <span className="font-display font-bold text-sm text-slate-900">Main Class Board</span>
+              <span className="font-mono tabular-nums text-xs text-slate-500">{fullMainElements.length} items</span>
             </div>
             <div className="h-32 rounded-[2px] bg-slate-50 border border-[#CBD5E1] flex items-center justify-center overflow-hidden relative">
               {fullMainBackground?.pages?.[0] ? (
@@ -244,14 +236,17 @@ export function LiveGridOverview({
                   onClose();
                 }}
                 className={cn(
-                  "bg-white rounded-[3px] border p-4 cursor-pointer transition-colors flex flex-col justify-between gap-3",
-                  activeBoardId === sb.id ? "border-brand-600 ring-2 ring-brand-600/20" : "border-[#CBD5E1] hover:border-slate-400"
+                  'bg-white rounded-[3px] border p-4 cursor-pointer transition-colors flex flex-col justify-between gap-3',
+                  activeBoardId === sb.id
+                    ? 'border-brand-600 ring-2 ring-brand-600/20'
+                    : 'border-[#CBD5E1] hover:border-slate-400'
                 )}
               >
                 <div>
                   <div className="flex items-center justify-between gap-2">
                     <span className="font-display font-bold text-sm text-slate-900 truncate">
-                      {showRoundPrefix ? `${roundShortLabel(sb.roundId)} · ` : ''}{sb.title}
+                      {showRoundPrefix ? `${roundShortLabel(sb.roundId)} · ` : ''}
+                      {sb.title}
                     </span>
                     <span className="font-mono tabular-nums text-xs text-brand-600 font-semibold shrink-0">
                       {sb.elements.length} {sb.elements.length === 1 ? 'stroke' : 'strokes'}
@@ -263,14 +258,25 @@ export function LiveGridOverview({
                   <div className="flex flex-wrap gap-1 mt-1">
                     {sb.assignedUserIds.map((uid) => {
                       const student = users.find((u) => u.userId === uid);
-                      return student?.status && student.status !== 'none' ? <span key={uid} className="inline-flex items-center gap-1 text-xs text-slate-600">{sb.assignedUserIds.length > 1 && student.name}<StudentStatusBadge status={student.status} name={student.name} onClear={() => onTeacherClearStatus(uid)} /></span> : null;
+                      return student?.status && student.status !== 'none' ? (
+                        <span key={uid} className="inline-flex items-center gap-1 text-xs text-slate-600">
+                          {sb.assignedUserIds.length > 1 && student.name}
+                          <StudentStatusBadge
+                            status={student.status}
+                            name={student.name}
+                            onClear={() => onTeacherClearStatus(uid)}
+                          />
+                        </span>
+                      ) : null;
                     })}
                   </div>
                   {sb.kind === 'group' && sb.roundId === activeRoundId && sb.assignedUserIds.length > 0 && (
                     <div className="space-y-1 mt-2" onClick={(e) => e.stopPropagation()}>
                       {sb.assignedUserIds.map((uid) => (
                         <div key={uid} className="flex items-center justify-between gap-2 text-[11px]">
-                          <span className="text-slate-700 truncate">{users.find((u) => u.userId === uid)?.name || 'Student'}</span>
+                          <span className="text-slate-700 truncate">
+                            {users.find((u) => u.userId === uid)?.name || 'Student'}
+                          </span>
                           <select
                             aria-label="Move student to another group"
                             value={sb.id}
@@ -278,7 +284,9 @@ export function LiveGridOverview({
                             className="bg-slate-50 border border-[#CBD5E1] rounded-[2px] px-1.5 py-0.5 text-[11px] text-slate-800 cursor-pointer"
                           >
                             {activeRoundGroupBoards.map((g) => (
-                              <option key={g.id} value={g.id}>{g.title}</option>
+                              <option key={g.id} value={g.id}>
+                                {g.title}
+                              </option>
                             ))}
                           </select>
                         </div>
@@ -302,7 +310,20 @@ export function LiveGridOverview({
 
                 <div className="flex items-center justify-between text-xs text-slate-500">
                   <span>{sb.messages.length} group messages</span>
-                  <button type="button" onClick={(e) => { e.stopPropagation(); setShareBoard(sb); setAnonymize(true); setCopyBackground(true); setReturnToMain(currentMode !== 'main'); setShareError(''); }} className="text-brand-700 font-semibold hover:underline cursor-pointer">Share to Main</button>
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setShareBoard(sb);
+                      setAnonymize(true);
+                      setCopyBackground(true);
+                      setReturnToMain(currentMode !== 'main');
+                      setShareError('');
+                    }}
+                    className="text-brand-700 font-semibold hover:underline cursor-pointer"
+                  >
+                    Share to Main
+                  </button>
                   <span className="text-brand-600 font-semibold">Inspect & Draw →</span>
                 </div>
               </div>
@@ -324,29 +345,80 @@ export function LiveGridOverview({
           />
         )}
         {shareBoard && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 p-4" role="dialog" aria-modal="true" aria-labelledby="share-board-title">
+          <div
+            className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 p-4"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="share-board-title"
+          >
             <div className="w-full max-w-md rounded-[3px] border-2 border-[#CBD5E1] bg-white overflow-hidden">
               <div className="oh-panel-header px-5 py-3 border-b border-[#CBD5E1]">
-                <h3 id="share-board-title" className="font-bold text-slate-900">Share {shareBoard.title} to Main</h3>
+                <h3 id="share-board-title" className="font-bold text-slate-900">
+                  Share {shareBoard.title} to Main
+                </h3>
               </div>
               <div className="p-5 space-y-4">
-              <p className="text-sm text-slate-600">This replaces the ink currently on Main. Review the work for names written in the drawing or worksheet before sharing.</p>
-              <div className="space-y-2 text-sm text-slate-800">
-                <label className="flex gap-2"><input type="checkbox" checked={anonymize} onChange={(e) => setAnonymize(e.target.checked)} /> Anonymize authors and remove name stamps</label>
-                <label className="flex gap-2"><input type="checkbox" checked={copyBackground} onChange={(e) => setCopyBackground(e.target.checked)} /> Copy worksheet to Main</label>
-                <label className="flex gap-2"><input type="checkbox" checked={returnToMain} onChange={(e) => setReturnToMain(e.target.checked)} /> Bring class to Main</label>
-              </div>
-              {shareError && <p role="alert" className="text-sm text-red-700">{shareError}</p>}
-              <div className="flex justify-end gap-2 pt-2 border-t border-slate-200">
-                <button type="button" disabled={sharing} onClick={() => setShareBoard(null)} className="px-3 py-1.5 text-sm rounded-[2px] border oh-btn text-slate-700 cursor-pointer">Cancel</button>
-                <button type="button" disabled={sharing} onClick={async () => {
-                  setSharing(true);
-                  const result = await onSpotlightBoard({ sourceBoardId: shareBoard.id, anonymize, copyBackground, returnToMain });
-                  setSharing(false);
-                  if (!result.ok) { setShareError(result.error || 'Could not share this board.'); return; }
-                  setShareBoard(null); onSelectBoard('main'); onClose();
-                }} className="px-3 py-1.5 text-sm rounded-[2px] border oh-btn-primary text-white disabled:opacity-50 cursor-pointer">{sharing ? 'Sharing…' : 'Share to Main'}</button>
-              </div>
+                <p className="text-sm text-slate-600">
+                  This replaces the ink currently on Main. Review the work for names written in the drawing or worksheet
+                  before sharing.
+                </p>
+                <div className="space-y-2 text-sm text-slate-800">
+                  <label className="flex gap-2">
+                    <input type="checkbox" checked={anonymize} onChange={(e) => setAnonymize(e.target.checked)} />{' '}
+                    Anonymize authors and remove name stamps
+                  </label>
+                  <label className="flex gap-2">
+                    <input
+                      type="checkbox"
+                      checked={copyBackground}
+                      onChange={(e) => setCopyBackground(e.target.checked)}
+                    />{' '}
+                    Copy worksheet to Main
+                  </label>
+                  <label className="flex gap-2">
+                    <input type="checkbox" checked={returnToMain} onChange={(e) => setReturnToMain(e.target.checked)} />{' '}
+                    Bring class to Main
+                  </label>
+                </div>
+                {shareError && (
+                  <p role="alert" className="text-sm text-red-700">
+                    {shareError}
+                  </p>
+                )}
+                <div className="flex justify-end gap-2 pt-2 border-t border-slate-200">
+                  <button
+                    type="button"
+                    disabled={sharing}
+                    onClick={() => setShareBoard(null)}
+                    className="px-3 py-1.5 text-sm rounded-[2px] border oh-btn text-slate-700 cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    disabled={sharing}
+                    onClick={async () => {
+                      setSharing(true);
+                      const result = await onSpotlightBoard({
+                        sourceBoardId: shareBoard.id,
+                        anonymize,
+                        copyBackground,
+                        returnToMain,
+                      });
+                      setSharing(false);
+                      if (!result.ok) {
+                        setShareError(result.error || 'Could not share this board.');
+                        return;
+                      }
+                      setShareBoard(null);
+                      onSelectBoard('main');
+                      onClose();
+                    }}
+                    className="px-3 py-1.5 text-sm rounded-[2px] border oh-btn-primary text-white disabled:opacity-50 cursor-pointer"
+                  >
+                    {sharing ? 'Sharing…' : 'Share to Main'}
+                  </button>
+                </div>
               </div>
             </div>
           </div>
@@ -375,7 +447,10 @@ function inkNote(ink: CanvasElement[] | undefined): string {
 /** Deals the online students into the given groups at random, keeping each group's id and title. */
 function shuffleStudentsIntoGroups(groups: BreakoutGroupDraft[], users: User[]): BreakoutGroupDraft[] {
   if (groups.length === 0) return groups;
-  const students = users.filter((u) => !u.isTeacher).map((u) => u.userId).sort(() => Math.random() - 0.5);
+  const students = users
+    .filter((u) => !u.isTeacher)
+    .map((u) => u.userId)
+    .sort(() => Math.random() - 0.5);
   const next = groups.map((g) => ({ ...g, assignedUserIds: [] as string[] }));
   students.forEach((uid, i) => next[i % next.length].assignedUserIds.push(uid));
   return next;
@@ -460,8 +535,8 @@ function PreparedRoundsList({
                 disabled={busy}
                 onClick={() => onDelete(r)}
                 className={cn(
-                  "px-2.5 py-1 rounded-[2px] border text-[11px] font-medium cursor-pointer disabled:opacity-50",
-                  confirmDeleteId === r.id ? "bg-red-600 border-red-700 text-white" : "oh-btn text-slate-700"
+                  'px-2.5 py-1 rounded-[2px] border text-[11px] font-medium cursor-pointer disabled:opacity-50',
+                  confirmDeleteId === r.id ? 'bg-red-600 border-red-700 text-white' : 'oh-btn text-slate-700'
                 )}
               >
                 {confirmDeleteId === r.id ? 'Tap again to delete' : 'Delete'}
@@ -586,9 +661,10 @@ export function BreakoutManagerModal({
   onViewRoundBoards,
 }: BreakoutManagerModalProps) {
   // 'edit-prepared' reuses the new-round form for a saved round; 'launch-prepared' is the group editor before launch.
-  const [preparedView, setPreparedView] = useState<
-    { kind: 'edit-prepared' | 'launch-prepared'; round: BreakoutRoundMeta } | null
-  >(null);
+  const [preparedView, setPreparedView] = useState<{
+    kind: 'edit-prepared' | 'launch-prepared';
+    round: BreakoutRoundMeta;
+  } | null>(null);
   const [roundName, setRoundName] = useState('');
   const [worksheetTouched, setWorksheetTouched] = useState(false);
   const [uploadedBg, setUploadedBg] = useState<RoomBackground | null>(null);
@@ -646,16 +722,16 @@ export function BreakoutManagerModal({
     }
   };
   const [autoDraftEnabled, setAutoDraftEnabled] = useState<boolean>(autoIndividual);
-  const [autoWorksheetChoice, setAutoWorksheetChoice] = useState<
-    'current' | 'frayer' | 'checkin' | 'corners' | 'none'
-  >(() => {
-    if (autoIndividualTemplateLabel === 'Frayer Model') return 'frayer';
-    if (autoIndividualTemplateLabel === 'Task Pulse Check') return 'checkin';
-    if (autoIndividualTemplateLabel === 'Four Corners') return 'corners';
-    if (autoIndividualTemplateLabel === 'Blank') return 'none';
-    if (fullMainBackground) return 'current';
-    return 'none';
-  });
+  const [autoWorksheetChoice, setAutoWorksheetChoice] = useState<'current' | 'frayer' | 'checkin' | 'corners' | 'none'>(
+    () => {
+      if (autoIndividualTemplateLabel === 'Frayer Model') return 'frayer';
+      if (autoIndividualTemplateLabel === 'Task Pulse Check') return 'checkin';
+      if (autoIndividualTemplateLabel === 'Four Corners') return 'corners';
+      if (autoIndividualTemplateLabel === 'Blank') return 'none';
+      if (fullMainBackground) return 'current';
+      return 'none';
+    }
+  );
   const [autoWorksheetTopic, setAutoWorksheetTopic] = useState<string>(draftWorksheetTopic);
   const [autoSaving, setAutoSaving] = useState(false);
 
@@ -670,12 +746,17 @@ export function BreakoutManagerModal({
     isEditing && targetRound && (currentMode === 'main' || targetRound.id !== activeRound?.id)
   );
   const templateLabelFor = (choice: RoundWorksheetChoice): string =>
-    choice === 'upload' ? (uploadedBg?.fileName || 'Uploaded worksheet').replace(/\.[a-z0-9]+$/i, '').slice(0, 30)
-    : choice === 'frayer' ? 'Frayer Model'
-    : choice === 'checkin' ? 'Task Pulse Check'
-    : choice === 'corners' ? 'Four Corners'
-    : choice === 'current' && fullMainBackground ? 'Copy of Main'
-    : 'Blank';
+    choice === 'upload'
+      ? (uploadedBg?.fileName || 'Uploaded worksheet').replace(/\.[a-z0-9]+$/i, '').slice(0, 30)
+      : choice === 'frayer'
+        ? 'Frayer Model'
+        : choice === 'checkin'
+          ? 'Task Pulse Check'
+          : choice === 'corners'
+            ? 'Four Corners'
+            : choice === 'current' && fullMainBackground
+              ? 'Copy of Main'
+              : 'Blank';
 
   const buildWorksheetConfig = (
     choice: RoundWorksheetChoice,
@@ -704,7 +785,8 @@ export function BreakoutManagerModal({
               Classroom Breakout & Individual Boards Manager
             </h3>
             <p className="text-xs text-slate-500 mt-0.5">
-              Give every student their own personal worksheet board (e.g. Frayer Model) or split the class into small breakout groups.
+              Give every student their own personal worksheet board (e.g. Frayer Model) or split the class into small
+              breakout groups.
             </p>
           </div>
           <button
@@ -718,643 +800,647 @@ export function BreakoutManagerModal({
         </div>
 
         <div className="p-5 space-y-5 overflow-y-auto">
-        {!preparedView && preparedRounds.length > 0 && (
-          <PreparedRoundsList
-            rounds={preparedRounds}
-            roundTemplates={roundTemplates}
-            roundTemplateInk={roundTemplateInk}
-            roundVariants={roundVariants}
-            subBoards={subBoards}
-            busy={preparedBusy}
-            confirmDeleteId={confirmDeleteId}
-            notice={preparedNotice}
-            onLaunch={async (round) => {
-              setPreparedNotice('');
-              if (round.mode === 'groups') {
-                setDraftBreakoutMode('groups');
-                if (!onLoadDraftGroupsForRound?.(round.id)) initializeDraftGroups(draftGroupCount, false);
+          {!preparedView && preparedRounds.length > 0 && (
+            <PreparedRoundsList
+              rounds={preparedRounds}
+              roundTemplates={roundTemplates}
+              roundTemplateInk={roundTemplateInk}
+              roundVariants={roundVariants}
+              subBoards={subBoards}
+              busy={preparedBusy}
+              confirmDeleteId={confirmDeleteId}
+              notice={preparedNotice}
+              onLaunch={async (round) => {
+                setPreparedNotice('');
+                if (round.mode === 'groups') {
+                  setDraftBreakoutMode('groups');
+                  if (!onLoadDraftGroupsForRound?.(round.id)) initializeDraftGroups(draftGroupCount, false);
+                  setDraftAllowSelfSelect(Boolean(round.allowSelfSelect));
+                  setDraftChatScope(round.chatScope === 'board' ? 'board' : 'unified');
+                  setPreparedView({ kind: 'launch-prepared', round });
+                  return;
+                }
+                setPreparedBusy(true);
+                const res = await onConfigureBreakout({ action: 'resume', roundId: round.id });
+                setPreparedBusy(false);
+                if (!res.ok) {
+                  window.alert(res.error || 'Could not launch this round.');
+                  return;
+                }
+                onFollowRound?.();
+                onClose();
+                onShowLiveGridOverview(true);
+              }}
+              onEdit={(round) => {
+                setPreparedNotice('');
+                setDraftBreakoutMode(round.mode);
+                if (round.mode === 'groups' && !onLoadDraftGroupsForRound?.(round.id)) {
+                  initializeDraftGroups(draftGroupCount, false);
+                }
                 setDraftAllowSelfSelect(Boolean(round.allowSelfSelect));
                 setDraftChatScope(round.chatScope === 'board' ? 'board' : 'unified');
-                setPreparedView({ kind: 'launch-prepared', round });
-                return;
-              }
-              setPreparedBusy(true);
-              const res = await onConfigureBreakout({ action: 'resume', roundId: round.id });
-              setPreparedBusy(false);
-              if (!res.ok) { window.alert(res.error || 'Could not launch this round.'); return; }
-              onFollowRound?.();
-              onClose();
-              onShowLiveGridOverview(true);
-            }}
-            onEdit={(round) => {
-              setPreparedNotice('');
-              setDraftBreakoutMode(round.mode);
-              if (round.mode === 'groups' && !onLoadDraftGroupsForRound?.(round.id)) {
-                initializeDraftGroups(draftGroupCount, false);
-              }
-              setDraftAllowSelfSelect(Boolean(round.allowSelfSelect));
-              setDraftChatScope(round.chatScope === 'board' ? 'board' : 'unified');
-              setRoundName(preparedRoundName(round));
-              setWorksheetTouched(false);
-              setCopyInk(Boolean(roundTemplateInk[round.id]?.length));
-              setVariantsDraft(draftFromVariants(roundVariants[round.id]));
-              setPreparedView({ kind: 'edit-prepared', round });
-            }}
-            onDelete={async (round) => {
-              if (confirmDeleteId !== round.id) { setConfirmDeleteId(round.id); return; }
-              setConfirmDeleteId(null);
-              setPreparedBusy(true);
-              const res = await onConfigureBreakout({ action: 'delete-prepared', roundId: round.id });
-              setPreparedBusy(false);
-              if (!res.ok) window.alert(res.error || 'Could not delete this round.');
-            }}
-            onViewBoards={onViewRoundBoards ? (round) => { onClose(); onViewRoundBoards(round.id); } : undefined}
-          />
-        )}
-
-        {preparedView && (
-          <div className="flex items-center justify-between gap-2 p-3 rounded-[3px] bg-brand-50 border border-brand-200">
-            <p className="text-xs text-slate-800">
-              {isEditingPrepared ? 'Editing saved round ' : 'Launching '}
-              <span className="font-semibold">{preparedView.round.title}</span>
-              {isLaunchingPrepared && ' · put students in groups, then launch.'}
-            </p>
-            <button
-              type="button"
-              onClick={() => {
-                setPreparedView(null);
-                setVariantsDraft(emptyVariantsDraft());
+                setRoundName(preparedRoundName(round));
+                setWorksheetTouched(false);
+                setCopyInk(Boolean(roundTemplateInk[round.id]?.length));
+                setVariantsDraft(draftFromVariants(roundVariants[round.id]));
+                setPreparedView({ kind: 'edit-prepared', round });
               }}
-              className="px-2.5 py-1 rounded-[2px] border oh-btn text-[11px] font-medium text-slate-700 cursor-pointer shrink-0"
-            >
-              Back
-            </button>
-          </div>
-        )}
-
-        {targetRound && !preparedView && (
-          <div className="grid grid-cols-2 gap-2.5">
-            <button
-              type="button"
-              onClick={() => onChangeDraftRoundAction('update-current')}
-              className={cn(
-                "p-3 rounded-[3px] border text-left transition-colors cursor-pointer",
-                draftRoundAction === 'update-current' ? "oh-btn-active" : "bg-white border-[#CBD5E1] hover:border-slate-400"
-              )}
-            >
-              <div className="font-display font-semibold text-xs text-slate-900">
-                {rounds.length > 1 ? 'Resume / Edit Existing Round' : `Resume / Edit ${targetRound.title}`}
-              </div>
-              <p className="text-[11px] text-slate-500 mt-0.5">
-                {rounds.length > 1
-                  ? 'Send the class back to Round 1, Round 2, etc., or update groups with all work kept.'
-                  : 'Keep every board and drawing. Change groups or chat settings.'}
-              </p>
-            </button>
-            <button
-              type="button"
-              onClick={() => onChangeDraftRoundAction('new-round')}
-              className={cn(
-                "p-3 rounded-[3px] border text-left transition-colors cursor-pointer",
-                draftRoundAction === 'new-round' ? "oh-btn-active" : "bg-white border-[#CBD5E1] hover:border-slate-400"
-              )}
-            >
-              <div className="font-display font-semibold text-xs text-slate-900">Start New Round {nextRoundNumber}</div>
-              <p className="text-[11px] text-slate-500 mt-0.5">
-                Fresh boards and a new worksheet. Earlier rounds stay saved and can be resumed anytime.
-              </p>
-            </button>
-          </div>
-        )}
-
-        {/* Round Picker when multiple rounds exist and teacher is in Resume / Edit mode */}
-        {isEditing && rounds.length > 1 && targetRound && (
-          <div className="p-3 rounded-[3px] bg-slate-50 border border-[#CBD5E1] space-y-2">
-            <label className="block text-xs font-semibold text-slate-700">
-              Choose Which Round to Send Class To / Edit:
-            </label>
-            <div className="flex flex-wrap gap-2">
-              {rounds.map((r) => {
-                const isSelected = r.id === targetRound.id;
-                const isLive = currentMode !== 'main' && r.id === activeRound?.id;
-                return (
-                  <button
-                    key={r.id}
-                    type="button"
-                    onClick={() => onSelectDraftEditRound?.(r.id)}
-                    className={cn(
-                      "px-3 py-1.5 rounded-[2px] text-xs font-medium border transition-colors cursor-pointer flex items-center gap-1.5",
-                      isSelected
-                        ? "oh-btn-primary text-white"
-                        : "oh-btn text-slate-800"
-                    )}
-                  >
-                    <span>{r.title}</span>
-                    {isLive && (
-                      <span
-                        className={cn(
-                          "px-1.5 py-0.2 rounded-[2px] text-[10px] font-semibold",
-                          isSelected ? "bg-brand-500 text-white" : "bg-emerald-100 text-emerald-800"
-                        )}
-                      >
-                        Live
-                      </span>
-                    )}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-        )}
-
-        {/* 1. Mode Selection */}
-        {!isEditing && !preparedView && (
-          <div className="grid grid-cols-2 gap-2.5">
-            <button
-              type="button"
-              onClick={() => setDraftBreakoutMode('individual')}
-              className={cn(
-                "p-3 rounded-[3px] border text-left transition-colors cursor-pointer",
-                draftBreakoutMode === 'individual'
-                  ? "oh-btn-active"
-                  : "bg-white border-[#CBD5E1] hover:border-slate-400"
-              )}
-            >
-              <div className="font-display font-semibold text-xs text-slate-900">
-                Individual Student Boards
-              </div>
-              <p className="text-[11px] text-slate-500 mt-0.5">
-                Every student gets their own private board + worksheet.
-              </p>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => {
-                setDraftBreakoutMode('groups');
-                if (draftGroups.length === 0) {
-                  initializeDraftGroups(draftGroupCount, true);
+              onDelete={async (round) => {
+                if (confirmDeleteId !== round.id) {
+                  setConfirmDeleteId(round.id);
+                  return;
                 }
+                setConfirmDeleteId(null);
+                setPreparedBusy(true);
+                const res = await onConfigureBreakout({ action: 'delete-prepared', roundId: round.id });
+                setPreparedBusy(false);
+                if (!res.ok) window.alert(res.error || 'Could not delete this round.');
               }}
-              className={cn(
-                "p-3 rounded-[3px] border text-left transition-colors cursor-pointer",
-                draftBreakoutMode === 'groups'
-                  ? "oh-btn-active"
-                  : "bg-white border-[#CBD5E1] hover:border-slate-400"
-              )}
-            >
-              <div className="font-display font-semibold text-xs text-slate-900">
-                Breakout Group Rooms
-              </div>
-              <p className="text-[11px] text-slate-500 mt-0.5">
-                Split into 2–8 small groups (random, manual, or self-select).
-              </p>
-            </button>
-          </div>
-        )}
-        {isEditing && targetRound && (
-          <p className="text-xs text-slate-600 bg-slate-50 border border-[#CBD5E1] rounded-[3px] px-3 py-2">
-            {targetRound.mode === 'groups' ? 'Group round' : 'Individual round'} · Students&apos; drawings and worksheets in {targetRound.title} are kept intact.
-            {targetRound.mode === 'individual' && ' Students who join late automatically get their own board.'}
-          </p>
-        )}
+              onViewBoards={
+                onViewRoundBoards
+                  ? (round) => {
+                      onClose();
+                      onViewRoundBoards(round.id);
+                    }
+                  : undefined
+              }
+            />
+          )}
 
-        {/* 2. Group Assignment Controls (when 'groups' is selected) */}
-        {draftBreakoutMode === 'groups' && (
-          <div className="p-4 rounded-[3px] bg-slate-50 border border-[#CBD5E1] space-y-3">
-            {isLaunchingPrepared && (
-              <div className="flex justify-end">
-                <button
-                  type="button"
-                  onClick={() => setDraftGroups((prev) => shuffleStudentsIntoGroups(prev, users))}
-                  className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-[2px] border oh-btn text-xs font-medium text-slate-700 cursor-pointer"
-                >
-                  <Shuffle size={13} />
-                  <span>Auto-Randomize Students</span>
-                </button>
-              </div>
-            )}
-            {!isEditing && !isLaunchingPrepared && (
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <div className="flex items-center gap-2 text-xs">
-                  <span className="font-semibold text-slate-700">Number of Groups:</span>
-                  {[2, 3, 4, 5, 6, 8].map((n) => (
+          {preparedView && (
+            <div className="flex items-center justify-between gap-2 p-3 rounded-[3px] bg-brand-50 border border-brand-200">
+              <p className="text-xs text-slate-800">
+                {isEditingPrepared ? 'Editing saved round ' : 'Launching '}
+                <span className="font-semibold">{preparedView.round.title}</span>
+                {isLaunchingPrepared && ' · put students in groups, then launch.'}
+              </p>
+              <button
+                type="button"
+                onClick={() => {
+                  setPreparedView(null);
+                  setVariantsDraft(emptyVariantsDraft());
+                }}
+                className="px-2.5 py-1 rounded-[2px] border oh-btn text-[11px] font-medium text-slate-700 cursor-pointer shrink-0"
+              >
+                Back
+              </button>
+            </div>
+          )}
+
+          {targetRound && !preparedView && (
+            <div className="grid grid-cols-2 gap-2.5">
+              <button
+                type="button"
+                onClick={() => onChangeDraftRoundAction('update-current')}
+                className={cn(
+                  'p-3 rounded-[3px] border text-left transition-colors cursor-pointer',
+                  draftRoundAction === 'update-current'
+                    ? 'oh-btn-active'
+                    : 'bg-white border-[#CBD5E1] hover:border-slate-400'
+                )}
+              >
+                <div className="font-display font-semibold text-xs text-slate-900">
+                  {rounds.length > 1 ? 'Resume / Edit Existing Round' : `Resume / Edit ${targetRound.title}`}
+                </div>
+                <p className="text-[11px] text-slate-500 mt-0.5">
+                  {rounds.length > 1
+                    ? 'Send the class back to Round 1, Round 2, etc., or update groups with all work kept.'
+                    : 'Keep every board and drawing. Change groups or chat settings.'}
+                </p>
+              </button>
+              <button
+                type="button"
+                onClick={() => onChangeDraftRoundAction('new-round')}
+                className={cn(
+                  'p-3 rounded-[3px] border text-left transition-colors cursor-pointer',
+                  draftRoundAction === 'new-round'
+                    ? 'oh-btn-active'
+                    : 'bg-white border-[#CBD5E1] hover:border-slate-400'
+                )}
+              >
+                <div className="font-display font-semibold text-xs text-slate-900">
+                  Start New Round {nextRoundNumber}
+                </div>
+                <p className="text-[11px] text-slate-500 mt-0.5">
+                  Fresh boards and a new worksheet. Earlier rounds stay saved and can be resumed anytime.
+                </p>
+              </button>
+            </div>
+          )}
+
+          {/* Round Picker when multiple rounds exist and teacher is in Resume / Edit mode */}
+          {isEditing && rounds.length > 1 && targetRound && (
+            <div className="p-3 rounded-[3px] bg-slate-50 border border-[#CBD5E1] space-y-2">
+              <label className="block text-xs font-semibold text-slate-700">
+                Choose Which Round to Send Class To / Edit:
+              </label>
+              <div className="flex flex-wrap gap-2">
+                {rounds.map((r) => {
+                  const isSelected = r.id === targetRound.id;
+                  const isLive = currentMode !== 'main' && r.id === activeRound?.id;
+                  return (
                     <button
-                      key={n}
+                      key={r.id}
                       type="button"
-                      onClick={() => {
-                        setDraftGroupCount(n);
-                        initializeDraftGroups(n, true);
-                      }}
+                      onClick={() => onSelectDraftEditRound?.(r.id)}
                       className={cn(
-                        "w-7 h-7 rounded-[2px] border font-mono text-xs font-semibold cursor-pointer",
-                        draftGroupCount === n
-                          ? "oh-btn-primary text-white"
-                          : "oh-btn text-slate-700"
+                        'px-3 py-1.5 rounded-[2px] text-xs font-medium border transition-colors cursor-pointer flex items-center gap-1.5',
+                        isSelected ? 'oh-btn-primary text-white' : 'oh-btn text-slate-800'
                       )}
                     >
-                      {n}
-                    </button>
-                  ))}
-                </div>
-
-                <button
-                  type="button"
-                  onClick={() => initializeDraftGroups(draftGroupCount, true)}
-                  className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-[2px] border oh-btn text-xs font-medium text-slate-700 cursor-pointer"
-                >
-                  <Shuffle size={13} />
-                  <span>Auto-Randomize Students</span>
-                </button>
-              </div>
-            )}
-
-            {/* Manual Student Group Reassignment */}
-            <div className="space-y-1.5 max-h-40 overflow-y-auto pr-1">
-              {users.filter((u) => !u.isTeacher).length === 0 ? (
-                <p className="text-xs text-slate-400 italic">
-                  No students online yet — groups will still be created and ready for students to join!
-                </p>
-              ) : (
-                users
-                  .filter((u) => !u.isTeacher)
-                  .map((student) => {
-                    const currentGrp =
-                      draftGroups.find((g) => g.assignedUserIds.includes(student.userId))?.id ||
-                      draftGroups[0]?.id ||
-                      '';
-                    return (
-                      <div
-                        key={student.userId}
-                        className="flex items-center justify-between bg-white px-3 py-1.5 rounded-[2px] border border-[#CBD5E1] text-xs"
-                      >
-                        <div className="flex items-center gap-2">
-                          <span
-                            className="w-2.5 h-2.5 rounded-[2px]"
-                            style={{ backgroundColor: student.color }}
-                          />
-                          <span className="font-medium text-slate-800">{student.name}</span>
-                        </div>
-                        <select
-                          value={currentGrp}
-                          onChange={(e) => {
-                            const nextGrpId = e.target.value;
-                            setDraftGroups((prev) =>
-                              prev.map((g) => ({
-                                ...g,
-                                assignedUserIds:
-                                  g.id === nextGrpId
-                                    ? [...g.assignedUserIds.filter((id) => id !== student.userId), student.userId]
-                                    : g.assignedUserIds.filter((id) => id !== student.userId),
-                              }))
-                            );
-                          }}
-                          className="bg-slate-50 border border-[#CBD5E1] rounded-[2px] px-2 py-0.5 text-xs font-medium text-slate-800 cursor-pointer"
+                      <span>{r.title}</span>
+                      {isLive && (
+                        <span
+                          className={cn(
+                            'px-1.5 py-0.2 rounded-[2px] text-[10px] font-semibold',
+                            isSelected ? 'bg-brand-500 text-white' : 'bg-emerald-100 text-emerald-800'
+                          )}
                         >
-                          {draftGroups.map((g) => (
-                            <option key={g.id} value={g.id}>
-                              {g.title}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-                    );
-                  })
-              )}
-            </div>
-
-            <label className="flex items-center gap-2 text-xs text-slate-700 cursor-pointer pt-1">
-              <input
-                type="checkbox"
-                checked={draftAllowSelfSelect}
-                onChange={(e) => setDraftAllowSelfSelect(e.target.checked)}
-                className="rounded-[2px] border-[#CBD5E1] text-brand-600 focus:ring-brand-500"
-              />
-              <span>Allow students to freely switch between breakout groups themselves</span>
-            </label>
-          </div>
-        )}
-
-        {/* 3. Pre-load Worksheet / Template on Sub-Boards */}
-        {!isEditing && !isLaunchingPrepared && (
-          <div className="space-y-3 pt-1 border-t border-slate-200">
-            <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-1" htmlFor="breakout-round-name">
-                Round name (optional):
-              </label>
-              <input
-                id="breakout-round-name"
-                type="text"
-                maxLength={40}
-                value={roundName}
-                onChange={(e) => setRoundName(e.target.value)}
-                placeholder="e.g. Vocabulary warm-up"
-                className="w-full px-3 py-2 bg-slate-50 border border-[#CBD5E1] rounded-[2px] text-xs text-slate-900 focus:bg-white focus:border-brand-600 focus:outline-none"
-              />
-            </div>
-            {isEditingPrepared && preparedView && !worksheetTouched && (
-              <p className="text-[11px] text-slate-600">
-                Current worksheet: {templateName(roundTemplates[preparedView.round.id])}
-                {inkNote(roundTemplateInk[preparedView.round.id])}. Pick another below to replace it.
-              </p>
-            )}
-            <label className="block text-xs font-semibold text-slate-700">
-              Pre-load Worksheet / Template onto Every Board:
-            </label>
-            <div className="grid grid-cols-2 gap-2 text-xs">
-              <button
-                type="button"
-                onClick={() => chooseWorksheet('frayer')}
-                className={cn(
-                  "p-2.5 rounded-[2px] border text-left cursor-pointer",
-                  draftWorksheetChoice === 'frayer'
-                    ? "oh-btn-active font-semibold text-slate-900"
-                    : "oh-btn text-slate-700"
-                )}
-              >
-                4-Box Frayer Concept Model
-              </button>
-              <button
-                type="button"
-                onClick={() => chooseWorksheet('checkin')}
-                className={cn(
-                  "p-2.5 rounded-[2px] border text-left cursor-pointer",
-                  draftWorksheetChoice === 'checkin'
-                    ? "oh-btn-active font-semibold text-slate-900"
-                    : "oh-btn text-slate-700"
-                )}
-              >
-                Task Pulse Check (3 Columns)
-              </button>
-              <button
-                type="button"
-                onClick={() => chooseWorksheet('corners')}
-                className={cn(
-                  "p-2.5 rounded-[2px] border text-left cursor-pointer",
-                  draftWorksheetChoice === 'corners'
-                    ? "oh-btn-active font-semibold text-slate-900"
-                    : "oh-btn text-slate-700"
-                )}
-              >
-                Four Corners Debate
-              </button>
-              <button
-                type="button"
-                onClick={() => chooseWorksheet('current')}
-                className={cn(
-                  "p-2.5 rounded-[2px] border text-left cursor-pointer",
-                  draftWorksheetChoice === 'current'
-                    ? "oh-btn-active font-semibold text-slate-900"
-                    : "oh-btn text-slate-700"
-                )}
-              >
-                {fullMainBackground
-                  ? `Copy Current (${fullMainBackground.fileName.slice(0, 18)})`
-                  : 'Blank Canvas (No Worksheet)'}
-              </button>
-              <label
-                className={cn(
-                  "col-span-2 p-2.5 rounded-[2px] border text-left cursor-pointer",
-                  draftWorksheetChoice === 'upload' && uploadedBg
-                    ? "oh-btn-active font-semibold text-slate-900"
-                    : "oh-btn text-slate-700"
-                )}
-              >
-                <input
-                  type="file"
-                  aria-label="Upload a worksheet file for this round"
-                  accept={WORKSHEET_FILE_ACCEPT}
-                  className="sr-only"
-                  disabled={uploadState.busy}
-                  onChange={(e) => {
-                    const file = e.target.files?.[0];
-                    e.target.value = '';
-                    if (file) void pickWorksheetFile(file);
-                  }}
-                />
-                {uploadState.busy
-                  ? 'Rendering…'
-                  : uploadedBg
-                    ? `Uploaded: ${uploadedBg.fileName.slice(0, 40)}`
-                    : `Upload a file… (PDF or image, first ${MAX_PDF_PAGES} pages)`}
-              </label>
-            </div>
-            {draftWorksheetChoice === 'current' && (
-              <label className="flex items-start gap-2 text-[11px] text-slate-700 cursor-pointer">
-                <input
-                  type="checkbox"
-                  className="mt-0.5"
-                  checked={copyInk && mainTeacherInkCount > 0}
-                  disabled={mainTeacherInkCount === 0}
-                  onChange={(e) => {
-                    setWorksheetTouched(true);
-                    setCopyInk(e.target.checked);
-                  }}
-                />
-                <span>
-                  Also copy my ink from Main ({mainTeacherInkCount} mark{mainTeacherInkCount === 1 ? '' : 's'}) onto
-                  every board. Students can write around it but can't erase it.
-                </span>
-              </label>
-            )}
-            {uploadState.note && <p className="text-[11px] text-slate-500">Long PDF: {uploadState.note}.</p>}
-            {uploadState.error && <p className="text-[11px] text-red-700">{uploadState.error}</p>}
-
-            {(draftWorksheetChoice === 'frayer' ||
-              draftWorksheetChoice === 'checkin' ||
-              draftWorksheetChoice === 'corners') && (
-              <div>
-                <label className="block text-[11px] font-medium text-slate-600 mb-1">
-                  Worksheet Header / Concept Prompt:
-                </label>
-                <input
-                  type="text"
-                  value={draftWorksheetTopic}
-                  onChange={(e) => setDraftWorksheetTopic(e.target.value)}
-                  className="w-full px-3 py-2 bg-slate-50 border border-[#CBD5E1] rounded-[2px] text-xs text-slate-900 focus:bg-white focus:border-brand-600 focus:outline-none"
-                />
+                          Live
+                        </span>
+                      )}
+                    </button>
+                  );
+                })}
               </div>
-            )}
-            {usesVariants && (
-              <WorksheetVariantsEditor
-                value={variantsDraft}
-                onChange={setVariantsDraft}
-                onBusyChange={setVariantsBusy}
-                disabled={preparedBusy}
-                worksheetAName={
-                  isEditingPrepared && preparedView && !worksheetTouched
-                    ? templateName(roundTemplates[preparedView.round.id])
-                    : draftWorksheetChoice === 'upload'
-                      ? uploadedBg?.fileName || 'the uploaded file'
-                      : templateLabelFor(draftWorksheetChoice)
-                }
-              />
-            )}
-            {usesVariants && missingVariantLetters(variantsDraft).length > 0 && (
-              <p className="text-[11px] text-red-700">
-                Choose a file for worksheet {missingVariantLetters(variantsDraft).join(', ')}, or remove it.
-              </p>
-            )}
-          </div>
-        )}
-
-        {/* Chat Scope Selector */}
-        <div className="flex items-center justify-between pt-2">
-          <span className="text-xs font-semibold text-slate-700">Chat Room Mode:</span>
-          <div className="flex items-center gap-1 bg-slate-100 border border-[#CBD5E1] p-0.5 rounded-[2px] text-xs">
-            <button
-              type="button"
-              onClick={() => setDraftChatScope('unified')}
-              className={cn(
-                "px-2.5 py-1 rounded-[2px] border font-medium cursor-pointer",
-                draftChatScope === 'unified'
-                  ? "oh-btn-active text-brand-900 font-semibold"
-                  : "border-transparent text-slate-600 hover:text-slate-900"
-              )}
-            >
-              Unified Class Chat
-            </button>
-            <button
-              type="button"
-              onClick={() => setDraftChatScope('board')}
-              className={cn(
-                "px-2.5 py-1 rounded-[2px] border font-medium cursor-pointer",
-                draftChatScope === 'board'
-                  ? "oh-btn-active text-brand-900 font-semibold"
-                  : "border-transparent text-slate-600 hover:text-slate-900"
-              )}
-            >
-              Per-Board Group Chat
-            </button>
-          </div>
-        </div>
-
-        {activeRound && !isEditing && !preparedView && (
-          <p className="text-[11px] text-amber-800 bg-amber-50 border border-amber-200 rounded-[3px] px-3 py-2">
-            {activeRound.title} will be archived. Nothing is deleted. You can still open and export it from the Round selector.
-          </p>
-        )}
-
-        {/* Auto-Start on Entry: Students start on their own boards */}
-        {!preparedView && (
-        <div className="p-3.5 rounded-[3px] bg-slate-50 border border-[#CBD5E1] space-y-2.5">
-          <div className="flex items-start justify-between gap-3">
-            <div>
-              <div className="flex items-center gap-2">
-                <span className="font-display text-xs font-semibold text-slate-900">
-                  Students start on their own boards
-                </span>
-                {autoIndividual && (
-                  <span className="px-1.5 py-0.5 rounded-[2px] bg-emerald-100 border border-emerald-200 text-emerald-800 text-[10px] font-semibold">
-                    {currentMode === 'main'
-                      ? `Armed${autoIndividualTemplateLabel ? ` · ${autoIndividualTemplateLabel}` : ''}`
-                      : 'Active'}
-                  </span>
-                )}
-              </div>
-              <p className="text-[11px] text-slate-500 mt-0.5">
-                Any non-teacher student joining Main lands straight on their own private board with your chosen worksheet, while you keep Main separate. Clicking Bring All to Main turns this off so latecomers follow the class.
-              </p>
-            </div>
-            <label className="flex items-center gap-1.5 text-xs font-medium text-slate-800 shrink-0 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={autoDraftEnabled}
-                disabled={!hasTeacherPin}
-                onChange={(e) => setAutoDraftEnabled(e.target.checked)}
-                className="rounded-[2px] border-[#CBD5E1] text-brand-600 focus:ring-brand-500"
-              />
-              <span>Enable</span>
-            </label>
-          </div>
-
-          {!hasTeacherPin && (
-            <p className="text-[11px] text-amber-800 bg-amber-50 border border-amber-200 rounded-[3px] px-2.5 py-1.5">
-              Set a Room Teacher PIN in the sidebar first before enabling automatic student boards.
-            </p>
-          )}
-
-          {hasTeacherPin && autoDraftEnabled && (
-            <div className="space-y-2 pt-1 border-t border-slate-200">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <label className="text-[11px] font-semibold text-slate-700">
-                  Starting worksheet for students:
-                </label>
-                <select
-                  aria-label="Starting worksheet for students"
-                  value={autoWorksheetChoice}
-                  onChange={(e) =>
-                    setAutoWorksheetChoice(
-                      e.target.value as 'current' | 'frayer' | 'checkin' | 'corners' | 'none'
-                    )
-                  }
-                  className="bg-white border border-[#CBD5E1] rounded-[2px] px-2 py-1 text-xs font-medium text-slate-800 cursor-pointer"
-                >
-                  <option value="frayer">4-Box Frayer Concept Model</option>
-                  <option value="checkin">Task Pulse Check (3 Columns)</option>
-                  <option value="corners">Four Corners Debate</option>
-                  {fullMainBackground && (
-                    <option value="current">
-                      Copy Current Main Board ({fullMainBackground.fileName.slice(0, 18)})
-                    </option>
-                  )}
-                  <option value="none">Blank Canvas (No Worksheet)</option>
-                </select>
-              </div>
-              {(autoWorksheetChoice === 'frayer' ||
-                autoWorksheetChoice === 'checkin' ||
-                autoWorksheetChoice === 'corners') && (
-                <input
-                  type="text"
-                  value={autoWorksheetTopic}
-                  onChange={(e) => setAutoWorksheetTopic(e.target.value)}
-                  placeholder="Worksheet Header / Concept Prompt..."
-                  className="w-full px-2.5 py-1.5 bg-white border border-[#CBD5E1] rounded-[2px] text-xs text-slate-900 focus:border-brand-600 focus:outline-none"
-                />
-              )}
             </div>
           )}
 
-          {hasTeacherPin && (autoDraftEnabled || autoIndividual) && (
-            <div className="flex justify-end">
+          {/* 1. Mode Selection */}
+          {!isEditing && !preparedView && (
+            <div className="grid grid-cols-2 gap-2.5">
               <button
                 type="button"
-                disabled={autoSaving}
-                onClick={async () => {
-                  setAutoSaving(true);
-                  const ws = buildWorksheetConfig(autoWorksheetChoice, autoWorksheetTopic);
-                  const res = await onConfigureBreakout({
-                    action: 'set-auto-individual',
-                    autoIndividual: autoDraftEnabled,
-                    customBackground: ws.customBackground,
-                    copyWorksheet: ws.copyWorksheet,
-                    templateLabel: ws.templateLabel,
-                    chatScope: draftChatScope,
-                  });
-                  setAutoSaving(false);
-                  if (!res.ok) {
-                    window.alert(res.error || 'Could not save auto-start student board mode.');
+                onClick={() => setDraftBreakoutMode('individual')}
+                className={cn(
+                  'p-3 rounded-[3px] border text-left transition-colors cursor-pointer',
+                  draftBreakoutMode === 'individual'
+                    ? 'oh-btn-active'
+                    : 'bg-white border-[#CBD5E1] hover:border-slate-400'
+                )}
+              >
+                <div className="font-display font-semibold text-xs text-slate-900">Individual Student Boards</div>
+                <p className="text-[11px] text-slate-500 mt-0.5">
+                  Every student gets their own private board + worksheet.
+                </p>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setDraftBreakoutMode('groups');
+                  if (draftGroups.length === 0) {
+                    initializeDraftGroups(draftGroupCount, true);
                   }
                 }}
                 className={cn(
-                  "px-3 py-1.5 rounded-[2px] border text-xs font-semibold transition-colors cursor-pointer disabled:opacity-50",
-                  autoDraftEnabled
-                    ? "oh-btn-emerald text-white"
-                    : "oh-btn text-slate-700"
+                  'p-3 rounded-[3px] border text-left transition-colors cursor-pointer',
+                  draftBreakoutMode === 'groups' ? 'oh-btn-active' : 'bg-white border-[#CBD5E1] hover:border-slate-400'
                 )}
               >
-                {autoSaving
-                  ? 'Saving...'
-                  : autoDraftEnabled
-                  ? autoIndividual
-                    ? 'Update Auto-Start Mode'
-                    : 'Save Auto-Start Mode (Stay on Main)'
-                  : 'Turn Off Auto-Start'}
+                <div className="font-display font-semibold text-xs text-slate-900">Breakout Group Rooms</div>
+                <p className="text-[11px] text-slate-500 mt-0.5">
+                  Split into 2–8 small groups (random, manual, or self-select).
+                </p>
               </button>
             </div>
           )}
-        </div>
-        )}
+          {isEditing && targetRound && (
+            <p className="text-xs text-slate-600 bg-slate-50 border border-[#CBD5E1] rounded-[3px] px-3 py-2">
+              {targetRound.mode === 'groups' ? 'Group round' : 'Individual round'} · Students&apos; drawings and
+              worksheets in {targetRound.title} are kept intact.
+              {targetRound.mode === 'individual' && ' Students who join late automatically get their own board.'}
+            </p>
+          )}
+
+          {/* 2. Group Assignment Controls (when 'groups' is selected) */}
+          {draftBreakoutMode === 'groups' && (
+            <div className="p-4 rounded-[3px] bg-slate-50 border border-[#CBD5E1] space-y-3">
+              {isLaunchingPrepared && (
+                <div className="flex justify-end">
+                  <button
+                    type="button"
+                    onClick={() => setDraftGroups((prev) => shuffleStudentsIntoGroups(prev, users))}
+                    className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-[2px] border oh-btn text-xs font-medium text-slate-700 cursor-pointer"
+                  >
+                    <Shuffle size={13} />
+                    <span>Auto-Randomize Students</span>
+                  </button>
+                </div>
+              )}
+              {!isEditing && !isLaunchingPrepared && (
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="flex items-center gap-2 text-xs">
+                    <span className="font-semibold text-slate-700">Number of Groups:</span>
+                    {[2, 3, 4, 5, 6, 8].map((n) => (
+                      <button
+                        key={n}
+                        type="button"
+                        onClick={() => {
+                          setDraftGroupCount(n);
+                          initializeDraftGroups(n, true);
+                        }}
+                        className={cn(
+                          'w-7 h-7 rounded-[2px] border font-mono text-xs font-semibold cursor-pointer',
+                          draftGroupCount === n ? 'oh-btn-primary text-white' : 'oh-btn text-slate-700'
+                        )}
+                      >
+                        {n}
+                      </button>
+                    ))}
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => initializeDraftGroups(draftGroupCount, true)}
+                    className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-[2px] border oh-btn text-xs font-medium text-slate-700 cursor-pointer"
+                  >
+                    <Shuffle size={13} />
+                    <span>Auto-Randomize Students</span>
+                  </button>
+                </div>
+              )}
+
+              {/* Manual Student Group Reassignment */}
+              <div className="space-y-1.5 max-h-40 overflow-y-auto pr-1">
+                {users.filter((u) => !u.isTeacher).length === 0 ? (
+                  <p className="text-xs text-slate-400 italic">
+                    No students online yet — groups will still be created and ready for students to join!
+                  </p>
+                ) : (
+                  users
+                    .filter((u) => !u.isTeacher)
+                    .map((student) => {
+                      const currentGrp =
+                        draftGroups.find((g) => g.assignedUserIds.includes(student.userId))?.id ||
+                        draftGroups[0]?.id ||
+                        '';
+                      return (
+                        <div
+                          key={student.userId}
+                          className="flex items-center justify-between bg-white px-3 py-1.5 rounded-[2px] border border-[#CBD5E1] text-xs"
+                        >
+                          <div className="flex items-center gap-2">
+                            <span className="w-2.5 h-2.5 rounded-[2px]" style={{ backgroundColor: student.color }} />
+                            <span className="font-medium text-slate-800">{student.name}</span>
+                          </div>
+                          <select
+                            value={currentGrp}
+                            onChange={(e) => {
+                              const nextGrpId = e.target.value;
+                              setDraftGroups((prev) =>
+                                prev.map((g) => ({
+                                  ...g,
+                                  assignedUserIds:
+                                    g.id === nextGrpId
+                                      ? [...g.assignedUserIds.filter((id) => id !== student.userId), student.userId]
+                                      : g.assignedUserIds.filter((id) => id !== student.userId),
+                                }))
+                              );
+                            }}
+                            className="bg-slate-50 border border-[#CBD5E1] rounded-[2px] px-2 py-0.5 text-xs font-medium text-slate-800 cursor-pointer"
+                          >
+                            {draftGroups.map((g) => (
+                              <option key={g.id} value={g.id}>
+                                {g.title}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                      );
+                    })
+                )}
+              </div>
+
+              <label className="flex items-center gap-2 text-xs text-slate-700 cursor-pointer pt-1">
+                <input
+                  type="checkbox"
+                  checked={draftAllowSelfSelect}
+                  onChange={(e) => setDraftAllowSelfSelect(e.target.checked)}
+                  className="rounded-[2px] border-[#CBD5E1] text-brand-600 focus:ring-brand-500"
+                />
+                <span>Allow students to freely switch between breakout groups themselves</span>
+              </label>
+            </div>
+          )}
+
+          {/* 3. Pre-load Worksheet / Template on Sub-Boards */}
+          {!isEditing && !isLaunchingPrepared && (
+            <div className="space-y-3 pt-1 border-t border-slate-200">
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1" htmlFor="breakout-round-name">
+                  Round name (optional):
+                </label>
+                <input
+                  id="breakout-round-name"
+                  type="text"
+                  maxLength={40}
+                  value={roundName}
+                  onChange={(e) => setRoundName(e.target.value)}
+                  placeholder="e.g. Vocabulary warm-up"
+                  className="w-full px-3 py-2 bg-slate-50 border border-[#CBD5E1] rounded-[2px] text-xs text-slate-900 focus:bg-white focus:border-brand-600 focus:outline-none"
+                />
+              </div>
+              {isEditingPrepared && preparedView && !worksheetTouched && (
+                <p className="text-[11px] text-slate-600">
+                  Current worksheet: {templateName(roundTemplates[preparedView.round.id])}
+                  {inkNote(roundTemplateInk[preparedView.round.id])}. Pick another below to replace it.
+                </p>
+              )}
+              <label className="block text-xs font-semibold text-slate-700">
+                Pre-load Worksheet / Template onto Every Board:
+              </label>
+              <div className="grid grid-cols-2 gap-2 text-xs">
+                <button
+                  type="button"
+                  onClick={() => chooseWorksheet('frayer')}
+                  className={cn(
+                    'p-2.5 rounded-[2px] border text-left cursor-pointer',
+                    draftWorksheetChoice === 'frayer'
+                      ? 'oh-btn-active font-semibold text-slate-900'
+                      : 'oh-btn text-slate-700'
+                  )}
+                >
+                  4-Box Frayer Concept Model
+                </button>
+                <button
+                  type="button"
+                  onClick={() => chooseWorksheet('checkin')}
+                  className={cn(
+                    'p-2.5 rounded-[2px] border text-left cursor-pointer',
+                    draftWorksheetChoice === 'checkin'
+                      ? 'oh-btn-active font-semibold text-slate-900'
+                      : 'oh-btn text-slate-700'
+                  )}
+                >
+                  Task Pulse Check (3 Columns)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => chooseWorksheet('corners')}
+                  className={cn(
+                    'p-2.5 rounded-[2px] border text-left cursor-pointer',
+                    draftWorksheetChoice === 'corners'
+                      ? 'oh-btn-active font-semibold text-slate-900'
+                      : 'oh-btn text-slate-700'
+                  )}
+                >
+                  Four Corners Debate
+                </button>
+                <button
+                  type="button"
+                  onClick={() => chooseWorksheet('current')}
+                  className={cn(
+                    'p-2.5 rounded-[2px] border text-left cursor-pointer',
+                    draftWorksheetChoice === 'current'
+                      ? 'oh-btn-active font-semibold text-slate-900'
+                      : 'oh-btn text-slate-700'
+                  )}
+                >
+                  {fullMainBackground
+                    ? `Copy Current (${fullMainBackground.fileName.slice(0, 18)})`
+                    : 'Blank Canvas (No Worksheet)'}
+                </button>
+                <label
+                  className={cn(
+                    'col-span-2 p-2.5 rounded-[2px] border text-left cursor-pointer',
+                    draftWorksheetChoice === 'upload' && uploadedBg
+                      ? 'oh-btn-active font-semibold text-slate-900'
+                      : 'oh-btn text-slate-700'
+                  )}
+                >
+                  <input
+                    type="file"
+                    aria-label="Upload a worksheet file for this round"
+                    accept={WORKSHEET_FILE_ACCEPT}
+                    className="sr-only"
+                    disabled={uploadState.busy}
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      e.target.value = '';
+                      if (file) void pickWorksheetFile(file);
+                    }}
+                  />
+                  {uploadState.busy
+                    ? 'Rendering…'
+                    : uploadedBg
+                      ? `Uploaded: ${uploadedBg.fileName.slice(0, 40)}`
+                      : `Upload a file… (PDF or image, first ${MAX_PDF_PAGES} pages)`}
+                </label>
+              </div>
+              {draftWorksheetChoice === 'current' && (
+                <label className="flex items-start gap-2 text-[11px] text-slate-700 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    className="mt-0.5"
+                    checked={copyInk && mainTeacherInkCount > 0}
+                    disabled={mainTeacherInkCount === 0}
+                    onChange={(e) => {
+                      setWorksheetTouched(true);
+                      setCopyInk(e.target.checked);
+                    }}
+                  />
+                  <span>
+                    Also copy my ink from Main ({mainTeacherInkCount} mark{mainTeacherInkCount === 1 ? '' : 's'}) onto
+                    every board. Students can write around it but can't erase it.
+                  </span>
+                </label>
+              )}
+              {uploadState.note && <p className="text-[11px] text-slate-500">Long PDF: {uploadState.note}.</p>}
+              {uploadState.error && <p className="text-[11px] text-red-700">{uploadState.error}</p>}
+
+              {(draftWorksheetChoice === 'frayer' ||
+                draftWorksheetChoice === 'checkin' ||
+                draftWorksheetChoice === 'corners') && (
+                <div>
+                  <label className="block text-[11px] font-medium text-slate-600 mb-1">
+                    Worksheet Header / Concept Prompt:
+                  </label>
+                  <input
+                    type="text"
+                    value={draftWorksheetTopic}
+                    onChange={(e) => setDraftWorksheetTopic(e.target.value)}
+                    className="w-full px-3 py-2 bg-slate-50 border border-[#CBD5E1] rounded-[2px] text-xs text-slate-900 focus:bg-white focus:border-brand-600 focus:outline-none"
+                  />
+                </div>
+              )}
+              {usesVariants && (
+                <WorksheetVariantsEditor
+                  value={variantsDraft}
+                  onChange={setVariantsDraft}
+                  onBusyChange={setVariantsBusy}
+                  disabled={preparedBusy}
+                  worksheetAName={
+                    isEditingPrepared && preparedView && !worksheetTouched
+                      ? templateName(roundTemplates[preparedView.round.id])
+                      : draftWorksheetChoice === 'upload'
+                        ? uploadedBg?.fileName || 'the uploaded file'
+                        : templateLabelFor(draftWorksheetChoice)
+                  }
+                />
+              )}
+              {usesVariants && missingVariantLetters(variantsDraft).length > 0 && (
+                <p className="text-[11px] text-red-700">
+                  Choose a file for worksheet {missingVariantLetters(variantsDraft).join(', ')}, or remove it.
+                </p>
+              )}
+            </div>
+          )}
+
+          {/* Chat Scope Selector */}
+          <div className="flex items-center justify-between pt-2">
+            <span className="text-xs font-semibold text-slate-700">Chat Room Mode:</span>
+            <div className="flex items-center gap-1 bg-slate-100 border border-[#CBD5E1] p-0.5 rounded-[2px] text-xs">
+              <button
+                type="button"
+                onClick={() => setDraftChatScope('unified')}
+                className={cn(
+                  'px-2.5 py-1 rounded-[2px] border font-medium cursor-pointer',
+                  draftChatScope === 'unified'
+                    ? 'oh-btn-active text-brand-900 font-semibold'
+                    : 'border-transparent text-slate-600 hover:text-slate-900'
+                )}
+              >
+                Unified Class Chat
+              </button>
+              <button
+                type="button"
+                onClick={() => setDraftChatScope('board')}
+                className={cn(
+                  'px-2.5 py-1 rounded-[2px] border font-medium cursor-pointer',
+                  draftChatScope === 'board'
+                    ? 'oh-btn-active text-brand-900 font-semibold'
+                    : 'border-transparent text-slate-600 hover:text-slate-900'
+                )}
+              >
+                Per-Board Group Chat
+              </button>
+            </div>
+          </div>
+
+          {activeRound && !isEditing && !preparedView && (
+            <p className="text-[11px] text-amber-800 bg-amber-50 border border-amber-200 rounded-[3px] px-3 py-2">
+              {activeRound.title} will be archived. Nothing is deleted. You can still open and export it from the Round
+              selector.
+            </p>
+          )}
+
+          {/* Auto-Start on Entry: Students start on their own boards */}
+          {!preparedView && (
+            <div className="p-3.5 rounded-[3px] bg-slate-50 border border-[#CBD5E1] space-y-2.5">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="font-display text-xs font-semibold text-slate-900">
+                      Students start on their own boards
+                    </span>
+                    {autoIndividual && (
+                      <span className="px-1.5 py-0.5 rounded-[2px] bg-emerald-100 border border-emerald-200 text-emerald-800 text-[10px] font-semibold">
+                        {currentMode === 'main'
+                          ? `Armed${autoIndividualTemplateLabel ? ` · ${autoIndividualTemplateLabel}` : ''}`
+                          : 'Active'}
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-[11px] text-slate-500 mt-0.5">
+                    Any non-teacher student joining Main lands straight on their own private board with your chosen
+                    worksheet, while you keep Main separate. Clicking Bring All to Main turns this off so latecomers
+                    follow the class.
+                  </p>
+                </div>
+                <label className="flex items-center gap-1.5 text-xs font-medium text-slate-800 shrink-0 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={autoDraftEnabled}
+                    disabled={!hasTeacherPin}
+                    onChange={(e) => setAutoDraftEnabled(e.target.checked)}
+                    className="rounded-[2px] border-[#CBD5E1] text-brand-600 focus:ring-brand-500"
+                  />
+                  <span>Enable</span>
+                </label>
+              </div>
+
+              {!hasTeacherPin && (
+                <p className="text-[11px] text-amber-800 bg-amber-50 border border-amber-200 rounded-[3px] px-2.5 py-1.5">
+                  Set a Room Teacher PIN in the sidebar first before enabling automatic student boards.
+                </p>
+              )}
+
+              {hasTeacherPin && autoDraftEnabled && (
+                <div className="space-y-2 pt-1 border-t border-slate-200">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <label className="text-[11px] font-semibold text-slate-700">Starting worksheet for students:</label>
+                    <select
+                      aria-label="Starting worksheet for students"
+                      value={autoWorksheetChoice}
+                      onChange={(e) =>
+                        setAutoWorksheetChoice(e.target.value as 'current' | 'frayer' | 'checkin' | 'corners' | 'none')
+                      }
+                      className="bg-white border border-[#CBD5E1] rounded-[2px] px-2 py-1 text-xs font-medium text-slate-800 cursor-pointer"
+                    >
+                      <option value="frayer">4-Box Frayer Concept Model</option>
+                      <option value="checkin">Task Pulse Check (3 Columns)</option>
+                      <option value="corners">Four Corners Debate</option>
+                      {fullMainBackground && (
+                        <option value="current">
+                          Copy Current Main Board ({fullMainBackground.fileName.slice(0, 18)})
+                        </option>
+                      )}
+                      <option value="none">Blank Canvas (No Worksheet)</option>
+                    </select>
+                  </div>
+                  {(autoWorksheetChoice === 'frayer' ||
+                    autoWorksheetChoice === 'checkin' ||
+                    autoWorksheetChoice === 'corners') && (
+                    <input
+                      type="text"
+                      value={autoWorksheetTopic}
+                      onChange={(e) => setAutoWorksheetTopic(e.target.value)}
+                      placeholder="Worksheet Header / Concept Prompt..."
+                      className="w-full px-2.5 py-1.5 bg-white border border-[#CBD5E1] rounded-[2px] text-xs text-slate-900 focus:border-brand-600 focus:outline-none"
+                    />
+                  )}
+                </div>
+              )}
+
+              {hasTeacherPin && (autoDraftEnabled || autoIndividual) && (
+                <div className="flex justify-end">
+                  <button
+                    type="button"
+                    disabled={autoSaving}
+                    onClick={async () => {
+                      setAutoSaving(true);
+                      const ws = buildWorksheetConfig(autoWorksheetChoice, autoWorksheetTopic);
+                      const res = await onConfigureBreakout({
+                        action: 'set-auto-individual',
+                        autoIndividual: autoDraftEnabled,
+                        customBackground: ws.customBackground,
+                        copyWorksheet: ws.copyWorksheet,
+                        templateLabel: ws.templateLabel,
+                        chatScope: draftChatScope,
+                      });
+                      setAutoSaving(false);
+                      if (!res.ok) {
+                        window.alert(res.error || 'Could not save auto-start student board mode.');
+                      }
+                    }}
+                    className={cn(
+                      'px-3 py-1.5 rounded-[2px] border text-xs font-semibold transition-colors cursor-pointer disabled:opacity-50',
+                      autoDraftEnabled ? 'oh-btn-emerald text-white' : 'oh-btn text-slate-700'
+                    )}
+                  >
+                    {autoSaving
+                      ? 'Saving...'
+                      : autoDraftEnabled
+                        ? autoIndividual
+                          ? 'Update Auto-Start Mode'
+                          : 'Save Auto-Start Mode (Stay on Main)'
+                        : 'Turn Off Auto-Start'}
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
         <div className="oh-panel-header flex flex-wrap items-center justify-end gap-2 px-5 py-3 border-t border-[#CBD5E1] shrink-0">
@@ -1370,7 +1456,10 @@ export function BreakoutManagerModal({
               type="button"
               onClick={async () => {
                 const res = await onConfigureBreakout({ action: 'return-to-main' });
-                if (!res.ok) { window.alert(res.error || 'Could not return to the Main Board.'); return; }
+                if (!res.ok) {
+                  window.alert(res.error || 'Could not return to the Main Board.');
+                  return;
+                }
                 onClose();
                 onShowLiveGridOverview(false);
               }}
@@ -1382,7 +1471,9 @@ export function BreakoutManagerModal({
           {isLaunchingPrepared && preparedView ? (
             <button
               type="button"
-              disabled={preparedBusy || (!draftAllowSelfSelect && draftGroups.every((g) => g.assignedUserIds.length === 0))}
+              disabled={
+                preparedBusy || (!draftAllowSelfSelect && draftGroups.every((g) => g.assignedUserIds.length === 0))
+              }
               title={
                 !draftAllowSelfSelect && draftGroups.every((g) => g.assignedUserIds.length === 0)
                   ? 'Assign students first, or turn on self-select'
@@ -1398,7 +1489,10 @@ export function BreakoutManagerModal({
                   chatScope: draftChatScope,
                 });
                 setPreparedBusy(false);
-                if (!res.ok) { window.alert(res.error || 'Could not launch this round.'); return; }
+                if (!res.ok) {
+                  window.alert(res.error || 'Could not launch this round.');
+                  return;
+                }
                 onFollowRound?.();
                 onClose();
                 onShowLiveGridOverview(true);
@@ -1442,7 +1536,10 @@ export function BreakoutManagerModal({
                   res = { ok: false, error: err?.message };
                 }
                 setPreparedBusy(false);
-                if (!res.ok) { window.alert(res.error || 'Could not save this round.'); return; }
+                if (!res.ok) {
+                  window.alert(res.error || 'Could not save this round.');
+                  return;
+                }
                 setPreparedNotice(`Saved changes to ${round.title.replace(/^Round \d+ · /, '')}.`);
                 setPreparedView(null);
                 setVariantsDraft(emptyVariantsDraft());
@@ -1456,7 +1553,12 @@ export function BreakoutManagerModal({
               {!isEditing && (
                 <button
                   type="button"
-                  disabled={preparedBusy || uploadState.busy || variantsBlocked || (draftWorksheetChoice === 'upload' && !uploadedBg)}
+                  disabled={
+                    preparedBusy ||
+                    uploadState.busy ||
+                    variantsBlocked ||
+                    (draftWorksheetChoice === 'upload' && !uploadedBg)
+                  }
                   title="Save this round with its worksheet and groups. Nobody moves until you launch it."
                   onClick={async () => {
                     const ws = buildWorksheetConfig(draftWorksheetChoice, draftWorksheetTopic);
@@ -1484,8 +1586,13 @@ export function BreakoutManagerModal({
                       templateLabel: ws.templateLabel,
                     });
                     setPreparedBusy(false);
-                    if (!res.ok) { window.alert(res.error || 'Could not save this round.'); return; }
-                    setPreparedNotice(`Saved ${roundName.trim() || `Round ${nextRoundNumber}`} for later. Nobody moved.`);
+                    if (!res.ok) {
+                      window.alert(res.error || 'Could not save this round.');
+                      return;
+                    }
+                    setPreparedNotice(
+                      `Saved ${roundName.trim() || `Round ${nextRoundNumber}`} for later. Nobody moved.`
+                    );
                     setRoundName('');
                     setUploadedBg(null);
                     setUploadState({ busy: false });
@@ -1498,7 +1605,10 @@ export function BreakoutManagerModal({
               )}
               <button
                 type="button"
-                disabled={!isEditing && (uploadState.busy || variantsBlocked || (draftWorksheetChoice === 'upload' && !uploadedBg))}
+                disabled={
+                  !isEditing &&
+                  (uploadState.busy || variantsBlocked || (draftWorksheetChoice === 'upload' && !uploadedBg))
+                }
                 onClick={async () => {
                   let payload: ConfigureBreakoutPayload;
                   if (isEditing && targetRound) {
@@ -1531,7 +1641,10 @@ export function BreakoutManagerModal({
                     }
                   }
                   const res = await onConfigureBreakout(payload);
-                  if (!res.ok) { window.alert(res.error || 'Could not update breakout boards.'); return; }
+                  if (!res.ok) {
+                    window.alert(res.error || 'Could not update breakout boards.');
+                    return;
+                  }
                   onFollowRound?.();
                   onClose();
                   onShowLiveGridOverview(payload.action !== 'update-current');
@@ -1579,11 +1692,10 @@ export function WorksheetTemplateModal({
       <div className="bg-white border-2 border-[#CBD5E1] rounded-[3px] w-full max-w-lg overflow-hidden">
         <div className="oh-panel-header flex items-start justify-between gap-4 px-5 py-3.5 border-b border-[#CBD5E1]">
           <div>
-            <h3 className="font-display text-lg font-bold text-slate-900">
-              Classroom Worksheet Templates
-            </h3>
+            <h3 className="font-display text-lg font-bold text-slate-900">Classroom Worksheet Templates</h3>
             <p className="text-xs text-slate-500 mt-0.5">
-              Pick a ready-made template and customize the prompt header for <span className="font-semibold text-slate-700">{activeBoardTitle}</span>.
+              Pick a ready-made template and customize the prompt header for{' '}
+              <span className="font-semibold text-slate-700">{activeBoardTitle}</span>.
             </p>
           </div>
           <button
@@ -1596,55 +1708,46 @@ export function WorksheetTemplateModal({
         </div>
 
         <div className="p-5 space-y-4">
-        <div className="space-y-2">
-          {BUILT_IN_TEMPLATES.map((tpl) => {
-            const isSelected = selectedTemplateId === tpl.id;
-            return (
-              <button
-                key={tpl.id}
-                type="button"
-                onClick={() => {
-                  setSelectedTemplateId(tpl.id);
-                  setTemplatePromptText(tpl.defaultPrompt);
-                }}
-                className={cn(
-                  "w-full text-left p-3.5 rounded-[3px] border transition-colors flex items-start justify-between gap-3 cursor-pointer",
-                  isSelected
-                    ? "oh-btn-active"
-                    : "bg-white border-[#CBD5E1] hover:border-slate-400"
-                )}
-              >
-                <div>
-                  <div className="font-display font-semibold text-xs text-slate-900">
-                    {tpl.name}
+          <div className="space-y-2">
+            {BUILT_IN_TEMPLATES.map((tpl) => {
+              const isSelected = selectedTemplateId === tpl.id;
+              return (
+                <button
+                  key={tpl.id}
+                  type="button"
+                  onClick={() => {
+                    setSelectedTemplateId(tpl.id);
+                    setTemplatePromptText(tpl.defaultPrompt);
+                  }}
+                  className={cn(
+                    'w-full text-left p-3.5 rounded-[3px] border transition-colors flex items-start justify-between gap-3 cursor-pointer',
+                    isSelected ? 'oh-btn-active' : 'bg-white border-[#CBD5E1] hover:border-slate-400'
+                  )}
+                >
+                  <div>
+                    <div className="font-display font-semibold text-xs text-slate-900">{tpl.name}</div>
+                    <p className="text-xs text-slate-600 mt-0.5">{tpl.description}</p>
                   </div>
-                  <p className="text-xs text-slate-600 mt-0.5">{tpl.description}</p>
-                </div>
-                {isSelected && <Check size={16} className="text-brand-600 shrink-0 mt-0.5" />}
-              </button>
-            );
-          })}
-        </div>
+                  {isSelected && <Check size={16} className="text-brand-600 shrink-0 mt-0.5" />}
+                </button>
+              );
+            })}
+          </div>
 
-        <div>
-          <label
-            htmlFor="template-prompt-input"
-            className="block text-xs font-semibold text-slate-700 mb-1.5"
-          >
-            Customize Task / Topic Prompt (Displayed at top of worksheet):
-          </label>
-          <input
-            id="template-prompt-input"
-            type="text"
-            value={templatePromptText}
-            onChange={(e) => setTemplatePromptText(e.target.value)}
-            placeholder={
-              BUILT_IN_TEMPLATES.find((t) => t.id === selectedTemplateId)?.promptPlaceholder
-            }
-            maxLength={80}
-            className="w-full px-3.5 py-2 bg-slate-50 border border-[#CBD5E1] rounded-[2px] text-sm text-slate-900 focus:bg-white focus:border-brand-600 focus:outline-none"
-          />
-        </div>
+          <div>
+            <label htmlFor="template-prompt-input" className="block text-xs font-semibold text-slate-700 mb-1.5">
+              Customize Task / Topic Prompt (Displayed at top of worksheet):
+            </label>
+            <input
+              id="template-prompt-input"
+              type="text"
+              value={templatePromptText}
+              onChange={(e) => setTemplatePromptText(e.target.value)}
+              placeholder={BUILT_IN_TEMPLATES.find((t) => t.id === selectedTemplateId)?.promptPlaceholder}
+              maxLength={80}
+              className="w-full px-3.5 py-2 bg-slate-50 border border-[#CBD5E1] rounded-[2px] text-sm text-slate-900 focus:bg-white focus:border-brand-600 focus:outline-none"
+            />
+          </div>
         </div>
 
         <div className="oh-panel-header flex items-center justify-end gap-2 px-5 py-3 border-t border-[#CBD5E1]">
@@ -1658,10 +1761,7 @@ export function WorksheetTemplateModal({
           <button
             type="button"
             onClick={async () => {
-              const generatedBg = generateTemplateBackground(
-                selectedTemplateId,
-                templatePromptText
-              );
+              const generatedBg = generateTemplateBackground(selectedTemplateId, templatePromptText);
               onClose();
               await onApplyTemplate(generatedBg);
             }}
@@ -1704,9 +1804,7 @@ export function RestoreSnapshotModal({
       <div className="bg-white border-2 border-[#CBD5E1] rounded-[3px] w-full max-w-lg overflow-hidden">
         <div className="oh-panel-header flex items-start justify-between gap-4 px-5 py-3.5 border-b border-[#CBD5E1]">
           <div>
-            <h3 className="font-display text-lg font-bold text-slate-900">
-              Open Class Work (.json)
-            </h3>
+            <h3 className="font-display text-lg font-bold text-slate-900">Open Class Work (.json)</h3>
             <p className="text-xs text-slate-500 mt-0.5">
               File: <span className="font-mono text-slate-700">{pendingSnapshot.fileName}</span>
             </p>
@@ -1722,110 +1820,101 @@ export function RestoreSnapshotModal({
         </div>
 
         <div className="p-5 space-y-4">
-        {importError ? (
-          <div className="p-3.5 rounded-[3px] bg-red-50 border border-red-200 flex items-start gap-2.5 text-xs text-red-800">
-            <AlertCircle size={16} className="text-red-600 shrink-0 mt-0.5" />
-            <span>{importError}</span>
-          </div>
-        ) : (
-          <>
-            <div className="grid grid-cols-3 gap-3 p-3.5 rounded-[3px] bg-slate-50 border border-[#CBD5E1] text-xs">
-              <div>
-                <span className="text-slate-400 block">Source Room</span>
-                <span className="font-mono font-semibold text-slate-900">
-                  #{pendingSnapshot.roomId}
-                </span>
-              </div>
-              <div>
-                <span className="text-slate-400 block">Board Content</span>
-                <span className="font-mono tabular-nums font-semibold text-slate-900">
-                  {pendingSnapshot.elements.length} items
-                  {pendingSnapshot.subBoards
-                    ? ` + ${Object.keys(pendingSnapshot.subBoards).length} sub-boards`
-                    : ''}
-                </span>
-              </div>
-              <div>
-                <span className="text-slate-400 block">Chat History</span>
-                <span className="font-mono tabular-nums font-semibold text-slate-900">
-                  {pendingSnapshot.messages.length} messages
-                </span>
-              </div>
+          {importError ? (
+            <div className="p-3.5 rounded-[3px] bg-red-50 border border-red-200 flex items-start gap-2.5 text-xs text-red-800">
+              <AlertCircle size={16} className="text-red-600 shrink-0 mt-0.5" />
+              <span>{importError}</span>
             </div>
-
-            <div className="space-y-2">
-              <label className="block text-xs font-semibold text-slate-700">
-                Choose how to restore into #{roomId}:
-              </label>
-
-              <button
-                type="button"
-                disabled={isImporting}
-                onClick={() => setImportMode('replace')}
-                className={cn(
-                  "w-full text-left p-3 rounded-[3px] border transition-colors flex items-start justify-between gap-3 cursor-pointer",
-                  importMode === 'replace'
-                    ? "oh-btn-active"
-                    : "bg-white border-[#CBD5E1] hover:border-slate-400"
-                )}
-              >
+          ) : (
+            <>
+              <div className="grid grid-cols-3 gap-3 p-3.5 rounded-[3px] bg-slate-50 border border-[#CBD5E1] text-xs">
                 <div>
-                  <div className="font-display font-semibold text-xs text-slate-900">
-                    Replace & Resume Live Session
-                  </div>
-                  <p className="text-xs text-slate-600 mt-0.5">
-                    Replaces the current room's boards, worksheets, and chat with this snapshot and leaves the board unlocked.
-                  </p>
+                  <span className="text-slate-400 block">Source Room</span>
+                  <span className="font-mono font-semibold text-slate-900">#{pendingSnapshot.roomId}</span>
                 </div>
-                {importMode === 'replace' && <Check size={16} className="text-brand-600 shrink-0 mt-0.5" />}
-              </button>
-
-              <button
-                type="button"
-                disabled={isImporting}
-                onClick={() => setImportMode('readonly')}
-                className={cn(
-                  "w-full text-left p-3 rounded-[3px] border transition-colors flex items-start justify-between gap-3 cursor-pointer",
-                  importMode === 'readonly'
-                    ? "oh-btn-active"
-                    : "bg-white border-[#CBD5E1] hover:border-slate-400"
-                )}
-              >
                 <div>
-                  <div className="font-display font-semibold text-xs text-slate-900">
-                    Open as Read-Only Archive (Locked)
-                  </div>
-                  <p className="text-xs text-slate-600 mt-0.5">
-                    Loads the snapshot and automatically locks the board so students can pan, zoom, and read without modifying anything.
-                  </p>
+                  <span className="text-slate-400 block">Board Content</span>
+                  <span className="font-mono tabular-nums font-semibold text-slate-900">
+                    {pendingSnapshot.elements.length} items
+                    {pendingSnapshot.subBoards ? ` + ${Object.keys(pendingSnapshot.subBoards).length} sub-boards` : ''}
+                  </span>
                 </div>
-                {importMode === 'readonly' && <Check size={16} className="text-brand-600 shrink-0 mt-0.5" />}
-              </button>
-
-              <button
-                type="button"
-                disabled={isImporting}
-                onClick={() => setImportMode('merge')}
-                className={cn(
-                  "w-full text-left p-3 rounded-[3px] border transition-colors flex items-start justify-between gap-3 cursor-pointer",
-                  importMode === 'merge'
-                    ? "oh-btn-active"
-                    : "bg-white border-[#CBD5E1] hover:border-slate-400"
-                )}
-              >
                 <div>
-                  <div className="font-display font-semibold text-xs text-slate-900">
-                    Merge into Current Room
-                  </div>
-                  <p className="text-xs text-slate-600 mt-0.5">
-                    Keeps everything currently in #{roomId} and combines the snapshot's drawings, sub-boards, and messages.
-                  </p>
+                  <span className="text-slate-400 block">Chat History</span>
+                  <span className="font-mono tabular-nums font-semibold text-slate-900">
+                    {pendingSnapshot.messages.length} messages
+                  </span>
                 </div>
-                {importMode === 'merge' && <Check size={16} className="text-brand-600 shrink-0 mt-0.5" />}
-              </button>
-            </div>
-          </>
-        )}
+              </div>
+
+              <div className="space-y-2">
+                <label className="block text-xs font-semibold text-slate-700">
+                  Choose how to restore into #{roomId}:
+                </label>
+
+                <button
+                  type="button"
+                  disabled={isImporting}
+                  onClick={() => setImportMode('replace')}
+                  className={cn(
+                    'w-full text-left p-3 rounded-[3px] border transition-colors flex items-start justify-between gap-3 cursor-pointer',
+                    importMode === 'replace' ? 'oh-btn-active' : 'bg-white border-[#CBD5E1] hover:border-slate-400'
+                  )}
+                >
+                  <div>
+                    <div className="font-display font-semibold text-xs text-slate-900">
+                      Replace & Resume Live Session
+                    </div>
+                    <p className="text-xs text-slate-600 mt-0.5">
+                      Replaces the current room's boards, worksheets, and chat with this snapshot and leaves the board
+                      unlocked.
+                    </p>
+                  </div>
+                  {importMode === 'replace' && <Check size={16} className="text-brand-600 shrink-0 mt-0.5" />}
+                </button>
+
+                <button
+                  type="button"
+                  disabled={isImporting}
+                  onClick={() => setImportMode('readonly')}
+                  className={cn(
+                    'w-full text-left p-3 rounded-[3px] border transition-colors flex items-start justify-between gap-3 cursor-pointer',
+                    importMode === 'readonly' ? 'oh-btn-active' : 'bg-white border-[#CBD5E1] hover:border-slate-400'
+                  )}
+                >
+                  <div>
+                    <div className="font-display font-semibold text-xs text-slate-900">
+                      Open as Read-Only Archive (Locked)
+                    </div>
+                    <p className="text-xs text-slate-600 mt-0.5">
+                      Loads the snapshot and automatically locks the board so students can pan, zoom, and read without
+                      modifying anything.
+                    </p>
+                  </div>
+                  {importMode === 'readonly' && <Check size={16} className="text-brand-600 shrink-0 mt-0.5" />}
+                </button>
+
+                <button
+                  type="button"
+                  disabled={isImporting}
+                  onClick={() => setImportMode('merge')}
+                  className={cn(
+                    'w-full text-left p-3 rounded-[3px] border transition-colors flex items-start justify-between gap-3 cursor-pointer',
+                    importMode === 'merge' ? 'oh-btn-active' : 'bg-white border-[#CBD5E1] hover:border-slate-400'
+                  )}
+                >
+                  <div>
+                    <div className="font-display font-semibold text-xs text-slate-900">Merge into Current Room</div>
+                    <p className="text-xs text-slate-600 mt-0.5">
+                      Keeps everything currently in #{roomId} and combines the snapshot's drawings, sub-boards, and
+                      messages.
+                    </p>
+                  </div>
+                  {importMode === 'merge' && <Check size={16} className="text-brand-600 shrink-0 mt-0.5" />}
+                </button>
+              </div>
+            </>
+          )}
         </div>
 
         <div className="oh-panel-header flex items-center justify-end gap-2 px-5 py-3 border-t border-[#CBD5E1]">
@@ -1993,9 +2082,7 @@ export function PdfPageRangeModal({
       <div className="bg-white border-2 border-[#CBD5E1] rounded-[3px] w-full max-w-3xl overflow-hidden">
         <div className="oh-panel-header flex items-start justify-between gap-4 px-5 py-3.5 border-b border-[#CBD5E1]">
           <div>
-            <h3 className="font-display text-lg font-bold text-slate-900">
-              Choose Pages to Import
-            </h3>
+            <h3 className="font-display text-lg font-bold text-slate-900">Choose Pages to Import</h3>
             <p className="text-xs text-slate-500 mt-1">
               "{fileName}" has {totalPages} pages. AllAboard imports up to {maxPages} at a time.
             </p>
@@ -2010,133 +2097,125 @@ export function PdfPageRangeModal({
         </div>
 
         <div className="p-5 space-y-4">
-        <div className="space-y-3">
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label
-                htmlFor="pdf-range-from"
-                className="block text-xs font-semibold text-slate-700 mb-1.5"
-              >
-                From
-              </label>
-              <input
-                id="pdf-range-from"
-                type="number"
-                min={1}
-                max={totalPages}
-                value={firstText}
-                onChange={(e) => setFirstText(e.target.value)}
-                onBlur={handleBlur}
-                className="w-full px-3 py-2 bg-slate-50 border border-[#CBD5E1] rounded-[2px] text-sm text-slate-900 focus:bg-white focus:border-brand-600 focus:outline-none"
-              />
+          <div className="space-y-3">
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label htmlFor="pdf-range-from" className="block text-xs font-semibold text-slate-700 mb-1.5">
+                  From
+                </label>
+                <input
+                  id="pdf-range-from"
+                  type="number"
+                  min={1}
+                  max={totalPages}
+                  value={firstText}
+                  onChange={(e) => setFirstText(e.target.value)}
+                  onBlur={handleBlur}
+                  className="w-full px-3 py-2 bg-slate-50 border border-[#CBD5E1] rounded-[2px] text-sm text-slate-900 focus:bg-white focus:border-brand-600 focus:outline-none"
+                />
+              </div>
+              <div>
+                <label htmlFor="pdf-range-to" className="block text-xs font-semibold text-slate-700 mb-1.5">
+                  To
+                </label>
+                <input
+                  id="pdf-range-to"
+                  type="number"
+                  min={1}
+                  max={totalPages}
+                  value={lastText}
+                  onChange={(e) => setLastText(e.target.value)}
+                  onBlur={handleBlur}
+                  className="w-full px-3 py-2 bg-slate-50 border border-[#CBD5E1] rounded-[2px] text-sm text-slate-900 focus:bg-white focus:border-brand-600 focus:outline-none"
+                />
+              </div>
             </div>
-            <div>
-              <label
-                htmlFor="pdf-range-to"
-                className="block text-xs font-semibold text-slate-700 mb-1.5"
-              >
-                To
-              </label>
-              <input
-                id="pdf-range-to"
-                type="number"
-                min={1}
-                max={totalPages}
-                value={lastText}
-                onChange={(e) => setLastText(e.target.value)}
-                onBlur={handleBlur}
-                className="w-full px-3 py-2 bg-slate-50 border border-[#CBD5E1] rounded-[2px] text-sm text-slate-900 focus:bg-white focus:border-brand-600 focus:outline-none"
-              />
+            <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-slate-600">
+              <span>
+                Importing pages {clamped.first}&ndash;{clamped.last}.
+              </span>
+              <span className="text-[11px] text-slate-500">
+                Click a page to start there; Shift-click to set the end.
+              </span>
             </div>
-          </div>
-          <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-slate-600">
-            <span>Importing pages {clamped.first}&ndash;{clamped.last}.</span>
-            <span className="text-[11px] text-slate-500">
-              Click a page to start there; Shift-click to set the end.
-            </span>
-          </div>
 
-          <div className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 rounded-[3px] bg-slate-50 border border-[#CBD5E1] text-xs">
-            <span className="font-semibold text-slate-700">
-              Import Size <span className="font-normal text-slate-500">(scales pages relative to pens &amp; text):</span>
-            </span>
-            <div className="flex items-center gap-1" role="group" aria-label="Worksheet import size">
-              {WORKSHEET_SCALE_OPTIONS.map((mult) => {
-                const isActive = Math.abs(selectedScale - mult) < 0.01;
-                return (
-                  <button
-                    key={mult}
-                    type="button"
-                    aria-pressed={isActive}
-                    onClick={() => {
-                      setSelectedScale(mult);
-                      onImportScaleChange?.(mult);
-                    }}
-                    className={cn(
-                      'px-2 py-1 rounded-[2px] border font-mono font-semibold text-xs transition-colors cursor-pointer',
-                      isActive
-                        ? 'oh-btn-primary text-white'
-                        : 'oh-btn text-slate-700'
-                    )}
-                  >
-                    {mult}&times;
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-
-          <div
-            ref={gridRef}
-            data-testid="pdf-thumb-grid"
-            className="max-h-[50vh] overflow-y-auto rounded-[3px] border border-[#CBD5E1] bg-slate-50/60 p-2.5"
-          >
-            <div
-              className="grid gap-2.5"
-              style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(120px, 1fr))' }}
-            >
-              {Array.from({ length: totalPages }, (_, idx) => {
-                const pageNum = idx + 1;
-                const inRange = pageNum >= clamped.first && pageNum <= clamped.last;
-                const thumbUrl = thumbs[pageNum];
-                return (
-                  <button
-                    key={pageNum}
-                    type="button"
-                    data-testid={`pdf-thumb-${pageNum}`}
-                    data-page={pageNum}
-                    data-in-range={inRange ? 'true' : 'false'}
-                    onClick={(e) => handleThumbClick(pageNum, e.shiftKey)}
-                    className={cn(
-                      'flex flex-col items-center gap-1.5 p-1.5 rounded-[2px] border transition-colors cursor-pointer select-none',
-                      inRange
-                        ? 'border-brand-500 bg-brand-50 ring-1 ring-brand-500/40'
-                        : 'border-[#CBD5E1] bg-white opacity-60 hover:opacity-100 hover:border-slate-400'
-                    )}
-                  >
-                    {thumbUrl ? (
-                      <img
-                        src={thumbUrl}
-                        alt={`Page ${pageNum}`}
-                        className="w-full h-24 object-contain rounded-[2px] bg-white"
-                      />
-                    ) : (
-                      <div className="w-full h-24 rounded-[2px] bg-slate-100 border border-[#CBD5E1]" />
-                    )}
-                    <span
+            <div className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 rounded-[3px] bg-slate-50 border border-[#CBD5E1] text-xs">
+              <span className="font-semibold text-slate-700">
+                Import Size{' '}
+                <span className="font-normal text-slate-500">(scales pages relative to pens &amp; text):</span>
+              </span>
+              <div className="flex items-center gap-1" role="group" aria-label="Worksheet import size">
+                {WORKSHEET_SCALE_OPTIONS.map((mult) => {
+                  const isActive = Math.abs(selectedScale - mult) < 0.01;
+                  return (
+                    <button
+                      key={mult}
+                      type="button"
+                      aria-pressed={isActive}
+                      onClick={() => {
+                        setSelectedScale(mult);
+                        onImportScaleChange?.(mult);
+                      }}
                       className={cn(
-                        'text-[11px] font-medium tabular-nums',
-                        inRange ? 'text-brand-700 font-semibold' : 'text-slate-600'
+                        'px-2 py-1 rounded-[2px] border font-mono font-semibold text-xs transition-colors cursor-pointer',
+                        isActive ? 'oh-btn-primary text-white' : 'oh-btn text-slate-700'
                       )}
                     >
-                      {pageNum}
-                    </span>
-                  </button>
-                );
-              })}
+                      {mult}&times;
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div
+              ref={gridRef}
+              data-testid="pdf-thumb-grid"
+              className="max-h-[50vh] overflow-y-auto rounded-[3px] border border-[#CBD5E1] bg-slate-50/60 p-2.5"
+            >
+              <div className="grid gap-2.5" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(120px, 1fr))' }}>
+                {Array.from({ length: totalPages }, (_, idx) => {
+                  const pageNum = idx + 1;
+                  const inRange = pageNum >= clamped.first && pageNum <= clamped.last;
+                  const thumbUrl = thumbs[pageNum];
+                  return (
+                    <button
+                      key={pageNum}
+                      type="button"
+                      data-testid={`pdf-thumb-${pageNum}`}
+                      data-page={pageNum}
+                      data-in-range={inRange ? 'true' : 'false'}
+                      onClick={(e) => handleThumbClick(pageNum, e.shiftKey)}
+                      className={cn(
+                        'flex flex-col items-center gap-1.5 p-1.5 rounded-[2px] border transition-colors cursor-pointer select-none',
+                        inRange
+                          ? 'border-brand-500 bg-brand-50 ring-1 ring-brand-500/40'
+                          : 'border-[#CBD5E1] bg-white opacity-60 hover:opacity-100 hover:border-slate-400'
+                      )}
+                    >
+                      {thumbUrl ? (
+                        <img
+                          src={thumbUrl}
+                          alt={`Page ${pageNum}`}
+                          className="w-full h-24 object-contain rounded-[2px] bg-white"
+                        />
+                      ) : (
+                        <div className="w-full h-24 rounded-[2px] bg-slate-100 border border-[#CBD5E1]" />
+                      )}
+                      <span
+                        className={cn(
+                          'text-[11px] font-medium tabular-nums',
+                          inRange ? 'text-brand-700 font-semibold' : 'text-slate-600'
+                        )}
+                      >
+                        {pageNum}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
             </div>
           </div>
-        </div>
         </div>
 
         <div className="oh-panel-header flex items-center justify-end gap-2 px-5 py-3 border-t border-[#CBD5E1]">
@@ -2150,10 +2229,7 @@ export function PdfPageRangeModal({
           <button
             type="button"
             onClick={() =>
-              onConfirm(
-                clampPageRange(Number(firstText), Number(lastText), totalPages, maxPages),
-                selectedScale
-              )
+              onConfirm(clampPageRange(Number(firstText), Number(lastText), totalPages, maxPages), selectedScale)
             }
             className="px-4 py-1.5 rounded-[2px] border oh-btn-primary text-xs font-semibold text-white transition-colors cursor-pointer"
           >
@@ -2268,7 +2344,9 @@ export function DriveSaveModal({
             <div className="flex items-center gap-2">
               <div className="flex-1 min-w-0 flex items-center gap-2 px-3 py-2 bg-slate-50 border border-[#CBD5E1] rounded-[2px] text-sm text-slate-900">
                 <FolderOpen size={15} className="text-slate-400 shrink-0" />
-                <span className="truncate" data-testid="drive-save-folder">{folder.name}</span>
+                <span className="truncate" data-testid="drive-save-folder">
+                  {folder.name}
+                </span>
               </div>
               <button
                 type="button"
@@ -2292,9 +2370,7 @@ export function DriveSaveModal({
             </div>
             {onSwitchAccount && (
               <div className="mt-1.5 flex items-center justify-between gap-2 text-xs text-slate-500">
-                <span className="truncate">
-                  {accountEmail ? `Signed in as ${accountEmail}` : 'Not signed in yet'}
-                </span>
+                <span className="truncate">{accountEmail ? `Signed in as ${accountEmail}` : 'Not signed in yet'}</span>
                 <button
                   type="button"
                   onClick={onSwitchAccount}
@@ -2352,7 +2428,11 @@ export function DriveSaveModal({
               ? `Replaces the copy of this room you saved earlier in ${folder.name}.`
               : `Saves a new file in ${folder.name}.`}
           </p>
-          {error && <p role="alert" className="text-xs text-red-600 font-medium">{error}</p>}
+          {error && (
+            <p role="alert" className="text-xs text-red-600 font-medium">
+              {error}
+            </p>
+          )}
         </div>
 
         <div className="oh-panel-header flex items-center justify-end gap-2 px-5 py-3 border-t border-[#CBD5E1]">

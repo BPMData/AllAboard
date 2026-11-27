@@ -18,6 +18,7 @@ Create `src/lib/socketContract.ts` exporting only TypeScript interfaces/types (n
 Verify exact current payloads from `server.ts` and `src/App.tsx` before finalizing each entry, covering **all 44 client→server events** and **all server→client events**:
 
 1. **Common ack shapes:**
+
    - `export interface BasicAck { ok: boolean; error?: string }`
    - `export interface AuthAck extends BasicAck { mode?: 'claimed' | 'verified'; pin?: string }`
    - `export interface BreakoutAck extends BasicAck { roundId?: string }`
@@ -29,6 +30,7 @@ Verify exact current payloads from `server.ts` and `src/App.tsx` before finalizi
    - `export interface LessonLoadAck extends BasicAck { roomId?: string; roundIds?: string[] }`
 
 2. **`ClientToServerEvents`** (match every `socket.on(...)` in `server.ts`):
+
    - `check-room`: `(payload: { roomId?: string } | undefined, callback?: (res: RoomAvailability) => void) => void`
    - `join-room`: `(payload: { roomId?: string; userId: string; userKey?: string; name: string; color: string; teacherPin?: string }) => void`
    - `teacher:auth`: `(payload: { pin: string }, callback?: (res: AuthAck) => void) => void`
@@ -73,12 +75,13 @@ Verify exact current payloads from `server.ts` and `src/App.tsx` before finalizi
    - `teacher:timer-control`: `(payload: TimerControlPayload, callback?: (res: BasicAck) => void) => void`
    - `teacher:clear-all`: `(payload: { boardId?: string } | undefined) => void`
 
-   *(Inspect the exact signatures in `server.ts` lines 1651–3398 and `src/components/LessonPackModals.tsx` / `src/App.tsx` so every field name matches existing runtime code verbatim.)*
+   _(Inspect the exact signatures in `server.ts` lines 1651–3398 and `src/components/LessonPackModals.tsx` / `src/App.tsx` so every field name matches existing runtime code verbatim.)_
 
 3. **`ServerToClientEvents`** (match every `socket.emit(...)` / `io.to(...).emit(...)` in `server.ts`):
    - `init`, `state-sync`, `breakout-sync`, `round-templates-sync`, `background-sync`, `board-replaced`, `room-restored`, `roster-sync`, `room-settings`, `user-renamed`, `message-deleted`, `user-contributions-purged`, `room-kicked`, `chat-message`, `element-start`, `element-append-points`, `element-update`, `elements-batch-updated`, `elements-batch-added`, `elements-batch-removed`, `elements-replaced`, `element-removed`, `board-full`, `boards-digest`, `cursors-batch`, `cursor-leave`, `laser-pulse`.
 
 ### Phase 1 Checkpoint
+
 - `npm run lint`
 - `npm test`
 
@@ -97,6 +100,7 @@ Verify exact current payloads from `server.ts` and `src/App.tsx` before finalizi
 4. Keep every runtime validation check intact (`tests/guards.test.ts` sends intentionally malformed payloads at runtime — verify it keeps passing).
 
 ### Phase 2 Checkpoint
+
 - `npm run lint`
 - `npm test`
 - `node -e "import('./server.ts').then(() => console.log('OK'))"`
@@ -115,6 +119,7 @@ Verify exact current payloads from `server.ts` and `src/App.tsx` before finalizi
 4. Update `docs/ARCHITECTURE.md` §3 (`src/lib/socketContract.ts`).
 
 ### Final Verification
+
 ```sh
 npm run lint
 npm test

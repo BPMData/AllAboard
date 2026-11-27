@@ -26,12 +26,12 @@ changes no room state, so class carries on.
 
 ## What's in a report
 
-| Part | Public issue | Private email |
-|---|---|---|
-| Category | yes | yes |
-| Description and steps | yes (scrubbed), unless kept private | yes |
-| Contact, "anything else" | **never** | yes (contact also becomes Reply-To when it's an email address) |
-| Diagnostics | yes | yes |
+| Part                     | Public issue                        | Private email                                                  |
+| ------------------------ | ----------------------------------- | -------------------------------------------------------------- |
+| Category                 | yes                                 | yes                                                            |
+| Description and steps    | yes (scrubbed), unless kept private | yes                                                            |
+| Contact, "anything else" | **never**                           | yes (contact also becomes Reply-To when it's an email address) |
+| Diagnostics              | yes                                 | yes                                                            |
 
 **Diagnostics** (`ReportDiagnostics` in `src/lib/problemReport.ts`, whitelisted on the server): app version (Cloud
 Run's `K_REVISION`, added by the server), browser and OS (major version only), screen size, language, touch, online,

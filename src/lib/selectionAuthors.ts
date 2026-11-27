@@ -36,19 +36,20 @@ export function summarizeSelectionAuthors(
     const name = anonymous
       ? el.userName || 'Class Example'
       : el.userId === currentUserId
-      ? 'You'
-      : rosterNames.get(el.userId) || el.userName || 'Student';
+        ? 'You'
+        : rosterNames.get(el.userId) || el.userName || 'Student';
     authors.set(key, { key, name, itemCount: 1 });
   }
-  return Array.from(authors.values()).sort(
-    (a, b) => b.itemCount - a.itemCount || a.name.localeCompare(b.name)
-  );
+  return Array.from(authors.values()).sort((a, b) => b.itemCount - a.itemCount || a.name.localeCompare(b.name));
 }
 
 /** Short toolbar label: "By Sam", "By Sam, Ada" or "By Sam, Ada +3". */
 export function formatSelectionAuthors(authors: SelectionAuthor[], maxShown = 2): string {
   if (authors.length === 0) return '';
-  const shown = authors.slice(0, maxShown).map((author) => author.name).join(', ');
+  const shown = authors
+    .slice(0, maxShown)
+    .map((author) => author.name)
+    .join(', ');
   const hidden = authors.length - maxShown;
   return `By ${shown}${hidden > 0 ? ` +${hidden}` : ''}`;
 }

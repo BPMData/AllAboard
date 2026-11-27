@@ -103,8 +103,14 @@ describe('breakoutRounds helpers', () => {
 
   it('findStudentBoardId routes only within the active round', () => {
     const boards = new Map<string, BoardLike>([
-      ['r1_ind_u1', { id: 'r1_ind_u1', roundId: 'r1', kind: 'individual', title: "U1's Board", assignedUserIds: ['u1'] }],
-      ['r2_ind_u1', { id: 'r2_ind_u1', roundId: 'r2', kind: 'individual', title: "U1's Board", assignedUserIds: ['u1'] }],
+      [
+        'r1_ind_u1',
+        { id: 'r1_ind_u1', roundId: 'r1', kind: 'individual', title: "U1's Board", assignedUserIds: ['u1'] },
+      ],
+      [
+        'r2_ind_u1',
+        { id: 'r2_ind_u1', roundId: 'r2', kind: 'individual', title: "U1's Board", assignedUserIds: ['u1'] },
+      ],
     ]);
     const r1Meta = { id: 'r1', number: 1, title: 'Round 1 · Individual', mode: 'individual' as const, createdAt: 1 };
     const r2Meta = { id: 'r2', number: 2, title: 'Round 2 · Individual', mode: 'individual' as const, createdAt: 2 };
@@ -162,7 +168,10 @@ describe('breakoutRounds helpers', () => {
   it('getAllBoardsByRound orders by round number', () => {
     const boards = new Map<string, BoardLike>([
       ['r2_grp_1', { id: 'r2_grp_1', roundId: 'r2', kind: 'group', title: 'Group 1', assignedUserIds: [] }],
-      ['r1_ind_u1', { id: 'r1_ind_u1', roundId: 'r1', kind: 'individual', title: "U1's Board", assignedUserIds: ['u1'] }],
+      [
+        'r1_ind_u1',
+        { id: 'r1_ind_u1', roundId: 'r1', kind: 'individual', title: "U1's Board", assignedUserIds: ['u1'] },
+      ],
     ]);
     const config: BreakoutConfigLike = {
       mode: 'groups',
@@ -184,8 +193,14 @@ describe('breakoutRounds helpers', () => {
 
   it('findStudentBoardId honors optional userBoardOverrides for cross-round placement', () => {
     const boards = new Map<string, BoardLike>([
-      ['r1_ind_u1', { id: 'r1_ind_u1', roundId: 'r1', kind: 'individual', title: "U1's R1 Board", assignedUserIds: ['u1'] }],
-      ['r2_ind_u1', { id: 'r2_ind_u1', roundId: 'r2', kind: 'individual', title: "U1's R2 Board", assignedUserIds: ['u1'] }],
+      [
+        'r1_ind_u1',
+        { id: 'r1_ind_u1', roundId: 'r1', kind: 'individual', title: "U1's R1 Board", assignedUserIds: ['u1'] },
+      ],
+      [
+        'r2_ind_u1',
+        { id: 'r2_ind_u1', roundId: 'r2', kind: 'individual', title: "U1's R2 Board", assignedUserIds: ['u1'] },
+      ],
     ]);
     const config: BreakoutConfigLike = {
       mode: 'individual',
@@ -246,8 +261,14 @@ describe('breakoutRounds helpers', () => {
     });
     assert.equal(isPreparedRound(config.rounds!.find((r) => r.id === 'r1')), false);
     assert.equal(isPreparedRound(null), false);
-    assert.deepEqual(getPreparedRounds(config).map((r) => r.id), ['r2', 'r3']);
-    assert.deepEqual(getLaunchedRounds(config).map((r) => r.id), ['r1']);
+    assert.deepEqual(
+      getPreparedRounds(config).map((r) => r.id),
+      ['r2', 'r3']
+    );
+    assert.deepEqual(
+      getLaunchedRounds(config).map((r) => r.id),
+      ['r1']
+    );
   });
 
   it('normalizeBreakoutConfig keeps and coerces the prepared-round fields', () => {
@@ -255,8 +276,29 @@ describe('breakoutRounds helpers', () => {
       mode: 'groups',
       activeRoundId: 'r1',
       rounds: [
-        { id: 'r1', number: 1, title: 'Round 1', mode: 'groups', createdAt: 1, prepared: 'yes', launchedAt: 'soon', allowSelfSelect: 1, chatScope: 'weird' },
-        { id: 'r2', number: 2, title: 'Round 2', mode: 'individual', createdAt: 2, prepared: true, launchedAt: 99, allowSelfSelect: false, chatScope: 'board', junk: 'x' },
+        {
+          id: 'r1',
+          number: 1,
+          title: 'Round 1',
+          mode: 'groups',
+          createdAt: 1,
+          prepared: 'yes',
+          launchedAt: 'soon',
+          allowSelfSelect: 1,
+          chatScope: 'weird',
+        },
+        {
+          id: 'r2',
+          number: 2,
+          title: 'Round 2',
+          mode: 'individual',
+          createdAt: 2,
+          prepared: true,
+          launchedAt: 99,
+          allowSelfSelect: false,
+          chatScope: 'board',
+          junk: 'x',
+        },
       ],
     } as any);
     const [r1, r2] = config.rounds!;

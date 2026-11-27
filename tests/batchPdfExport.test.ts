@@ -1,10 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import {
-  buildExportEntries,
-  buildMultiPagePdfFromJpegs,
-  computeBoardWorldBounds,
-} from '../src/lib/batchPdfExport';
+import { buildExportEntries, buildMultiPagePdfFromJpegs, computeBoardWorldBounds } from '../src/lib/batchPdfExport';
 import type { CanvasElement, RoomBackground, SubBoardData, User } from '../src/types';
 
 function el(partial: Partial<CanvasElement>): CanvasElement {
@@ -106,22 +102,38 @@ describe('buildExportEntries', () => {
 
   it('skips an empty main board when breakout boards exist', () => {
     const entries = buildExportEntries([], null, [subBoard({ id: 'b1' })], users);
-    assert.deepEqual(entries.map((e) => e.boardId), ['b1']);
+    assert.deepEqual(
+      entries.map((e) => e.boardId),
+      ['b1']
+    );
   });
 
   it('keeps the main board when it has ink or a worksheet', () => {
     const withInk = buildExportEntries([el({})], null, [subBoard({ id: 'b1' })], users);
-    assert.deepEqual(withInk.map((e) => e.boardId), ['main', 'b1']);
+    assert.deepEqual(
+      withInk.map((e) => e.boardId),
+      ['main', 'b1']
+    );
 
     const withSheet = buildExportEntries([], bg({}), [subBoard({ id: 'b1' })], users);
-    assert.deepEqual(withSheet.map((e) => e.boardId), ['main', 'b1']);
+    assert.deepEqual(
+      withSheet.map((e) => e.boardId),
+      ['main', 'b1']
+    );
   });
 
   it('names assigned students, falling back to "Student" for unknown ids', () => {
     const [entry] = buildExportEntries(
       [],
       null,
-      [subBoard({ id: 'g1', title: 'Group 1', assignedUserIds: ['u1', 'ghost', 'u2'], elements: [el({}), el({ id: 'e2' })] })],
+      [
+        subBoard({
+          id: 'g1',
+          title: 'Group 1',
+          assignedUserIds: ['u1', 'ghost', 'u2'],
+          elements: [el({}), el({ id: 'e2' })],
+        }),
+      ],
       users
     );
     assert.equal(entry.title, 'Group 1');

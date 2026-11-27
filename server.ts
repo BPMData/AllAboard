@@ -14,22 +14,18 @@ import { registerBreakoutHandlers } from './server/breakoutHandlers.ts';
 import { registerDrawingHandlers } from './server/drawingHandlers.ts';
 import { registerLessonPackHandlers } from './server/lessonPackHandlers.ts';
 import { registerModerationHandlers } from './server/moderationHandlers.ts';
-import { createRoomPersistence,isProductionRuntime,openBackupMirror } from './server/roomPersistence.ts';
+import { createRoomPersistence, isProductionRuntime, openBackupMirror } from './server/roomPersistence.ts';
 import {
   HOUSEKEEPING_INTERVAL_MS,
   PIN_FAILURES_PER_WINDOW,
   PIN_FAILURE_WINDOW_MS,
   createRoomSerialization,
 } from './server/roomSerialization.ts';
-import type { RoomState,StartServerOptions } from './server/types.ts';
-import {
-MAX_BOARD_ELEMENTS,
-createFailureLimiter,
-createSocketLimiter
-} from './socketGuards.ts';
+import type { RoomState, StartServerOptions } from './server/types.ts';
+import { MAX_BOARD_ELEMENTS, createFailureLimiter, createSocketLimiter } from './socketGuards.ts';
 import { OVERVIEW_SYNC_MS } from './src/lib/boardDigest.ts';
 import { CURSOR_EMIT_MS } from './src/lib/drawThrottle.ts';
-import type { ClientToServerEvents,ServerToClientEvents } from './src/lib/socketContract.ts';
+import type { ClientToServerEvents, ServerToClientEvents } from './src/lib/socketContract.ts';
 import { distRouter } from './staticAssets.ts';
 export type { StartServerOptions } from './server/types.ts';
 
@@ -118,24 +114,30 @@ export async function startServer(options: StartServerOptions = {}) {
     peakSockets = Math.max(peakSockets, sockets);
     if (peakSockets > 0) {
       let busiestRoom = 0;
-      for (const room of rooms.values()) busiestRoom = Math.max(busiestRoom, io.sockets.adapter.rooms.get(room.id)?.size ?? 0);
-      console.log('[load]', JSON.stringify({
-        rooms: rooms.size,
-        sockets,
-        peakSockets,
-        busiestRoom,
-        lagP99Ms: Math.round(loopDelay.percentile(99) / 1e6),
-        lagMaxMs: Math.round(loopDelay.max / 1e6),
-        rateLimited: rateLimitedEvents,
-        rssMb: Math.round(process.memoryUsage().rss / 1048576),
-      }));
+      for (const room of rooms.values())
+        busiestRoom = Math.max(busiestRoom, io.sockets.adapter.rooms.get(room.id)?.size ?? 0);
+      console.log(
+        '[load]',
+        JSON.stringify({
+          rooms: rooms.size,
+          sockets,
+          peakSockets,
+          busiestRoom,
+          lagP99Ms: Math.round(loopDelay.percentile(99) / 1e6),
+          lagMaxMs: Math.round(loopDelay.max / 1e6),
+          rateLimited: rateLimitedEvents,
+          rssMb: Math.round(process.memoryUsage().rss / 1048576),
+        })
+      );
     }
     peakSockets = sockets;
     rateLimitedEvents = 0;
     pinFailures.prune();
     loopDelay.reset();
   }
-  const peakTracker = setInterval(() => { peakSockets = Math.max(peakSockets, io.of('/').sockets.size); }, 5_000);
+  const peakTracker = setInterval(() => {
+    peakSockets = Math.max(peakSockets, io.of('/').sockets.size);
+  }, 5_000);
   peakTracker.unref();
   const loadLogInterval = setInterval(logLoad, 60_000);
   loadLogInterval.unref();
@@ -161,7 +163,14 @@ export async function startServer(options: StartServerOptions = {}) {
 
   const breakout = createBreakoutHelpers({ io, cloneBackground, cleanRoundVariants, noteChange });
   const { setRoundVariants, teacherIdsOf, getRoundTemplate, createGroupBoards } = breakout;
-  const lesson = createLessonPackHelpers({ store, cloneBackground, setRoundVariants, createGroupBoards, teacherIdsOf, getRoundTemplate });
+  const lesson = createLessonPackHelpers({
+    store,
+    cloneBackground,
+    setRoundVariants,
+    createGroupBoards,
+    teacherIdsOf,
+    getRoundTemplate,
+  });
 
   /** Wrong Teacher PINs per room (across all sockets: a school shares one IP, and sockets are free to open). */
   const pinFailures = createFailureLimiter(PIN_FAILURES_PER_WINDOW, PIN_FAILURE_WINDOW_MS);
@@ -311,9 +320,7 @@ export async function startServer(options: StartServerOptions = {}) {
   };
 }
 
-const isMainModule =
-  Boolean(process.argv[1]) &&
-  path.resolve(process.argv[1]) === path.resolve(__filename);
+const isMainModule = Boolean(process.argv[1]) && path.resolve(process.argv[1]) === path.resolve(__filename);
 if (isMainModule) {
   void startServer();
 }

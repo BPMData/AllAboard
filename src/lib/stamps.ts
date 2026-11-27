@@ -45,9 +45,7 @@ export const TEACHER_STAMP_OPTIONS: readonly TeacherStampOption[] = [
   { kind: 'teacher-custom', label: 'CUSTOM', color: '#7c3aed', fill: '#faf5ff', rotationDeg: -6 },
 ];
 
-const TEACHER_STAMP_MAP = new Map<string, TeacherStampOption>(
-  TEACHER_STAMP_OPTIONS.map((opt) => [opt.kind, opt])
-);
+const TEACHER_STAMP_MAP = new Map<string, TeacherStampOption>(TEACHER_STAMP_OPTIONS.map((opt) => [opt.kind, opt]));
 
 export function isTeacherStampKind(kind: unknown): kind is TeacherStampKind {
   return typeof kind === 'string' && TEACHER_STAMP_MAP.has(kind);

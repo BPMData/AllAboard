@@ -57,12 +57,20 @@ describe('POST /api/report', () => {
     const srv = await start({ reportRelayUrl: '', reportRelayToken: '' });
     const res = await post(srv, report);
     assert.equal(res.status, 503);
-    assert.deepEqual(await res.json(), { ok: false, error: 'not-configured', message: 'Automatic reporting is not set up yet.' });
+    assert.deepEqual(await res.json(), {
+      ok: false,
+      error: 'not-configured',
+      message: 'Automatic reporting is not set up yet.',
+    });
   });
 
   it('rejects a report without a valid category and unreadable bodies with JSON', async () => {
     const relay = fakeRelay(() => ({ body: { ok: true } }));
-    const srv = await start({ reportRelayUrl: 'https://relay.test/exec', reportRelayToken: 'tok', reportFetch: relay.fetchImpl });
+    const srv = await start({
+      reportRelayUrl: 'https://relay.test/exec',
+      reportRelayToken: 'tok',
+      reportFetch: relay.fetchImpl,
+    });
     const bad = await post(srv, { category: 'nope' });
     assert.equal(bad.status, 400);
     assert.equal((await bad.json()).error, 'invalid');
@@ -79,7 +87,11 @@ describe('POST /api/report', () => {
       // the shape OverBoard's relay answers with
       body: { ok: true, issue: 99, url: 'https://github.com/BPMData/AllAboard/issues/99', emailed: true },
     }));
-    const srv = await start({ reportRelayUrl: 'https://relay.test/exec', reportRelayToken: 'tok', reportFetch: relay.fetchImpl });
+    const srv = await start({
+      reportRelayUrl: 'https://relay.test/exec',
+      reportRelayToken: 'tok',
+      reportFetch: relay.fetchImpl,
+    });
     const res = await post(srv, report);
     assert.equal(res.status, 200);
     assert.deepEqual(await res.json(), {
@@ -107,18 +119,32 @@ describe('POST /api/report', () => {
 
   it('reports relay failures as 502 and never passes on an unexpected link', async () => {
     const failing = fakeRelay(() => ({ status: 500, body: 'boom' }));
-    const srv = await start({ reportRelayUrl: 'https://relay.test/exec', reportRelayToken: 'tok', reportFetch: failing.fetchImpl });
+    const srv = await start({
+      reportRelayUrl: 'https://relay.test/exec',
+      reportRelayToken: 'tok',
+      reportFetch: failing.fetchImpl,
+    });
     const res = await post(srv, report);
     assert.equal(res.status, 502);
     assert.equal((await res.json()).error, 'relay-failed');
 
     const odd = fakeRelay(() => ({ body: { ok: true, url: 'https://evil.example/phish', emailed: true } }));
-    const srv2 = await start({ reportRelayUrl: 'https://relay.test/exec', reportRelayToken: 'tok', reportFetch: odd.fetchImpl });
+    const srv2 = await start({
+      reportRelayUrl: 'https://relay.test/exec',
+      reportRelayToken: 'tok',
+      reportFetch: odd.fetchImpl,
+    });
     const res2 = await post(srv2, report);
     assert.deepEqual(await res2.json(), { ok: true, emailed: true });
 
-    const older = fakeRelay(() => ({ body: { ok: true, issueUrl: 'https://github.com/BPMData/AllAboard/issues/5', issueNumber: 5 } }));
-    const srv3 = await start({ reportRelayUrl: 'https://relay.test/exec', reportRelayToken: 'tok', reportFetch: older.fetchImpl });
+    const older = fakeRelay(() => ({
+      body: { ok: true, issueUrl: 'https://github.com/BPMData/AllAboard/issues/5', issueNumber: 5 },
+    }));
+    const srv3 = await start({
+      reportRelayUrl: 'https://relay.test/exec',
+      reportRelayToken: 'tok',
+      reportFetch: older.fetchImpl,
+    });
     assert.deepEqual(await (await post(srv3, report)).json(), {
       ok: true,
       issueUrl: 'https://github.com/BPMData/AllAboard/issues/5',
@@ -131,14 +157,22 @@ describe('POST /api/report', () => {
     const fetchImpl = (async () => {
       throw new Error('ECONNREFUSED');
     }) as unknown as typeof fetch;
-    const srv = await start({ reportRelayUrl: 'https://relay.test/exec', reportRelayToken: 'tok', reportFetch: fetchImpl });
+    const srv = await start({
+      reportRelayUrl: 'https://relay.test/exec',
+      reportRelayToken: 'tok',
+      reportFetch: fetchImpl,
+    });
     const res = await post(srv, report);
     assert.equal(res.status, 502);
   });
 
   it('rate-limits one client after 10 reports', async () => {
     const relay = fakeRelay(() => ({ body: { ok: true, emailed: true } }));
-    const srv = await start({ reportRelayUrl: 'https://relay.test/exec', reportRelayToken: 'tok', reportFetch: relay.fetchImpl });
+    const srv = await start({
+      reportRelayUrl: 'https://relay.test/exec',
+      reportRelayToken: 'tok',
+      reportFetch: relay.fetchImpl,
+    });
     for (let i = 0; i < 10; i++) assert.equal((await post(srv, report)).status, 200);
     const limited = await post(srv, report);
     assert.equal(limited.status, 429);

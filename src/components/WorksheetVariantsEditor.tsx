@@ -20,7 +20,13 @@ export interface VariantsDraft {
 }
 
 export function emptyVariantsDraft(): VariantsDraft {
-  return { extra: [null, null, null], slots: 0, rule: 'same', cornerMap: { ...DEFAULT_CORNER_MAP }, lateJoiners: 'rule' };
+  return {
+    extra: [null, null, null],
+    slots: 0,
+    rule: 'same',
+    cornerMap: { ...DEFAULT_CORNER_MAP },
+    lateJoiners: 'rule',
+  };
 }
 
 export function draftFromVariants(v: RoundVariants | null | undefined): VariantsDraft {
@@ -31,7 +37,10 @@ export function draftFromVariants(v: RoundVariants | null | undefined): Variants
 
 /** Letters shown without a file: saving is blocked until they get one or are removed. */
 export function missingVariantLetters(d: VariantsDraft): string[] {
-  return d.extra.slice(0, d.slots).map((bg, i) => (bg ? '' : VARIANT_LETTERS[i + 1])).filter(Boolean);
+  return d.extra
+    .slice(0, d.slots)
+    .map((bg, i) => (bg ? '' : VARIANT_LETTERS[i + 1]))
+    .filter(Boolean);
 }
 
 export function draftHasVariants(d: VariantsDraft): boolean {
@@ -103,10 +112,15 @@ export function WorksheetVariantsEditor({ value, onChange, worksheetAName, disab
   );
 
   return (
-    <div className="p-3 rounded-[3px] bg-slate-50 border border-[#CBD5E1] space-y-2 text-xs" data-testid="variants-editor">
+    <div
+      className="p-3 rounded-[3px] bg-slate-50 border border-[#CBD5E1] space-y-2 text-xs"
+      data-testid="variants-editor"
+    >
       <div>
         <div className="font-semibold text-slate-800">Different worksheets for different students (optional)</div>
-        <p className="text-[11px] text-slate-500">Up to four versions, A to D. Each student gets one when you launch.</p>
+        <p className="text-[11px] text-slate-500">
+          Up to four versions, A to D. Each student gets one when you launch.
+        </p>
       </div>
       <div className="flex items-center gap-2">
         <span className="w-5 font-bold">A</span>
@@ -156,7 +170,11 @@ export function WorksheetVariantsEditor({ value, onChange, worksheetAName, disab
           Add worksheet {VARIANT_LETTERS[value.slots + 1]}
         </button>
       )}
-      {error && <p role="alert" className="text-red-700">{error}</p>}
+      {error && (
+        <p role="alert" className="text-red-700">
+          {error}
+        </p>
+      )}
 
       {value.slots > 0 && (
         <div className="space-y-1 pt-1 border-t border-slate-200">
@@ -166,11 +184,21 @@ export function WorksheetVariantsEditor({ value, onChange, worksheetAName, disab
             Everyone gets A (pick students one by one later, in Send worksheet…)
           </label>
           <label className="flex gap-2">
-            <input type="radio" name="pv-rule" checked={value.rule === 'rotate'} onChange={() => set({ rule: 'rotate' })} />
+            <input
+              type="radio"
+              name="pv-rule"
+              checked={value.rule === 'rotate'}
+              onChange={() => set({ rule: 'rotate' })}
+            />
             Deal out {letters.join(', ')} in turn (alphabetical by student)
           </label>
           <label className="flex gap-2">
-            <input type="radio" name="pv-rule" checked={value.rule === 'corner'} onChange={() => set({ rule: 'corner' })} />
+            <input
+              type="radio"
+              name="pv-rule"
+              checked={value.rule === 'corner'}
+              onChange={() => set({ rule: 'corner' })}
+            />
             By where each student stamped their name on the main board (read when you launch)
           </label>
           {value.rule === 'corner' && (
@@ -178,7 +206,11 @@ export function WorksheetVariantsEditor({ value, onChange, worksheetAName, disab
               {CORNER_KEYS.map((k) => (
                 <label key={k} className="flex items-center justify-between gap-2">
                   {CORNER_LABEL[k]} →
-                  {letterSelect(value.cornerMap[k], (idx) => set({ cornerMap: { ...value.cornerMap, [k]: idx } }), `${CORNER_LABEL[k]} worksheet`)}
+                  {letterSelect(
+                    value.cornerMap[k],
+                    (idx) => set({ cornerMap: { ...value.cornerMap, [k]: idx } }),
+                    `${CORNER_LABEL[k]} worksheet`
+                  )}
                 </label>
               ))}
             </div>

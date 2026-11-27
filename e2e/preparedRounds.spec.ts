@@ -77,7 +77,9 @@ test('a prepared round deals out worksheets A and B when it launches', async ({ 
 
   await teacher.page.getByTitle('Assign individual student boards or breakout group rooms').click();
   await teacher.page.getByLabel('Round name (optional):').fill('Cards');
-  await teacher.page.getByLabel('Upload a worksheet file for this round').setInputFiles(await labeledPng(teacher.page, 'A'));
+  await teacher.page
+    .getByLabel('Upload a worksheet file for this round')
+    .setInputFiles(await labeledPng(teacher.page, 'A'));
   await expect(teacher.page.getByText('Uploaded: card_A.png')).toBeVisible();
 
   const editor = teacher.page.getByTestId('variants-editor');

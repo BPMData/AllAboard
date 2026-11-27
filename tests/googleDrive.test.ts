@@ -28,11 +28,7 @@ import {
   getDriveDownloadTimeoutMs,
   importedFileName,
 } from '../src/lib/googleDrive';
-import {
-  getGoogleConfig,
-  isGoogleDriveConfigured,
-  isGoogleSignInConfigured,
-} from '../src/lib/googleConfig';
+import { getGoogleConfig, isGoogleDriveConfigured, isGoogleSignInConfigured } from '../src/lib/googleConfig';
 
 describe('googleConfig (node environment)', () => {
   it('provides non-empty public Google defaults and supports window override', () => {
@@ -139,7 +135,10 @@ describe('googleDrive pure helpers', () => {
       'Downloading from Drive... 0:05'
     );
     assert.equal(
-      formatDownloadProgress({ mimeType: SLIDES_MIME }, { loadedBytes: Math.round(4.2 * 1024 * 1024), elapsedMs: 12_000 }),
+      formatDownloadProgress(
+        { mimeType: SLIDES_MIME },
+        { loadedBytes: Math.round(4.2 * 1024 * 1024), elapsedMs: 12_000 }
+      ),
       'Downloading from Drive... 4.2 MB'
     );
     assert.equal(
@@ -189,7 +188,10 @@ describe('googleDrive pure helpers', () => {
     assert.equal(normalizeJsonFileName('  period 3 notes ', 'x.json'), 'period 3 notes.json');
     assert.equal(normalizeJsonFileName('room.JSON', 'x.json'), 'room.JSON');
     assert.equal(normalizeJsonFileName('a/b\\c', 'x.json'), 'a-b-c.json');
-    assert.equal(normalizeJsonFileName('   ', 'allaboard-room-math-2026-11-15.json'), 'allaboard-room-math-2026-11-15.json');
+    assert.equal(
+      normalizeJsonFileName('   ', 'allaboard-room-math-2026-11-15.json'),
+      'allaboard-room-math-2026-11-15.json'
+    );
   });
 
   it('replacesLastSave only when name and folder both match the last save', () => {
@@ -207,8 +209,12 @@ describe('googleDrive pure helpers', () => {
     const prevStorage = (globalThis as any).localStorage;
     (globalThis as any).localStorage = {
       getItem: (k: string) => store.get(k) ?? null,
-      setItem: (k: string, v: string) => { store.set(k, v); },
-      removeItem: (k: string) => { store.delete(k); },
+      setItem: (k: string, v: string) => {
+        store.set(k, v);
+      },
+      removeItem: (k: string) => {
+        store.delete(k);
+      },
     };
     try {
       store.set(DRIVE_LAST_FOLDER_KEY, JSON.stringify({ id: 'legacy-f', name: 'Legacy Folder' }));

@@ -145,7 +145,10 @@ describe('AllAboard server & Socket.IO integration tests', () => {
 
     const cursor = waitForEvent<any>(teacher, 'cursors-batch');
     student.emit('cursor-move', { userId: 't1', boardId: 'main', x: 1, y: 2 });
-    assert.deepEqual((await cursor).cursors.map((c: any) => c.userId), ['s1']);
+    assert.deepEqual(
+      (await cursor).cursors.map((c: any) => c.userId),
+      ['s1']
+    );
 
     const settings = waitForEvent<any>(student, 'room-settings');
     teacher.emit('teacher:set-hide-cursors', true);
@@ -175,8 +178,15 @@ describe('AllAboard server & Socket.IO integration tests', () => {
     const all = got.flatMap((m) => m.cursors);
     assert.ok(all.length <= 4, 'at most one entry per user per batch');
     assert.equal(all.filter((c: any) => c.userId === 'a').at(-1).x, 4, 'latest position wins');
-    assert.equal(all.find((c: any) => c.userId === 'b').x, 9, 'the batch includes the receiver; the client skips its own');
-    assert.ok(all.every((c: any) => c.boardId === 'main'), 'moves claiming another board are dropped');
+    assert.equal(
+      all.find((c: any) => c.userId === 'b').x,
+      9,
+      'the batch includes the receiver; the client skips its own'
+    );
+    assert.ok(
+      all.every((c: any) => c.boardId === 'main'),
+      'moves claiming another board are dropped'
+    );
 
     // A lone mover isn't echoed back to itself (a student alone on an individual board hears nothing).
     const toA: any[] = [];
@@ -336,12 +346,7 @@ describe('AllAboard server & Socket.IO integration tests', () => {
     });
 
     let senderEchoes = 0;
-    for (const ev of [
-      'elements-batch-added',
-      'elements-batch-updated',
-      'elements-batch-removed',
-      'element-removed',
-    ]) {
+    for (const ev of ['elements-batch-added', 'elements-batch-updated', 'elements-batch-removed', 'element-removed']) {
       studentA.on(ev, () => {
         senderEchoes++;
       });
@@ -457,7 +462,17 @@ describe('AllAboard server & Socket.IO integration tests', () => {
     const restoredPromise = waitForEvent<any>(teacher, 'room-restored');
     const impRes = await emitAck(teacher, 'teacher:import-room', {
       mode: 'readonly',
-      elements: [{ id: 'snap-1', tool: 'solid', points: [0, 0, 5, 5], userId: 't1', color: '#000', strokeWidth: 4, timestamp: 1 }],
+      elements: [
+        {
+          id: 'snap-1',
+          tool: 'solid',
+          points: [0, 0, 5, 5],
+          userId: 't1',
+          color: '#000',
+          strokeWidth: 4,
+          timestamp: 1,
+        },
+      ],
       messages: [],
     });
     assert.equal(impRes.ok, true);
@@ -718,7 +733,10 @@ describe('AllAboard server & Socket.IO integration tests', () => {
       student.socket.on('laser-pulse', () => pulses++);
       forger.socket.emit('laser-pulse', { boardId: 'main', x: 1, y: 2, strokeId: 'fake' });
       forger.socket.emit('teacher:set-hide-cursors', true);
-      assert.equal((await emitAck<any>(forger.socket, 'teacher:spotlight-board', { sourceBoardId: 'missing' })).ok, false);
+      assert.equal(
+        (await emitAck<any>(forger.socket, 'teacher:spotlight-board', { sourceBoardId: 'missing' })).ok,
+        false
+      );
       await delay(100);
       assert.equal(pulses, 0);
       const check = await attemptJoin({ roomId, userId: 's', userKey: KEY_B, name: 'Student' });
@@ -769,7 +787,10 @@ describe('AllAboard server & Socket.IO integration tests', () => {
       await delay(100);
 
       const check = await attemptJoin({ roomId, userId: 'sam', userKey: KEY_A, name: 'Sam' });
-      assert.deepEqual(check.data.elements.map((el: any) => el.id), ['sams-stroke']);
+      assert.deepEqual(
+        check.data.elements.map((el: any) => el.id),
+        ['sams-stroke']
+      );
       assert.equal(check.data.users.find((u: any) => u.userId === 'sam').name, 'Sam');
     });
   });
@@ -1391,19 +1412,35 @@ describe('AllAboard server & Socket.IO integration tests', () => {
     assert.equal(init.subBoards['r1_ind_s-offend'].messages.length, 0);
   });
   describe('storage: backup bucket (BACKUP_DIR)', () => {
-    const PNG = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
+    const PNG =
+      'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
 
     it('B1 – a cold start restores rooms and worksheets from the backup', async () => {
       const backupDir = path.join(tmpDir, 'bucket');
       await srv.close();
-      srv = await startServer({ port: 0, host: '127.0.0.1', dataDir: path.join(tmpDir, 'disk-1'), backupDir, skipVite: true });
+      srv = await startServer({
+        port: 0,
+        host: '127.0.0.1',
+        dataDir: path.join(tmpDir, 'disk-1'),
+        backupDir,
+        skipVite: true,
+      });
 
       const { socket: teacher } = await joinTracked({ roomId: 'cold', userId: 't', name: 'Teacher' });
       await emitAck(teacher, 'teacher:auth', { pin: '1234' });
       const bgSync = waitForEvent<any>(teacher, 'background-sync');
       await emitAck(teacher, 'teacher:set-background', {
         boardId: 'main',
-        background: { id: 'ws', fileName: 'w.png', pages: [{ dataUrl: PNG, width: 1, height: 1 }], x: 0, y: 0, scale: 1, layout: 'stack', opacity: 1 },
+        background: {
+          id: 'ws',
+          fileName: 'w.png',
+          pages: [{ dataUrl: PNG, width: 1, height: 1 }],
+          x: 0,
+          y: 0,
+          scale: 1,
+          layout: 'stack',
+          opacity: 1,
+        },
       });
       const url = (await bgSync).background.pages[0].dataUrl as string;
       await srv.flushRoomsToDiskAsync();
@@ -1412,7 +1449,13 @@ describe('AllAboard server & Socket.IO integration tests', () => {
       // Simulate Cloud Run wiping the local disk: same bucket, brand-new data dir.
       for (const s of openSockets.splice(0)) if (s.connected) s.disconnect();
       await srv.close();
-      srv = await startServer({ port: 0, host: '127.0.0.1', dataDir: path.join(tmpDir, 'disk-2'), backupDir, skipVite: true });
+      srv = await startServer({
+        port: 0,
+        host: '127.0.0.1',
+        dataDir: path.join(tmpDir, 'disk-2'),
+        backupDir,
+        skipVite: true,
+      });
 
       const { init } = await joinTracked({ roomId: 'cold', userId: 's', name: 'Student' });
       assert.equal(init.background.pages[0].dataUrl, url);
@@ -1425,16 +1468,36 @@ describe('AllAboard server & Socket.IO integration tests', () => {
 
     it('B4 – a cold start restores rooms and worksheets from a Cloud Storage bucket', async () => {
       const fake = createFakeGcs('allaboard-data');
-      const gcs = () => new GcsBackend('allaboard-data', { fetchImpl: fake.fetch, apiBase: 'https://gcs.test', getToken: async () => 'test-token' });
+      const gcs = () =>
+        new GcsBackend('allaboard-data', {
+          fetchImpl: fake.fetch,
+          apiBase: 'https://gcs.test',
+          getToken: async () => 'test-token',
+        });
       await srv.close();
-      srv = await startServer({ port: 0, host: '127.0.0.1', dataDir: path.join(tmpDir, 'gcs-disk-1'), backupBackend: gcs(), skipVite: true });
+      srv = await startServer({
+        port: 0,
+        host: '127.0.0.1',
+        dataDir: path.join(tmpDir, 'gcs-disk-1'),
+        backupBackend: gcs(),
+        skipVite: true,
+      });
 
       const { socket: teacher } = await joinTracked({ roomId: 'cold-gcs', userId: 't', name: 'Teacher' });
       await emitAck(teacher, 'teacher:auth', { pin: '1234' });
       const bgSync = waitForEvent<any>(teacher, 'background-sync');
       await emitAck(teacher, 'teacher:set-background', {
         boardId: 'main',
-        background: { id: 'ws', fileName: 'w.png', pages: [{ dataUrl: PNG, width: 1, height: 1 }], x: 0, y: 0, scale: 1, layout: 'stack', opacity: 1 },
+        background: {
+          id: 'ws',
+          fileName: 'w.png',
+          pages: [{ dataUrl: PNG, width: 1, height: 1 }],
+          x: 0,
+          y: 0,
+          scale: 1,
+          layout: 'stack',
+          opacity: 1,
+        },
       });
       const url = (await bgSync).background.pages[0].dataUrl as string;
       for (const s of openSockets.splice(0)) if (s.connected) s.disconnect();
@@ -1442,7 +1505,13 @@ describe('AllAboard server & Socket.IO integration tests', () => {
       assert.equal(fake.objects.has('rooms/cold-gcs.json.gz'), true);
       assert.equal(fake.objects.has(`assets/${url.split('/').pop()}`), true);
 
-      srv = await startServer({ port: 0, host: '127.0.0.1', dataDir: path.join(tmpDir, 'gcs-disk-2'), backupBackend: gcs(), skipVite: true });
+      srv = await startServer({
+        port: 0,
+        host: '127.0.0.1',
+        dataDir: path.join(tmpDir, 'gcs-disk-2'),
+        backupBackend: gcs(),
+        skipVite: true,
+      });
       const { init } = await joinTracked({ roomId: 'cold-gcs', userId: 's', name: 'Student' });
       assert.equal(init.background.pages[0].dataUrl, url);
       const res = await fetch(`http://127.0.0.1:${srv.port}${url}`);
@@ -1455,8 +1524,15 @@ describe('AllAboard server & Socket.IO integration tests', () => {
       fake.failWith = 403;
       await srv.close();
       srv = await startServer({
-        port: 0, host: '127.0.0.1', dataDir: tmpDir, skipVite: true,
-        backupBackend: new GcsBackend('allaboard-data', { fetchImpl: fake.fetch, apiBase: 'https://gcs.test', getToken: async () => 'test-token' }),
+        port: 0,
+        host: '127.0.0.1',
+        dataDir: tmpDir,
+        skipVite: true,
+        backupBackend: new GcsBackend('allaboard-data', {
+          fetchImpl: fake.fetch,
+          apiBase: 'https://gcs.test',
+          getToken: async () => 'test-token',
+        }),
       });
       assert.equal(srv.backup, null);
       assert.equal((await fetch(`http://127.0.0.1:${srv.port}/healthz`)).status, 200);
@@ -1468,9 +1544,16 @@ describe('AllAboard server & Socket.IO integration tests', () => {
       const fake = createFakeGcs('allaboard-data');
       await srv.close();
       srv = await startServer({
-        port: 0, host: '127.0.0.1', dataDir: tmpDir, skipVite: true,
+        port: 0,
+        host: '127.0.0.1',
+        dataDir: tmpDir,
+        skipVite: true,
         backupDir: path.join(blocker, 'backup'),
-        backupBackend: new GcsBackend('allaboard-data', { fetchImpl: fake.fetch, apiBase: 'https://gcs.test', getToken: async () => 'test-token' }),
+        backupBackend: new GcsBackend('allaboard-data', {
+          fetchImpl: fake.fetch,
+          apiBase: 'https://gcs.test',
+          getToken: async () => 'test-token',
+        }),
       });
       assert.match(srv.backup!.backend.label, /gs:\/\/allaboard-data/);
     });
@@ -1488,15 +1571,31 @@ describe('AllAboard server & Socket.IO integration tests', () => {
       const blocker = path.join(tmpDir, 'not-a-bucket');
       fs.writeFileSync(blocker, 'x');
       await srv.close();
-      srv = await startServer({ port: 0, host: '127.0.0.1', dataDir: tmpDir, backupDir: path.join(blocker, 'b'), skipVite: true });
+      srv = await startServer({
+        port: 0,
+        host: '127.0.0.1',
+        dataDir: tmpDir,
+        backupDir: path.join(blocker, 'b'),
+        skipVite: true,
+      });
       assert.equal(srv.backup, null);
       assert.equal((await fetch(`http://127.0.0.1:${srv.port}/healthz`)).status, 200);
     });
   });
 
   describe('storage: SQLite + worksheet assets', () => {
-    const PNG = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
-    const worksheet = () => ({ id: 'ws1', fileName: 'w.png', pages: [{ dataUrl: PNG, width: 1, height: 1 }], x: 0, y: 0, scale: 1, layout: 'stack', opacity: 1 });
+    const PNG =
+      'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
+    const worksheet = () => ({
+      id: 'ws1',
+      fileName: 'w.png',
+      pages: [{ dataUrl: PNG, width: 1, height: 1 }],
+      x: 0,
+      y: 0,
+      scale: 1,
+      layout: 'stack',
+      opacity: 1,
+    });
     const restart = async () => {
       for (const s of openSockets.splice(0)) if (s.connected) s.disconnect();
       await srv.close();
@@ -1533,7 +1632,11 @@ describe('AllAboard server & Socket.IO integration tests', () => {
       for (let i = 0; i < 3; i++) await joinTracked({ roomId: 's3', userId: `s${i}`, name: `Student ${i}` });
       const url = await setWorksheet(teacher);
       const sync = waitForEvent<any>(teacher, 'breakout-sync');
-      await emitAck(teacher, 'teacher:configure-breakout', { action: 'new-round', mode: 'individual', copyWorksheet: true });
+      await emitAck(teacher, 'teacher:configure-breakout', {
+        action: 'new-round',
+        mode: 'individual',
+        copyWorksheet: true,
+      });
       const boards = Object.values((await sync).subBoards) as any[];
       assert.equal(boards.length, 3);
       for (const board of boards) assert.equal(board.background.pages[0].dataUrl, url);
@@ -1543,31 +1646,73 @@ describe('AllAboard server & Socket.IO integration tests', () => {
       const a = await joinTracked({ roomId: 'iso-a', userId: 'a', name: 'A' });
       const peer = await joinTracked({ roomId: 'iso-a', userId: 'peer', name: 'Peer' });
       const b = await joinTracked({ roomId: 'iso-b', userId: 'b', name: 'B' });
-      const draw = (socket: Socket, id: string, userId: string) => socket.emit('element-start', { id, userId, boardId: 'main', tool: 'text', text: id, x: 1, y: 1, timestamp: Date.now() });
-      let seen = waitForEvent(peer.socket, 'element-start'); draw(a.socket, 'a1', 'a'); await seen;
+      const draw = (socket: Socket, id: string, userId: string) =>
+        socket.emit('element-start', {
+          id,
+          userId,
+          boardId: 'main',
+          tool: 'text',
+          text: id,
+          x: 1,
+          y: 1,
+          timestamp: Date.now(),
+        });
+      let seen = waitForEvent(peer.socket, 'element-start');
+      draw(a.socket, 'a1', 'a');
+      await seen;
       const bPeer = await joinTracked({ roomId: 'iso-b', userId: 'bp', name: 'Peer' });
-      seen = waitForEvent(bPeer.socket, 'element-start'); draw(b.socket, 'b1', 'b'); await seen;
+      seen = waitForEvent(bPeer.socket, 'element-start');
+      draw(b.socket, 'b1', 'b');
+      await seen;
       await srv.flushRoomsToDiskAsync();
       const saved: string[] = [];
       const orig = srv.store.saveRoom.bind(srv.store);
-      srv.store.saveRoom = (id, state, t) => { saved.push(id); orig(id, state, t); };
-      seen = waitForEvent(peer.socket, 'element-start'); draw(a.socket, 'a2', 'a'); await seen;
+      srv.store.saveRoom = (id, state, t) => {
+        saved.push(id);
+        orig(id, state, t);
+      };
+      seen = waitForEvent(peer.socket, 'element-start');
+      draw(a.socket, 'a2', 'a');
+      await seen;
       await srv.flushRoomsToDiskAsync();
       assert.deepEqual(saved, ['iso-a']);
     });
     it('S5 – interns legacy worksheet on migration', async () => {
       await srv.close();
-      fs.writeFileSync(path.join(tmpDir, 'rooms-store.json'), JSON.stringify({ rooms: [{ id: 'legacy-assets', messages: [], elements: [], background: worksheet(), teacherPin: '1234', isCanvasLocked: false, lastActiveAt: Date.now() }] }));
+      fs.writeFileSync(
+        path.join(tmpDir, 'rooms-store.json'),
+        JSON.stringify({
+          rooms: [
+            {
+              id: 'legacy-assets',
+              messages: [],
+              elements: [],
+              background: worksheet(),
+              teacherPin: '1234',
+              isCanvasLocked: false,
+              lastActiveAt: Date.now(),
+            },
+          ],
+        })
+      );
       srv = await startServer({ port: 0, host: '127.0.0.1', dataDir: tmpDir, skipVite: true });
       const { init } = await joinTracked({ roomId: 'legacy-assets', userId: 's', name: 'Student' });
       assert.match(init.background.pages[0].dataUrl, /^\/api\/assets\//);
     });
     it('S6 – imports v2 embedded assets into a fresh store', async () => {
       const teacher = await teacherIn('s6');
-      const hash = createHash('sha256').update(Buffer.from(PNG.split(',')[1], 'base64')).digest('hex');
+      const hash = createHash('sha256')
+        .update(Buffer.from(PNG.split(',')[1], 'base64'))
+        .digest('hex');
       const url = `/api/assets/${hash}`;
       const sync = waitForEvent<any>(teacher, 'room-restored');
-      const result = await emitAck(teacher, 'teacher:import-room', { mode: 'replace', elements: [], messages: [], background: { ...worksheet(), pages: [{ dataUrl: url, width: 1, height: 1 }] }, assets: { [url]: PNG } });
+      const result = await emitAck(teacher, 'teacher:import-room', {
+        mode: 'replace',
+        elements: [],
+        messages: [],
+        background: { ...worksheet(), pages: [{ dataUrl: url, width: 1, height: 1 }] },
+        assets: { [url]: PNG },
+      });
       assert.equal(result.ok, true);
       assert.equal((await sync).background.pages[0].dataUrl, url);
       assert.equal((await fetch(`http://127.0.0.1:${srv.port}${url}`)).status, 200);
@@ -1613,7 +1758,8 @@ describe('AllAboard server & Socket.IO integration tests', () => {
       const individualRound = async (roomId: string) => {
         const teacher = await teacherIn(roomId);
         const students: Socket[] = [];
-        for (let i = 0; i < 3; i++) students.push((await joinTracked({ roomId, userId: `s${i}`, name: `Student ${i}` })).socket);
+        for (let i = 0; i < 3; i++)
+          students.push((await joinTracked({ roomId, userId: `s${i}`, name: `Student ${i}` })).socket);
         const sync = waitForEvent<any>(teacher, 'breakout-sync');
         await emitAck(teacher, 'teacher:configure-breakout', { action: 'new-round', mode: 'individual' });
         const state = await sync;
@@ -1624,7 +1770,9 @@ describe('AllAboard server & Socket.IO integration tests', () => {
       };
       const collectBackgroundSyncs = (socket: Socket) => {
         const got: Record<string, any> = {};
-        const handler = (p: any) => { got[p.boardId] = p.background; };
+        const handler = (p: any) => {
+          got[p.boardId] = p.background;
+        };
         socket.on('background-sync', handler);
         return { got, stop: () => socket.off('background-sync', handler) };
       };
@@ -1636,12 +1784,16 @@ describe('AllAboard server & Socket.IO integration tests', () => {
       it('M1 – sends to selected boards only, as asset URLs', async () => {
         const { teacher, ids } = await individualRound('multi-1');
         const syncs = collectBackgroundSyncs(teacher);
-        const res = await emitAck(teacher, 'teacher:set-background-multi', { boardIds: [ids[0], ids[1]], background: named('X.png') });
+        const res = await emitAck(teacher, 'teacher:set-background-multi', {
+          boardIds: [ids[0], ids[1]],
+          background: named('X.png'),
+        });
         assert.deepEqual(res, { ok: true, updated: 2, skipped: [] });
         await delay(100);
         syncs.stop();
         assert.deepEqual(Object.keys(syncs.got).sort(), [ids[0], ids[1]].sort());
-        for (const id of [ids[0], ids[1]]) assert.match(syncs.got[id].pages[0].dataUrl, /^\/api\/assets\/[a-f0-9]{64}$/);
+        for (const id of [ids[0], ids[1]])
+          assert.match(syncs.got[id].pages[0].dataUrl, /^\/api\/assets\/[a-f0-9]{64}$/);
         assert.notEqual(syncs.got[ids[0]], syncs.got[ids[1]]);
         teacher.disconnect();
         const boards = await teacherBoards('multi-1');
@@ -1651,16 +1803,34 @@ describe('AllAboard server & Socket.IO integration tests', () => {
 
       it('M2 – different variants land on different boards', async () => {
         const { teacher, ids } = await individualRound('multi-2');
-        assert.equal((await emitAck(teacher, 'teacher:set-background-multi', { boardIds: [ids[0], ids[2]], background: named('A.png') })).ok, true);
-        assert.equal((await emitAck(teacher, 'teacher:set-background-multi', { boardIds: [ids[1]], background: named('B.png') })).ok, true);
+        assert.equal(
+          (
+            await emitAck(teacher, 'teacher:set-background-multi', {
+              boardIds: [ids[0], ids[2]],
+              background: named('A.png'),
+            })
+          ).ok,
+          true
+        );
+        assert.equal(
+          (await emitAck(teacher, 'teacher:set-background-multi', { boardIds: [ids[1]], background: named('B.png') }))
+            .ok,
+          true
+        );
         teacher.disconnect();
         const boards = await teacherBoards('multi-2');
-        assert.deepEqual(ids.map((id) => boards[id].background.fileName), ['A.png', 'B.png', 'A.png']);
+        assert.deepEqual(
+          ids.map((id) => boards[id].background.fileName),
+          ['A.png', 'B.png', 'A.png']
+        );
       });
 
       it('M3 – students cannot use it', async () => {
         const { teacher, students, ids } = await individualRound('multi-3');
-        const res = await emitAck(students[0], 'teacher:set-background-multi', { boardIds: ids, background: named('nope.png') });
+        const res = await emitAck(students[0], 'teacher:set-background-multi', {
+          boardIds: ids,
+          background: named('nope.png'),
+        });
         assert.equal(res.ok, false);
         teacher.disconnect();
         const boards = await teacherBoards('multi-3');
@@ -1674,7 +1844,10 @@ describe('AllAboard server & Socket.IO integration tests', () => {
           background: named('X.png'),
         });
         assert.deepEqual(res, { ok: true, updated: 1, skipped: ['r9_ind_ghost'] });
-        const bad = await emitAck(teacher, 'teacher:set-background-multi', { boardIds: 'nope', background: named('X.png') });
+        const bad = await emitAck(teacher, 'teacher:set-background-multi', {
+          boardIds: 'nope',
+          background: named('X.png'),
+        });
         assert.equal(bad.ok, false);
       });
 
@@ -1687,7 +1860,11 @@ describe('AllAboard server & Socket.IO integration tests', () => {
 
       it('M6 – roundTemplateFor gives late joiners the worksheet', async () => {
         const { teacher, ids, roundId } = await individualRound('multi-6');
-        const res = await emitAck(teacher, 'teacher:set-background-multi', { boardIds: [ids[0]], background: named('A.png'), roundTemplateFor: roundId });
+        const res = await emitAck(teacher, 'teacher:set-background-multi', {
+          boardIds: [ids[0]],
+          background: named('A.png'),
+          roundTemplateFor: roundId,
+        });
         assert.equal(res.ok, true);
         const { init } = await joinTracked({ roomId: 'multi-6', userId: 'late', name: 'Late' });
         const lateBoard = (Object.values(init.subBoards) as any[]).find((b) => b.assignedUserIds[0] === 'late');
@@ -1698,11 +1875,17 @@ describe('AllAboard server & Socket.IO integration tests', () => {
       it('M7 – sent worksheets survive a restart', async () => {
         const { teacher, ids } = await individualRound('multi-7');
         await emitAck(teacher, 'teacher:set-background-multi', { boardIds: [ids[0]], background: named('A.png') });
-        await emitAck(teacher, 'teacher:set-background-multi', { boardIds: [ids[1], ids[2]], background: named('B.png') });
+        await emitAck(teacher, 'teacher:set-background-multi', {
+          boardIds: [ids[1], ids[2]],
+          background: named('B.png'),
+        });
         await srv.flushRoomsToDiskAsync();
         await restart();
         const boards = await teacherBoards('multi-7');
-        assert.deepEqual(ids.map((id) => boards[id].background.fileName), ['A.png', 'B.png', 'B.png']);
+        assert.deepEqual(
+          ids.map((id) => boards[id].background.fileName),
+          ['A.png', 'B.png', 'B.png']
+        );
       });
     });
   });
@@ -1895,7 +2078,17 @@ describe('AllAboard server & Socket.IO integration tests', () => {
     }
 
     function stroke(id: string, boardId: string, userId: string) {
-      return { id, boardId, userId, userName: userId, tool: 'solid', color: '#000', strokeWidth: 4, points: [0, 0], timestamp: Date.now() };
+      return {
+        id,
+        boardId,
+        userId,
+        userName: userId,
+        tool: 'solid',
+        color: '#000',
+        strokeWidth: 4,
+        points: [0, 0],
+        timestamp: Date.now(),
+      };
     }
 
     /** Collects every event a socket receives, so tests can assert what it did NOT get. */
@@ -1923,16 +2116,34 @@ describe('AllAboard server & Socket.IO integration tests', () => {
       s1.emit('element-start', stroke('original', source, 's1'));
       await drawn;
       const stamped = waitForEvent(teacher, 'element-start');
-      s1.emit('element-start', { ...stroke('name-stamp', source, 's1'), tool: 'stamp', stamp: 'username', text: 'Sam' });
+      s1.emit('element-start', {
+        ...stroke('name-stamp', source, 's1'),
+        tool: 'stamp',
+        stamp: 'username',
+        text: 'Sam',
+      });
       await stamped;
-      const background = { id: 'bg', fileName: 'worksheet.png', pages: [{ dataUrl: 'data:image/png;base64,aGVsbG8=', width: 10, height: 10 }], x: 0, y: 0, scale: 1, layout: 'row', opacity: 1 };
+      const background = {
+        id: 'bg',
+        fileName: 'worksheet.png',
+        pages: [{ dataUrl: 'data:image/png;base64,aGVsbG8=', width: 10, height: 10 }],
+        x: 0,
+        y: 0,
+        scale: 1,
+        layout: 'row',
+        opacity: 1,
+      };
       assert.equal((await emitAck<any>(teacher, 'teacher:set-background', { boardId: source, background })).ok, true);
       assert.equal((await emitAck<any>(s1, 'teacher:spotlight-board', { sourceBoardId: source })).ok, false);
       assert.equal((await emitAck<any>(teacher, 'teacher:spotlight-board', { sourceBoardId: 'missing' })).ok, false);
       const mainSync = waitForEvent<any>(s1, 'state-sync');
       const backgroundSync = waitForEvent<any>(s1, 'background-sync');
       const breakout = waitForEvent<any>(teacher, 'breakout-sync');
-      const result = await emitAck<any>(teacher, 'teacher:spotlight-board', { sourceBoardId: source, copyBackground: true, returnToMain: true });
+      const result = await emitAck<any>(teacher, 'teacher:spotlight-board', {
+        sourceBoardId: source,
+        copyBackground: true,
+        returnToMain: true,
+      });
       assert.equal(result.ok, true);
       const main = await mainSync;
       assert.equal(main.boardId, 'main');
@@ -1946,11 +2157,19 @@ describe('AllAboard server & Socket.IO integration tests', () => {
       assert.match(bg.background.pages[0].dataUrl, /^\/api\/assets\//);
       const state = await breakout;
       assert.equal(state.breakoutConfig.mode, 'main');
-      assert.deepEqual(state.subBoards[source].elements.map((element: any) => element.id), ['original', 'name-stamp']);
+      assert.deepEqual(
+        state.subBoards[source].elements.map((element: any) => element.id),
+        ['original', 'name-stamp']
+      );
       const late = await joinTracked({ roomId: 'spotlight', userId: 'late', name: 'Late' });
       assert.equal(late.init.elements[0].id, main.elements[0].id);
       const namedSync = waitForEvent<any>(late.socket, 'state-sync');
-      const named = await emitAck<any>(teacher, 'teacher:spotlight-board', { sourceBoardId: source, anonymize: false, copyBackground: false, returnToMain: false });
+      const named = await emitAck<any>(teacher, 'teacher:spotlight-board', {
+        sourceBoardId: source,
+        anonymize: false,
+        copyBackground: false,
+        returnToMain: false,
+      });
       assert.equal(named.ok, true);
       const namedElements = (await namedSync).elements;
       assert.equal(namedElements.length, 2);
@@ -1993,7 +2212,13 @@ describe('AllAboard server & Socket.IO integration tests', () => {
 
     it('limits students to one name stamp per board while the teacher rule is on', async () => {
       const { teacher, s1, s2 } = await setupClass('one-stamp');
-      const nameStamp = (id: string, userId: string) => ({ ...stroke(id, 'main', userId), tool: 'stamp', stamp: 'username', x: 1, y: 1 });
+      const nameStamp = (id: string, userId: string) => ({
+        ...stroke(id, 'main', userId),
+        tool: 'stamp',
+        stamp: 'username',
+        x: 1,
+        y: 1,
+      });
       const mainIds = async () => {
         const { init, socket } = await joinTracked({ roomId: 'one-stamp', userId: 'checker', name: 'Checker' });
         socket.disconnect();
@@ -2015,9 +2240,15 @@ describe('AllAboard server & Socket.IO integration tests', () => {
       await delay(50);
       const corrected = waitForEvent<any>(s1, 'state-sync');
       s1.emit('element-start', nameStamp('second', 's1'));
-      assert.deepEqual((await corrected).elements.map((el: any) => el.id), ['first']);
+      assert.deepEqual(
+        (await corrected).elements.map((el: any) => el.id),
+        ['first']
+      );
 
-      s2.emit('elements-batch-add', { boardId: 'main', elements: [nameStamp('batch-1', 's2'), nameStamp('batch-2', 's2')] });
+      s2.emit('elements-batch-add', {
+        boardId: 'main',
+        elements: [nameStamp('batch-1', 's2'), nameStamp('batch-2', 's2')],
+      });
       teacher.emit('element-start', nameStamp('teacher-1', 't1'));
       teacher.emit('element-start', nameStamp('teacher-2', 't1'));
       await delay(100);
@@ -2042,13 +2273,20 @@ describe('AllAboard server & Socket.IO integration tests', () => {
       await emitAck(teacher, 'teacher:spotlight-board', { sourceBoardId: 'r1_ind_s1' });
       const { init } = await joinTracked({ roomId: 'spotlight-anon-id', userId: 'late', name: 'Late' });
 
-      const intruder = ioClient(`http://127.0.0.1:${srv.port}`, { transports: ['websocket'], forceNew: true, reconnection: false });
+      const intruder = ioClient(`http://127.0.0.1:${srv.port}`, {
+        transports: ['websocket'],
+        forceNew: true,
+        reconnection: false,
+      });
       openSockets.push(intruder);
       await waitForEvent(intruder, 'connect');
       const events = record(intruder);
       intruder.emit('join-room', { roomId: 'spotlight-anon-id', userId: init.elements[0].userId, name: 'Intruder' });
       await delay(100);
-      assert.equal(events.some(({ ev }) => ev === 'init'), false);
+      assert.equal(
+        events.some(({ ev }) => ev === 'init'),
+        false
+      );
     });
 
     it('scopes ephemeral laser pulses to the teacher’s board and rejects invalid senders and payloads', async () => {
@@ -2070,7 +2308,9 @@ describe('AllAboard server & Socket.IO integration tests', () => {
       assert.equal(studentEvents.filter((event) => event.ev === 'laser-pulse').length, 1);
       const late = await joinTracked({ roomId: 'laser-scope', userId: 'late', name: 'Late' });
       assert.deepEqual(late.init.elements, []);
-      assert.ok(Object.values(late.init.subBoards as Record<string, any>).every((board: any) => board.elements.length === 0));
+      assert.ok(
+        Object.values(late.init.subBoards as Record<string, any>).every((board: any) => board.elements.length === 0)
+      );
     });
 
     it('scopes ink and cursors to the board; a teacher elsewhere gets it as a periodic digest', async () => {
@@ -2084,9 +2324,16 @@ describe('AllAboard server & Socket.IO integration tests', () => {
       s1.emit('cursor-move', { userId: 's1', boardId: 'r1_ind_s1', x: 1, y: 1 });
       await delay(300);
 
-      assert.deepEqual(r2.map((e) => e.ev), [], 's2 is on another board and must hear nothing');
+      assert.deepEqual(
+        r2.map((e) => e.ev),
+        [],
+        's2 is on another board and must hear nothing'
+      );
       // Teacher is viewing main: no live ink or cursors from r1_ind_s1, just digests with the whole stroke.
-      assert.ok(t.every((e) => e.ev === 'boards-digest'), t.map((e) => e.ev).join());
+      assert.ok(
+        t.every((e) => e.ev === 'boards-digest'),
+        t.map((e) => e.ev).join()
+      );
       const upserts = t.flatMap((e) => e.data.boards).filter((d: any) => d.boardId === 'r1_ind_s1');
       assert.ok(upserts.length >= 1 && upserts.length <= 2, 'coalesced, not one per message');
       assert.deepEqual(upserts.at(-1).upserts[0].points, [0, 0, 20, 20]);
@@ -2102,7 +2349,10 @@ describe('AllAboard server & Socket.IO integration tests', () => {
       teacher.emit('teacher:view-board', { boardId: 'r1_ind_s1' });
       const sync = await fresh;
       assert.equal(sync.boardId, 'r1_ind_s1');
-      assert.deepEqual(sync.elements.map((e: any) => e.id), ['before']);
+      assert.deepEqual(
+        sync.elements.map((e: any) => e.id),
+        ['before']
+      );
 
       const t = record(teacher);
       s1.emit('element-start', stroke('live', 'r1_ind_s1', 's1'));
@@ -2111,7 +2361,9 @@ describe('AllAboard server & Socket.IO integration tests', () => {
       await delay(500); // one cursor tick (CURSOR_EMIT_MS) plus slack
       const evs = t.map((e) => e.ev);
       assert.ok(evs.includes('element-start') && evs.includes('cursors-batch'));
-      const digested = t.filter((e) => e.ev === 'boards-digest').flatMap((e) => e.data.boards.map((d: any) => d.boardId));
+      const digested = t
+        .filter((e) => e.ev === 'boards-digest')
+        .flatMap((e) => e.data.boards.map((d: any) => d.boardId));
       assert.ok(digested.includes('r1_ind_s2'));
       assert.ok(!digested.includes('r1_ind_s1'), 'viewed board is live, never digested');
 
@@ -2191,7 +2443,9 @@ describe('AllAboard server & Socket.IO integration tests', () => {
       assert.deepEqual(digest.boards.find((d: any) => d.boardId === groupId)?.upserts[0].points, expectedPoints);
 
       await srv.flushRoomsToDiskAsync();
-      const saved = srv.store.loadRoom<{ subBoards: Record<string, { elements: { points: number[] }[] }> }>('chan-group');
+      const saved = srv.store.loadRoom<{ subBoards: Record<string, { elements: { points: number[] }[] }> }>(
+        'chan-group'
+      );
       assert.deepEqual(saved?.state.subBoards[groupId].elements[0].points, expectedPoints);
       for (const socket of openSockets.splice(0)) socket.disconnect();
       await srv.close();
@@ -2213,7 +2467,10 @@ describe('AllAboard server & Socket.IO integration tests', () => {
       await emitAck(teacher, 'teacher:configure-breakout', { action: 'return-to-main' });
       const sync = await catchUp;
       assert.equal(sync.boardId, 'main');
-      assert.deepEqual(sync.elements.map((e: any) => e.id), ['tmain']);
+      assert.deepEqual(
+        sync.elements.map((e: any) => e.id),
+        ['tmain']
+      );
 
       const live = waitForEvent<any>(s1, 'element-start'); // and it hears main again
       teacher.emit('element-start', stroke('tmain2', 'main', 't1'));
@@ -2229,8 +2486,10 @@ describe('AllAboard server & Socket.IO integration tests', () => {
       const fresh = waitForEvent<any>(s2, 'breakout-sync');
       await emitAck(s2, 'teacher:auth', { pin: '1234' });
       const sync = await fresh;
-      assert.deepEqual(sync.subBoards['r1_ind_s1'].elements.map((e: any) => e.id), ['s1ink']);
+      assert.deepEqual(
+        sync.subBoards['r1_ind_s1'].elements.map((e: any) => e.id),
+        ['s1ink']
+      );
     });
   });
-
 });

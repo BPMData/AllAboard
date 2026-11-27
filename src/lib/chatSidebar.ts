@@ -33,10 +33,7 @@ export function clampChatWidth(width: number, viewportWidth?: number): number {
   return Math.round(Math.min(maxWidth, Math.max(MIN_CHAT_WIDTH, width)));
 }
 
-export function readStoredChatWidth(
-  storage?: Pick<Storage, 'getItem'> | null,
-  viewportWidth?: number
-): number {
+export function readStoredChatWidth(storage?: Pick<Storage, 'getItem'> | null, viewportWidth?: number): number {
   try {
     const raw = storage?.getItem(CHAT_STORAGE_KEYS.WIDTH);
     if (!raw) return clampChatWidth(DEFAULT_CHAT_WIDTH, viewportWidth);
@@ -51,7 +48,10 @@ export function readStoredChatWidth(
 /** Whether the chat sidebar starts hidden: the person's own choice if they made one, else hidden on narrow screens. */
 export function readStoredChatHidden(storage?: Pick<Storage, 'getItem'> | null, viewportWidth?: number): boolean {
   const narrow =
-    typeof viewportWidth === 'number' && Number.isFinite(viewportWidth) && viewportWidth > 0 && viewportWidth < COMPACT_LAYOUT_MAX_WIDTH;
+    typeof viewportWidth === 'number' &&
+    Number.isFinite(viewportWidth) &&
+    viewportWidth > 0 &&
+    viewportWidth < COMPACT_LAYOUT_MAX_WIDTH;
   try {
     const choice = storage?.getItem(CHAT_STORAGE_KEYS.HIDDEN_CHOICE);
     if (choice === 'true' || choice === 'false') return choice === 'true';

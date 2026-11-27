@@ -57,7 +57,11 @@ export interface ReportRouteOptions {
 function clientKey(req: Request): string {
   const forwarded = req.headers['x-forwarded-for'];
   const header = Array.isArray(forwarded) ? forwarded.join(',') : forwarded || '';
-  const last = header.split(',').map((s) => s.trim()).filter(Boolean).pop();
+  const last = header
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean)
+    .pop();
   return last || req.socket.remoteAddress || 'unknown';
 }
 
@@ -144,9 +148,13 @@ export function createReportHandler(options: ReportRouteOptions = {}) {
       const rawUrl = data.url ?? data.issueUrl;
       const rawNumber = data.issue ?? data.issueNumber;
       const issueUrl =
-        typeof rawUrl === 'string' && /^https:\/\/github\.com\/[\w.-]+\/[\w.-]+\/issues\/\d+$/.test(rawUrl) ? rawUrl : undefined;
+        typeof rawUrl === 'string' && /^https:\/\/github\.com\/[\w.-]+\/[\w.-]+\/issues\/\d+$/.test(rawUrl)
+          ? rawUrl
+          : undefined;
       const issueNumber = Number.isInteger(rawNumber) ? rawNumber : undefined;
-      console.log(`[report] sent: ${input.category}${issueUrl ? ` ${issueUrl}` : ''}${data.emailed ? ' (emailed)' : ''}`);
+      console.log(
+        `[report] sent: ${input.category}${issueUrl ? ` ${issueUrl}` : ''}${data.emailed ? ' (emailed)' : ''}`
+      );
       send(res, 200, { ok: true, issueUrl, issueNumber, emailed: data.emailed === true });
     } catch (err) {
       console.error('[report] relay error:', err instanceof Error ? err.message : err);

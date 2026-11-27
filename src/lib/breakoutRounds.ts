@@ -55,11 +55,7 @@ export function makeGroupBoardId(roundId: string, groupIndex: number): string {
   return `${roundId}_grp_${groupIndex + 1}`;
 }
 
-export function buildRoundTitle(
-  roundNumber: number,
-  mode: 'individual' | 'groups',
-  templateLabel?: string
-): string {
+export function buildRoundTitle(roundNumber: number, mode: 'individual' | 'groups', templateLabel?: string): string {
   const modeLabel = mode === 'groups' ? 'Groups' : 'Individual';
   const label = typeof templateLabel === 'string' ? templateLabel.trim().slice(0, 40) : '';
   return label ? `Round ${roundNumber} · ${modeLabel} · ${label}` : `Round ${roundNumber} · ${modeLabel}`;
@@ -77,10 +73,7 @@ export function getRounds(config: BreakoutConfigLike): BreakoutRoundMeta[] {
   return Array.isArray(config.rounds) ? [...config.rounds].sort((a, b) => a.number - b.number) : [];
 }
 
-export function getRoundById(
-  config: BreakoutConfigLike,
-  roundId: string | null | undefined
-): BreakoutRoundMeta | null {
+export function getRoundById(config: BreakoutConfigLike, roundId: string | null | undefined): BreakoutRoundMeta | null {
   if (!roundId) return null;
   return getRounds(config).find((r) => r.id === roundId) || null;
 }
@@ -129,10 +122,7 @@ export function getBoardsInRound<B extends BoardLike>(
 }
 
 /** Every board in every round, ordered by round number, then sorted inside each round. */
-export function getAllBoardsByRound<B extends BoardLike>(
-  boards: BoardCollection<B>,
-  config: BreakoutConfigLike
-): B[] {
+export function getAllBoardsByRound<B extends BoardLike>(boards: BoardCollection<B>, config: BreakoutConfigLike): B[] {
   const order = new Map(getRounds(config).map((r) => [r.id, r.number] as const));
   return toBoardList(boards)
     .slice()
@@ -228,10 +218,10 @@ export function normalizeBreakoutConfig(raw: unknown): BreakoutConfigLike {
     r.autoIndividualBackground === null
       ? null
       : r.autoIndividualBackground &&
-        typeof r.autoIndividualBackground === 'object' &&
-        Array.isArray((r.autoIndividualBackground as RoomBackground).pages)
-      ? (r.autoIndividualBackground as RoomBackground)
-      : undefined;
+          typeof r.autoIndividualBackground === 'object' &&
+          Array.isArray((r.autoIndividualBackground as RoomBackground).pages)
+        ? (r.autoIndividualBackground as RoomBackground)
+        : undefined;
   const autoIndividualTemplateLabel =
     typeof r.autoIndividualTemplateLabel === 'string' && r.autoIndividualTemplateLabel.trim()
       ? r.autoIndividualTemplateLabel.trim().slice(0, 40)
@@ -328,10 +318,7 @@ export function migrateLegacyBreakout<B extends BoardLike>(
  * - same mode as the active round      -> 'update-current' (+ server switches mode on)
  * - different mode                     -> 'new-round'
  */
-export function resolveBreakoutAction(
-  payload: ConfigureBreakoutPayload,
-  config: BreakoutConfigLike
-): BreakoutAction {
+export function resolveBreakoutAction(payload: ConfigureBreakoutPayload, config: BreakoutConfigLike): BreakoutAction {
   if (payload.action) return payload.action;
   if (payload.mode === 'main') return 'return-to-main';
   const active = getActiveRound(config);

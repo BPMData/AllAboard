@@ -62,18 +62,18 @@ These came up while reading the code. Each changes the plan.
 ```ts
 export interface BreakoutRoundMeta {
   // existing: id, number, title, mode, createdAt
-  prepared?: boolean;                  // true until launched. Absent on every existing round.
+  prepared?: boolean; // true until launched. Absent on every existing round.
   launchedAt?: number;
-  allowSelfSelect?: boolean;           // applied to breakoutConfig when launched
-  chatScope?: 'unified' | 'board';     // applied to breakoutConfig when launched
+  allowSelfSelect?: boolean; // applied to breakoutConfig when launched
+  chatScope?: 'unified' | 'board'; // applied to breakoutConfig when launched
 }
 
-export type BreakoutAction = /* existing */ | 'edit-prepared' | 'delete-prepared';
+export type BreakoutAction = /* existing */ 'edit-prepared' | 'delete-prepared';
 
 export interface ConfigureBreakoutPayload {
   // existing fields, plus:
-  prepare?: boolean;   // 'new-round': create it without moving anyone
-  title?: string;      // 'new-round' / 'edit-prepared': teacher's own round name, ≤ 40 chars
+  prepare?: boolean; // 'new-round': create it without moving anyone
+  title?: string; // 'new-round' / 'edit-prepared': teacher's own round name, ≤ 40 chars
 }
 
 export interface RoomSnapshot {
@@ -89,7 +89,7 @@ Still coerce them there: `prepared` and `allowSelfSelect` to booleans, `chatScop
 ### Shared helpers (`src/lib/breakoutRounds.ts`)
 
 ```ts
-export function isPreparedRound(r: BreakoutRoundMeta): boolean;              // r.prepared === true
+export function isPreparedRound(r: BreakoutRoundMeta): boolean; // r.prepared === true
 export function getPreparedRounds(config: BreakoutConfigLike): BreakoutRoundMeta[];
 export function getLaunchedRounds(config: BreakoutConfigLike): BreakoutRoundMeta[];
 ```
@@ -126,7 +126,7 @@ export function getLaunchedRounds(config: BreakoutConfigLike): BreakoutRoundMeta
 5. **`delete-prepared`** (`roundId`, round must be prepared): remove the meta, every board with that `roundId`, and
    `room.roundTemplates[roundId]`. Launched rounds can't be deleted here.
 6. **All of the above:** `room.lastActiveAt = Date.now(); scheduleSaveToDisk(room, true); broadcastRoomSettings(room);
-   broadcastBreakoutSync(room);` as the handler already does at the end.
+broadcastBreakoutSync(room);` as the handler already does at the end.
 7. **Teachers receive round worksheets.** Add `roundTemplates` to `breakout-sync` and `init` **for teachers only**
    (`meta.inTeachers` in `broadcastBreakoutSync`, `isVerifiedTeacher` in the `join-room` `init`, and the teacher's
    `state-sync` + `breakout-sync` when they become a teacher). Values are interned asset URLs, so it's small. Students
@@ -170,6 +170,7 @@ Type-stripping rules apply (no `enum`, `namespace`, parameter properties, `impor
 `normalizeBreakoutConfig` keeps and coerces `prepared`, `launchedAt`, `allowSelfSelect`, `chatScope`.
 
 **`tests/server.test.ts`** (helpers `joinTracked`, `emitAck`, `waitForEvent`; fixtures `worksheet()` / `PNG`):
+
 1. Prepared individual round: ack `ok` with `roundId`; `mode` stays `'main'`, `activeRoundId` unchanged, no new
    boards; a connected student's board is still `'main'`.
 2. Prepared group round with 3 groups: 3 boards exist with the worksheet; nobody moves.
@@ -210,28 +211,28 @@ The extension is `.allaboard`; the `Blob` type and Drive MIME type stay `applica
 
 ```ts
 export const LESSON_KIND = 'allaboard-lesson';
-export const LESSON_VERSION = 1;          // bump only on a breaking change; loaders refuse newer versions
+export const LESSON_VERSION = 1; // bump only on a breaking change; loaders refuse newer versions
 
 export interface LessonPack {
   kind: typeof LESSON_KIND;
   version: number;
-  title: string;                          // ≤ 80 chars
+  title: string; // ≤ 80 chars
   exportedAt: number;
-  exportedBy?: string;                    // teacher's display name; the export dialog lets them clear it
+  exportedBy?: string; // teacher's display name; the export dialog lets them clear it
   main: { background: RoomBackground | null; elements: CanvasElement[] };
-  rounds: LessonRound[];                  // in launch order
+  rounds: LessonRound[]; // in launch order
   settings: LessonSettings;
-  assets: Record<string, string>;         // '/api/assets/<hash>' → data URL. Empty in the server's skeleton.
+  assets: Record<string, string>; // '/api/assets/<hash>' → data URL. Empty in the server's skeleton.
 }
 
 export interface LessonRound {
-  key: string;                            // 'a', 'b', … unique in the file. Never a room round id.
+  key: string; // 'a', 'b', … unique in the file. Never a room round id.
   title: string;
   mode: 'individual' | 'groups';
   worksheet: RoomBackground | null;
-  groups?: { title: string }[];           // groups only: titles, never assignments
-  groupInk?: CanvasElement[][];           // groups only: ink drawn on each prepared group board, by index
-  ink?: CanvasElement[];                  // phase 3 (template ink); absent until then
+  groups?: { title: string }[]; // groups only: titles, never assignments
+  groupInk?: CanvasElement[][]; // groups only: ink drawn on each prepared group board, by index
+  ink?: CanvasElement[]; // phase 3 (template ink); absent until then
   allowSelfSelect?: boolean;
   chatScope?: 'unified' | 'board';
 }
@@ -241,18 +242,18 @@ export interface LessonSettings {
   hideStudentCursors?: boolean;
   allowSelfSelect?: boolean;
   chatScope?: 'unified' | 'board';
-  autoIndividual?: boolean;               // "students start on their own boards"
+  autoIndividual?: boolean; // "students start on their own boards"
   autoIndividualBackground?: RoomBackground | null;
   autoIndividualTemplateLabel?: string;
   timerDurationMs?: number;
   timerAutoLock?: boolean;
 }
 
-export function buildLessonPack(input: LessonBuildInput): LessonPack;  // used by the server
+export function buildLessonPack(input: LessonBuildInput): LessonPack; // used by the server
 export function parseLessonText(fileName: string, text: string): { lesson: LessonPack | null; error: string | null };
-export function lessonAssetUrls(lesson: LessonPack): string[];          // every page URL in every background
+export function lessonAssetUrls(lesson: LessonPack): string[]; // every page URL in every background
 export function rewriteAssetUrls(lesson: LessonPack, map: Record<string, string>): LessonPack;
-export function lessonFileName(title: string, date?: Date): string;     // 'photosynthesis-2026-11-24.allaboard'
+export function lessonFileName(title: string, date?: Date): string; // 'photosynthesis-2026-11-24.allaboard'
 ```
 
 **Included:** main-board worksheet; main-board ink (see `mainInk` below); every round as a `LessonRound` (prepared
@@ -285,6 +286,7 @@ per list, every background has a `pages` array. It never throws. A room save (`v
 - The server builds it because only the server has `roundTemplates` and knows who is a teacher.
 
 **Client:**
+
 - `App.tsx` `handleTeacherExportLesson(opts)` wraps the emit, like `handleTeacherImportRoom`.
 - Then `lesson.assets = await embedAssets(...)` over `lessonAssetUrls(lesson)`. **If any image fails to download,
   stop and say so.** Today's room save only logs it and produces a broken file.
@@ -346,6 +348,7 @@ limit (see "Size").
 Add the four events to `docs/ARCHITECTURE.md` §7 and `teacher:upload-asset` to the interning points in §8.
 
 **Client:**
+
 - `App.tsx`: `handleTeacherHasAssets`, `handleTeacherUploadAsset`, `handleTeacherLoadLesson` wrapping the emits. After
   a `'new'` load succeeds: save the PIN under `STORAGE_KEYS.TEACHER_PIN_PREFIX + roomId` (as `performLobbyJoin` does),
   `recordRoomHistory`, then `performSwitchRoom(roomId)`. The normal join with the cached PIN makes them teacher there.
@@ -369,6 +372,7 @@ Add the four events to `docs/ARCHITECTURE.md` §7 and `teacher:upload-asset` to 
 ### Tests
 
 **`tests/lessonPack.test.ts`:**
+
 1. `buildLessonPack` strips messages, student boards, assignments, overrides, locks, bans, key hashes, PIN hash, mode
    and active round; keeps the main worksheet and prepared rounds.
 2. `mainInk`: `'teacher'` keeps only teacher ids, `'all'` drops only name stamps, `'none'` keeps nothing.
@@ -378,6 +382,7 @@ Add the four events to `docs/ARCHITECTURE.md` §7 and `teacher:upload-asset` to 
 6. `rewriteAssetUrls` rewrites every reference.
 
 **`tests/server.test.ts`:**
+
 1. `export-lesson` from a room with student ink, chat, a launched round and a prepared round contains no student ids
    or names anywhere (`JSON.stringify` and search for each student's id and name).
 2. `has-assets` reports missing ones; `upload-asset` stores a PNG and returns its URL; SVG, HTML and a mime/bytes
@@ -429,12 +434,12 @@ Teacher instructions written on a round's worksheet, copied onto every student's
 Worksheets are JPEG pages rendered in the browser. Base64 adds a third. A long PDF at the default 2× import size can
 plausibly reach tens of MB, and a lesson multiplies that across rounds. Phase 2 must measure a real 30-page pack.
 
-| Option | Over 30 MB? | Cost | Verdict |
-|---|---|---|---|
-| Send the whole pack over the socket (how `teacher:import-room` works) | No | none | Hits `maxHttpBufferSize`. Raising it raises every socket's limit, and one huge `JSON.parse` blocks the only instance. |
-| HTTP `POST` upload endpoint | Only if chunked | token auth, chunking | Cloud Run caps HTTP/1 request bodies at 32 MiB, so it needs chunking anyway. |
-| Zip format | No | a zip library, a binary format | Saves only the base64 third; JPEGs don't compress. Still needs chunked upload. Loses "JSON inside". |
-| **Upload images first, one per emit, then the small lesson** | **Yes** | two small socket events | **Recommended.** No new dependency or config. Skips images the server already has. Retry resumes. |
+| Option                                                                | Over 30 MB?     | Cost                           | Verdict                                                                                                               |
+| --------------------------------------------------------------------- | --------------- | ------------------------------ | --------------------------------------------------------------------------------------------------------------------- |
+| Send the whole pack over the socket (how `teacher:import-room` works) | No              | none                           | Hits `maxHttpBufferSize`. Raising it raises every socket's limit, and one huge `JSON.parse` blocks the only instance. |
+| HTTP `POST` upload endpoint                                           | Only if chunked | token auth, chunking           | Cloud Run caps HTTP/1 request bodies at 32 MiB, so it needs chunking anyway.                                          |
+| Zip format                                                            | No              | a zip library, a binary format | Saves only the base64 third; JPEGs don't compress. Still needs chunked upload. Loses "JSON inside".                   |
+| **Upload images first, one per emit, then the small lesson**          | **Yes**         | two small socket events        | **Recommended.** No new dependency or config. Skips images the server already has. Retry resumes.                     |
 
 Export has no limit: the browser fetches each image from `/api/assets` and builds the file. For sharing, Gmail caps
 attachments at 25 MB, so the Save dialog should suggest Drive for big packs. The same upload-first path can later fix

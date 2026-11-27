@@ -26,7 +26,11 @@ export function emptyChanges(): BoardChanges {
   return { full: false, upserts: new Set(), removed: new Set() };
 }
 
-export function buildDigest<E extends { id: string }>(boardId: string, changes: BoardChanges, elements: E[]): BoardDigest<E> {
+export function buildDigest<E extends { id: string }>(
+  boardId: string,
+  changes: BoardChanges,
+  elements: E[]
+): BoardDigest<E> {
   if (changes.full) return { boardId, elements };
   const byId = new Map(elements.map((e) => [e.id, e]));
   const upserts: E[] = [];

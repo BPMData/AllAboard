@@ -121,7 +121,9 @@ async function runClients(base: string): Promise<void> {
   const students: Socket[] = [];
   for (let i = 0; i < STUDENTS; i += 10) {
     const wave = await Promise.allSettled(
-      Array.from({ length: Math.min(10, STUDENTS - i) }, (_, k) => join(base, roomId, `usr_s${i + k}`, `Load Student ${i + k}`))
+      Array.from({ length: Math.min(10, STUDENTS - i) }, (_, k) =>
+        join(base, roomId, `usr_s${i + k}`, `Load Student ${i + k}`)
+      )
     );
     for (const r of wave) if (r.status === 'fulfilled') students.push(r.value);
   }
@@ -149,7 +151,8 @@ async function runClients(base: string): Promise<void> {
       recv[i].recvBytes += sizeOf(payload);
       const now = Date.now();
       if (ev === 'element-start' && typeof payload?.t === 'number') strokeDelays.push(now - payload.t);
-      if (ev === 'cursors-batch') for (const c of payload?.cursors ?? []) if (typeof c?.t === 'number') cursorDelays.push(now - c.t);
+      if (ev === 'cursors-batch')
+        for (const c of payload?.cursors ?? []) if (typeof c?.t === 'number') cursorDelays.push(now - c.t);
       if (ev === 'cursor-move' && typeof payload?.t === 'number') cursorDelays.push(now - payload.t);
     })
   );
@@ -169,7 +172,12 @@ async function runClients(base: string): Promise<void> {
   // carries none of the room's traffic, so if it slows down, the server itself is busy.
   const probeDelays: number[] = [];
   const probe = TARGET_URL
-    ? ioClient(base, { transports: ['websocket'], forceNew: true, reconnection: false, ...(proxyAgent ? { agent: proxyAgent as any } : {}) })
+    ? ioClient(base, {
+        transports: ['websocket'],
+        forceNew: true,
+        reconnection: false,
+        ...(proxyAgent ? { agent: proxyAgent as any } : {}),
+      })
     : null;
   if (probe) await waitFor(probe, 'connect', 20000);
   const probeTimer = probe
@@ -204,7 +212,16 @@ async function runClients(base: string): Promise<void> {
       const py = Math.round(y * 10) / 10;
       if (penDown && !strokeId) {
         strokeId = `el_${i}_${n++}`;
-        emit(s, 'element-start', { id: strokeId, boardId, userId: `usr_s${i}`, tool: 'pen', color: '#000', strokeWidth: 3, points: [px, py], t: now });
+        emit(s, 'element-start', {
+          id: strokeId,
+          boardId,
+          userId: `usr_s${i}`,
+          tool: 'pen',
+          color: '#000',
+          strokeWidth: 3,
+          points: [px, py],
+          t: now,
+        });
         lastFlush = now;
       } else if (penDown && strokeId) {
         if (CLIENT === 'legacy') emit(s, 'element-append-points', { id: strokeId, boardId, newPoints: [px, py] });
@@ -222,7 +239,17 @@ async function runClients(base: string): Promise<void> {
       const due = CLIENT === 'legacy' ? now - lastCursor > cursorMs : now - lastCursor >= cursorMs;
       if (due) {
         lastCursor = now;
-        emit(s, 'cursor-move', { userId: `usr_s${i}`, userName: `Student ${i}`, color: '#2563eb', boardId, x: px, y: py, tool: 'pen', isDrawing: penDown, t: now });
+        emit(s, 'cursor-move', {
+          userId: `usr_s${i}`,
+          userName: `Student ${i}`,
+          color: '#2563eb',
+          boardId,
+          x: px,
+          y: py,
+          tool: 'pen',
+          isDrawing: penDown,
+          t: now,
+        });
       }
     }, FRAME_MS);
   });
@@ -245,12 +272,25 @@ async function runClients(base: string): Promise<void> {
     joined: students.length,
     clientLagP99: clientLag.percentile(99) / 1e6,
     clientLagMax: clientLag.max / 1e6,
-    clientCpu: (() => { const c = process.cpuUsage(clientCpu0); return (c.user + c.system) / 1000 / (Date.now() - start); })(),
+    clientCpu: (() => {
+      const c = process.cpuUsage(clientCpu0);
+      return (c.user + c.system) / 1000 / (Date.now() - start);
+    })(),
     connectFailures,
     disconnects,
-    stroke: { n: strokeDelays.length, p50: pct(strokeDelays, 50), p95: pct(strokeDelays, 95), max: pct(strokeDelays, 100) },
+    stroke: {
+      n: strokeDelays.length,
+      p50: pct(strokeDelays, 50),
+      p95: pct(strokeDelays, 95),
+      max: pct(strokeDelays, 100),
+    },
     probe: { n: probeDelays.length, p50: pct(probeDelays, 50), p95: pct(probeDelays, 95), max: pct(probeDelays, 100) },
-    cursor: { n: cursorDelays.length, p50: pct(cursorDelays, 50), p95: pct(cursorDelays, 95), max: pct(cursorDelays, 100) },
+    cursor: {
+      n: cursorDelays.length,
+      p50: pct(cursorDelays, 50),
+      p95: pct(cursorDelays, 95),
+      max: pct(cursorDelays, 100),
+    },
   });
   if (TARGET_URL) {
     for (const b of new Set(students.map((_, i) => boardOf(i)))) teacher.emit('teacher:clear-all', { boardId: b });
@@ -292,11 +332,21 @@ async function main(): Promise<void> {
   const cpu = process.cpuUsage(cpu0);
   const s = result.elapsed;
   const fmt = (n: number) => Math.round(n).toLocaleString('en-US');
-  console.log(`\n=== ${STUDENTS} students + 1 teacher | mode=${MODE} | client=${CLIENT} | pen-down ${DUTY * 100}% | ${s.toFixed(1)} s ===`);
-  console.log(`inbound to server   ${fmt(result.sent.sentMsgs / s)} msg/s   (${fmt((result.sent.sentMsgs / s) * 60)} /min)   ${(result.sent.sentBytes / s / 1024).toFixed(0)} KB/s`);
-  console.log(`outbound from server ${fmt(result.totalRecvMsgs / s)} msg/s   (${fmt((result.totalRecvMsgs / s) * 60)} /min)   ${(result.totalRecvBytes / s / 1024).toFixed(0)} KB/s`);
-  console.log(`per student receives ${fmt(result.studentRecvMsgsAvg / s)} msg/s   teacher receives ${fmt(result.teacherRecvMsgs / s)} msg/s`);
-  console.log(`server CPU          ${(((cpu.user + cpu.system) / 1000 / (s * 1000)) * 100).toFixed(0)}% of one core   max event-loop lag ${lagMax} ms`);
+  console.log(
+    `\n=== ${STUDENTS} students + 1 teacher | mode=${MODE} | client=${CLIENT} | pen-down ${DUTY * 100}% | ${s.toFixed(1)} s ===`
+  );
+  console.log(
+    `inbound to server   ${fmt(result.sent.sentMsgs / s)} msg/s   (${fmt((result.sent.sentMsgs / s) * 60)} /min)   ${(result.sent.sentBytes / s / 1024).toFixed(0)} KB/s`
+  );
+  console.log(
+    `outbound from server ${fmt(result.totalRecvMsgs / s)} msg/s   (${fmt((result.totalRecvMsgs / s) * 60)} /min)   ${(result.totalRecvBytes / s / 1024).toFixed(0)} KB/s`
+  );
+  console.log(
+    `per student receives ${fmt(result.studentRecvMsgsAvg / s)} msg/s   teacher receives ${fmt(result.teacherRecvMsgs / s)} msg/s`
+  );
+  console.log(
+    `server CPU          ${(((cpu.user + cpu.system) / 1000 / (s * 1000)) * 100).toFixed(0)}% of one core   max event-loop lag ${lagMax} ms`
+  );
   await srv.close();
   fs.rmSync(tmp, { recursive: true, force: true });
   process.exit(0);
@@ -315,15 +365,27 @@ async function runRemote(): Promise<void> {
   const s = result.elapsed;
   const fmt = (n: number) => Math.round(n).toLocaleString('en-US');
   const ms = (d: any) => `p50 ${fmt(d.p50)} ms, p95 ${fmt(d.p95)} ms, max ${fmt(d.max)} ms (${fmt(d.n)} samples)`;
-  console.log(`\n=== ${TARGET_URL} | ${result.joined}/${STUDENTS} students + 1 teacher | mode=${MODE} | pen-down ${DUTY * 100}% | ink ${FLUSH_MS} ms, cursor ${CURSOR_MS} ms | ${s.toFixed(1)} s ===`);
-  console.log(`connections         ${result.connectFailures} failed to connect, ${result.disconnects} dropped during the run`);
-  console.log(`fake clients        ${(result.clientCpu * 100).toFixed(0)}% of one core, own lag p99 ${fmt(result.clientLagP99)} ms, max ${fmt(result.clientLagMax)} ms (high = this machine is the bottleneck)`);
+  console.log(
+    `\n=== ${TARGET_URL} | ${result.joined}/${STUDENTS} students + 1 teacher | mode=${MODE} | pen-down ${DUTY * 100}% | ink ${FLUSH_MS} ms, cursor ${CURSOR_MS} ms | ${s.toFixed(1)} s ===`
+  );
+  console.log(
+    `connections         ${result.connectFailures} failed to connect, ${result.disconnects} dropped during the run`
+  );
+  console.log(
+    `fake clients        ${(result.clientCpu * 100).toFixed(0)}% of one core, own lag p99 ${fmt(result.clientLagP99)} ms, max ${fmt(result.clientLagMax)} ms (high = this machine is the bottleneck)`
+  );
   console.log(`server probe        ${ms(result.probe)}  (idle round trip; slow = the server is busy)`);
   console.log(`new stroke delay    ${ms(result.stroke)}`);
   console.log(`cursor delay        ${ms(result.cursor)}`);
-  console.log(`inbound to server   ${fmt(result.sent.sentMsgs / s)} msg/s   ${(result.sent.sentBytes / s / 1024).toFixed(0)} KB/s`);
-  console.log(`outbound from server ${fmt(result.totalRecvMsgs / s)} msg/s   ${(result.totalRecvBytes / s / 1024).toFixed(0)} KB/s`);
-  console.log(`per student receives ${fmt(result.studentRecvMsgsAvg / s)} msg/s   teacher receives ${fmt(result.teacherRecvMsgs / s)} msg/s`);
+  console.log(
+    `inbound to server   ${fmt(result.sent.sentMsgs / s)} msg/s   ${(result.sent.sentBytes / s / 1024).toFixed(0)} KB/s`
+  );
+  console.log(
+    `outbound from server ${fmt(result.totalRecvMsgs / s)} msg/s   ${(result.totalRecvBytes / s / 1024).toFixed(0)} KB/s`
+  );
+  console.log(
+    `per student receives ${fmt(result.studentRecvMsgsAvg / s)} msg/s   teacher receives ${fmt(result.teacherRecvMsgs / s)} msg/s`
+  );
   process.exit(0);
 }
 

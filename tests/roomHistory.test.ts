@@ -77,9 +77,7 @@ describe('roomHistory helpers', () => {
         { code: 'valid-1', createdAt: 200, lastUsedAt: 900 },
       ])
     );
-    assert.deepEqual(loadRoomHistory(storage), [
-      { code: 'valid-1', createdAt: 100, lastUsedAt: 900 },
-    ]);
+    assert.deepEqual(loadRoomHistory(storage), [{ code: 'valid-1', createdAt: 100, lastUsedAt: 900 }]);
 
     assert.deepEqual(sanitizeRoomHistoryEntries('nope'), []);
   });
@@ -176,24 +174,15 @@ describe('roomHistory helpers', () => {
     assert.equal(formatRoomAge(now - 5 * 60_000, now), '5m ago');
     assert.equal(formatRoomAge(now - 3 * 3_600_000, now), '3h ago');
     assert.equal(formatRoomAge(now - 2 * 86_400_000, now), '2d ago');
-    assert.equal(
-      formatRoomAge(now - 10 * 86_400_000, now),
-      new Date(now - 10 * 86_400_000).toLocaleDateString()
-    );
+    assert.equal(formatRoomAge(now - 10 * 86_400_000, now), new Date(now - 10 * 86_400_000).toLocaleDateString());
 
     assert.equal(formatRoomStatusLabel(undefined), 'Checking…');
-    assert.equal(
-      formatRoomStatusLabel({ status: 'live', activeUserCount: 2, hasTeacherPin: true }),
-      'Live · 2 online'
-    );
+    assert.equal(formatRoomStatusLabel({ status: 'live', activeUserCount: 2, hasTeacherPin: true }), 'Live · 2 online');
     assert.equal(
       formatRoomStatusLabel({ status: 'saved', activeUserCount: 0, hasTeacherPin: false }),
       'Saved · rejoinable'
     );
-    assert.equal(
-      formatRoomStatusLabel({ status: 'expired', activeUserCount: 0, hasTeacherPin: false }),
-      'Expired'
-    );
+    assert.equal(formatRoomStatusLabel({ status: 'expired', activeUserCount: 0, hasTeacherPin: false }), 'Expired');
     assert.equal(
       formatRoomStatusLabel({ status: 'unknown', activeUserCount: 0, hasTeacherPin: false }),
       'Status unknown'

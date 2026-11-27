@@ -393,7 +393,6 @@ describe('hollow shape brush geometry and rendering', () => {
   });
 });
 
-
 describe('hollow shape brush: swept strokes stay cheap to paint (shape-tool FPS bug)', () => {
   // A long, dense, curvy pen path like a big scribble across the board (point every ~1.5px).
   function scribble(totalLen: number): number[] {
@@ -472,10 +471,16 @@ describe('hollow shape brush: swept strokes stay cheap to paint (shape-tool FPS 
     for (let i = 0; i < bigStroke.length; i += 2) {
       let best = Infinity;
       for (let j = 0; j + 3 < simple.length; j += 2) {
-        best = Math.min(best, distToSeg(bigStroke[i], bigStroke[i + 1], simple[j], simple[j + 1], simple[j + 2], simple[j + 3]));
+        best = Math.min(
+          best,
+          distToSeg(bigStroke[i], bigStroke[i + 1], simple[j], simple[j + 1], simple[j + 2], simple[j + 3])
+        );
         if (best <= HOLLOW_SWEEP_TOLERANCE) break;
       }
-      assert.ok(best <= HOLLOW_SWEEP_TOLERANCE + 1e-9, `raw point ${i / 2} is ${best.toFixed(3)}px from the simplified path`);
+      assert.ok(
+        best <= HOLLOW_SWEEP_TOLERANCE + 1e-9,
+        `raw point ${i / 2} is ${best.toFixed(3)}px from the simplified path`
+      );
     }
     assert.deepEqual(simplifyPathForSweep([5, 6]), [5, 6]);
     assert.deepEqual(simplifyPathForSweep([0, 0, 10, 0]), [0, 0, 10, 0]);
@@ -515,7 +520,10 @@ describe('hollow shape brush: swept strokes stay cheap to paint (shape-tool FPS 
             best = Math.min(best, distToConvex(poly, px, py));
             if (best === 0) break;
           }
-          assert.ok(best <= HOLLOW_SWEEP_TOLERANCE + 1e-6, `${shape}: corner at pen point ${i / 2} is ${best.toFixed(3)}px outside`);
+          assert.ok(
+            best <= HOLLOW_SWEEP_TOLERANCE + 1e-6,
+            `${shape}: corner at pen point ${i / 2} is ${best.toFixed(3)}px outside`
+          );
         }
       }
     }
@@ -695,14 +703,27 @@ describe('hollow shape brush: a finished stroke becomes one picture', () => {
 
 describe('stampsHitByEraser', () => {
   const stamp = (id: string, x: number, y: number, userId = 'u1'): CanvasElement =>
-    ({ id, tool: 'stamp', stamp: 'username', userId, userName: 'Ava', color: '#000', strokeWidth: 6, x, y }) as CanvasElement;
+    ({
+      id,
+      tool: 'stamp',
+      stamp: 'username',
+      userId,
+      userName: 'Ava',
+      color: '#000',
+      strokeWidth: 6,
+      x,
+      y,
+    }) as CanvasElement;
   const eraser = (points: number[], strokeWidth = 20, userId = 'u1'): CanvasElement =>
     ({ id: 'e', tool: 'eraser', userId, userName: 'Ava', color: '#fff', strokeWidth, points }) as CanvasElement;
 
   it('finds a stamp the eraser passes over, and not one far away', () => {
     const els = [stamp('near', 0, 0), stamp('far', 1000, 1000)];
     const hit = stampsHitByEraser(els, eraser([-200, 0, 200, 0]));
-    assert.deepEqual(hit.map((e) => e.id), ['near']);
+    assert.deepEqual(
+      hit.map((e) => e.id),
+      ['near']
+    );
   });
 
   it('catches a stamp between two widely spaced points of a fast swipe', () => {
@@ -715,7 +736,15 @@ describe('stampsHitByEraser', () => {
   });
 
   it("ignores other users' stamps and non-stamp elements", () => {
-    const pen = { id: 'p', tool: 'solid', userId: 'u1', userName: 'Ava', color: '#000', strokeWidth: 4, points: [0, 0, 5, 5] } as CanvasElement;
+    const pen = {
+      id: 'p',
+      tool: 'solid',
+      userId: 'u1',
+      userName: 'Ava',
+      color: '#000',
+      strokeWidth: 4,
+      points: [0, 0, 5, 5],
+    } as CanvasElement;
     const hit = stampsHitByEraser([stamp('theirs', 0, 0, 'u2'), pen], eraser([-50, 0, 50, 0]));
     assert.equal(hit.length, 0);
   });

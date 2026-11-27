@@ -164,9 +164,7 @@ export function isHashedPin(stored: string): boolean {
 }
 
 function scryptAsync(pin: string, salt: Buffer): Promise<Buffer> {
-  return new Promise((resolve, reject) =>
-    scrypt(pin, salt, KEY_LEN, (err, key) => (err ? reject(err) : resolve(key)))
-  );
+  return new Promise((resolve, reject) => scrypt(pin, salt, KEY_LEN, (err, key) => (err ? reject(err) : resolve(key))));
 }
 
 export async function hashPin(pin: string): Promise<string> {

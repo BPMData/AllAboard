@@ -2,7 +2,16 @@ import { describe, it, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import type { Socket } from 'socket.io-client';
-import { PNG, type ServerHandle, delay, emitAck, socketPool, startTestServer, waitForEvent, worksheet } from './socketHelpers.ts';
+import {
+  PNG,
+  type ServerHandle,
+  delay,
+  emitAck,
+  socketPool,
+  startTestServer,
+  waitForEvent,
+  worksheet,
+} from './socketHelpers.ts';
 import { lessonAssetUrls, type LessonPack } from '../src/lib/lessonPack.ts';
 
 const STUDENT_IDS = ['zz-student-uid-1', 'zz-student-uid-2'];
@@ -58,7 +67,10 @@ describe('lesson packs (server)', () => {
     teacher.emit('teacher:set-background', { background: worksheet('main.png') });
     teacher.emit('element-start', stroke('t-ink', 't1'));
     students[0].emit('element-start', stroke('s-ink', STUDENT_IDS[0]));
-    students[0].emit('element-start', stroke('s-stamp', STUDENT_IDS[0], 'main', { tool: 'stamp', stamp: 'username', points: undefined, x: 1, y: 1 }));
+    students[0].emit(
+      'element-start',
+      stroke('s-stamp', STUDENT_IDS[0], 'main', { tool: 'stamp', stamp: 'username', points: undefined, x: 1, y: 1 })
+    );
     students[1].emit('chat-message', { text: 'secret from Quintessa', boardId: 'main' });
     await delay(50);
     let res = await emitAck<any>(teacher, 'teacher:configure-breakout', {
@@ -128,7 +140,9 @@ describe('lesson packs (server)', () => {
     assert.equal(up.ok, true);
     assert.match(up.url, /^\/api\/assets\/[a-f0-9]{64}$/);
     const fake = `/api/assets/${'0'.repeat(64)}`;
-    const has = await emitAck<any>(teacher, 'teacher:has-assets', { urls: [up.url, fake, 'https://evil.example/x.png'] });
+    const has = await emitAck<any>(teacher, 'teacher:has-assets', {
+      urls: [up.url, fake, 'https://evil.example/x.png'],
+    });
     assert.deepEqual(has.missing, [fake, 'https://evil.example/x.png']);
     const svg = `data:image/svg+xml;base64,${Buffer.from('<svg></svg>').toString('base64')}`;
     const html = `data:text/html;base64,${Buffer.from('<b>x</b>').toString('base64')}`;
@@ -141,19 +155,32 @@ describe('lesson packs (server)', () => {
   it('3/4 – load into a new room: PIN, prepared rounds, loader-owned ink; students wait for launch', async () => {
     const { teacher } = await busyRoom('lp-3');
     const lesson = await exportLesson(teacher);
-    const res = await emitAck<any>(teacher, 'teacher:load-lesson', { lesson, target: 'new', newRoomId: 'lp-3-new', pin: '5678' });
+    const res = await emitAck<any>(teacher, 'teacher:load-lesson', {
+      lesson,
+      target: 'new',
+      newRoomId: 'lp-3-new',
+      pin: '5678',
+    });
     assert.equal(res.ok, true, res.error);
     assert.equal(res.roomId, 'lp-3-new');
     assert.equal(res.rounds, 2);
 
-    const { socket: t2, init } = await pool.join(srv, { roomId: 'lp-3-new', userId: 't1', name: 'Ms Teacher', teacherPin: '5678' });
+    const { socket: t2, init } = await pool.join(srv, {
+      roomId: 'lp-3-new',
+      userId: 't1',
+      name: 'Ms Teacher',
+      teacherPin: '5678',
+    });
     assert.equal((await emitAck<any>(t2, 'teacher:auth', { pin: '5678' })).ok, true);
     const cfg = init.roomSettings?.breakoutConfig ?? init.breakoutConfig;
     assert.equal(cfg.mode, 'main');
-    assert.deepEqual(cfg.rounds.map((r: any) => [r.id, r.prepared, r.title]), [
-      ['r1', true, 'Round 1 · Groups'],
-      ['r2', true, 'Round 2 · Individual · Exit ticket'],
-    ]);
+    assert.deepEqual(
+      cfg.rounds.map((r: any) => [r.id, r.prepared, r.title]),
+      [
+        ['r1', true, 'Round 1 · Groups'],
+        ['r2', true, 'Round 2 · Individual · Exit ticket'],
+      ]
+    );
     assert.equal(init.background.fileName, 'main.png');
     assert.equal(init.elements.length, 1);
     assert.equal(init.elements[0].userId, 't1');
@@ -178,7 +205,12 @@ describe('lesson packs (server)', () => {
     const lesson = await exportLesson(teacher);
     const broken = structuredClone(lesson);
     broken.rounds[1].worksheet!.pages[0].dataUrl = `/api/assets/${'1'.repeat(64)}`;
-    let res = await emitAck<any>(teacher, 'teacher:load-lesson', { lesson: broken, target: 'new', newRoomId: 'lp-5-a', pin: '5678' });
+    let res = await emitAck<any>(teacher, 'teacher:load-lesson', {
+      lesson: broken,
+      target: 'new',
+      newRoomId: 'lp-5-a',
+      pin: '5678',
+    });
     assert.equal(res.ok, false);
     assert.match(res.error, /1 worksheet image is missing/);
     assert.equal((await emitAck<any>(teacher, 'check-room', { roomId: 'lp-5-a' })).exists, false);
@@ -246,7 +278,12 @@ describe('lesson packs (server)', () => {
       assert.equal(up.url, u, 'content-addressed: same bytes, same URL');
     }
     const { assets: _assets, ...lesson } = packed;
-    const res = await emitAck<any>(t2, 'teacher:load-lesson', { lesson, target: 'new', newRoomId: 'lp-8-copy', pin: '5678' });
+    const res = await emitAck<any>(t2, 'teacher:load-lesson', {
+      lesson,
+      target: 'new',
+      newRoomId: 'lp-8-copy',
+      pin: '5678',
+    });
     assert.equal(res.ok, true, res.error);
 
     const { socket: t3 } = await pool.join(other.srv, { roomId: 'lp-8-copy', userId: 'x', name: 'Co-teacher' });

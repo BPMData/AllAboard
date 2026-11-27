@@ -36,7 +36,14 @@ const MAX_OVERRIDES = 200;
 const MAX_ASSIGNED = 500;
 
 export function emptyRoundVariants(): RoundVariants {
-  return { extra: [null, null, null], rule: 'same', cornerMap: { ...DEFAULT_CORNER_MAP }, lateJoiners: 'rule', overrides: {}, assigned: {} };
+  return {
+    extra: [null, null, null],
+    rule: 'same',
+    cornerMap: { ...DEFAULT_CORNER_MAP },
+    lateJoiners: 'rule',
+    overrides: {},
+    assigned: {},
+  };
 }
 
 /** How per-student picks are matched: trimmed, lowercased display name. */
@@ -106,7 +113,10 @@ export function hasVariantContent(v: RoundVariants | null | undefined): boolean 
 /** Letter indexes that have a worksheet: A always (it's the round's worksheet), then B–D when set. */
 export function availableLetters(v: RoundVariants | null | undefined): number[] {
   const out = [0];
-  if (v) v.extra.forEach((bg, i) => { if (bg) out.push(i + 1); });
+  if (v)
+    v.extra.forEach((bg, i) => {
+      if (bg) out.push(i + 1);
+    });
   return out;
 }
 
@@ -157,7 +167,9 @@ export function variantBackgrounds(v: RoundVariants | null | undefined): RoomBac
 
 /** Sorts students for dealing out in turn: alphabetical by name, then id. */
 export function byStudentName<T extends { name: string; userId: string }>(a: T, b: T): number {
-  return a.name.localeCompare(b.name, undefined, { sensitivity: 'base', numeric: true }) || a.userId.localeCompare(b.userId);
+  return (
+    a.name.localeCompare(b.name, undefined, { sensitivity: 'base', numeric: true }) || a.userId.localeCompare(b.userId)
+  );
 }
 
 /** Same page images in the same order: the board already shows this worksheet. */

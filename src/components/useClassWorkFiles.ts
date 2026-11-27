@@ -254,11 +254,25 @@ export function useClassWorkFiles(
   };
 
   return {
-    handleFileChange, handleExportJSON, handleOpenFromDrive, handleSaveToDrive, handleSwitchDriveAccount,
-    refreshDriveAccount, driveOpening, driveAccount, driveOpenError, driveNotice,
-    isDownloading, downloadError, dismissDownloadError: () => setDownloadError(null),
-    restoreNotice, reviewRestore: () => setRestoreNotice(null),
-    discardRestore: () => { setRestoreNotice(null); setPendingSnapshot(null); },
+    handleFileChange,
+    handleExportJSON,
+    handleOpenFromDrive,
+    handleSaveToDrive,
+    handleSwitchDriveAccount,
+    refreshDriveAccount,
+    driveOpening,
+    driveAccount,
+    driveOpenError,
+    driveNotice,
+    isDownloading,
+    downloadError,
+    dismissDownloadError: () => setDownloadError(null),
+    restoreNotice,
+    reviewRestore: () => setRestoreNotice(null),
+    discardRestore: () => {
+      setRestoreNotice(null);
+      setPendingSnapshot(null);
+    },
     saveDialog: driveSaveDialog && {
       ...driveSaveDialog,
       accountEmail: driveAccount?.email,
@@ -269,12 +283,23 @@ export function useClassWorkFiles(
       onCreateFolder: handleDriveCreateFolder,
       onSwitchAccount: handleSwitchDriveAccount,
       onSave: handleDriveSaveConfirm,
-      onCancel: () => { if (!driveSaveBusy) setDriveSaveDialog(null); },
+      onCancel: () => {
+        if (!driveSaveBusy) setDriveSaveDialog(null);
+      },
     },
-    restoreDialog: !restoreNotice && pendingSnapshot && {
-      roomId, pendingSnapshot, importError, importMode, setImportMode, isImporting,
-      onConfirmImport: handleConfirmImport,
-      onCancel: () => { setPendingSnapshot(null); setImportError(null); },
-    },
+    restoreDialog: !restoreNotice &&
+      pendingSnapshot && {
+        roomId,
+        pendingSnapshot,
+        importError,
+        importMode,
+        setImportMode,
+        isImporting,
+        onConfirmImport: handleConfirmImport,
+        onCancel: () => {
+          setPendingSnapshot(null);
+          setImportError(null);
+        },
+      },
   };
 }

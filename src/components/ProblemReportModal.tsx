@@ -47,7 +47,12 @@ async function postReport(report: ProblemReportInput): Promise<ReportResponse> {
 const fieldClass =
   'w-full px-2.5 py-1.5 bg-slate-50 border border-[#CBD5E1] rounded-[2px] text-sm text-slate-900 placeholder:text-slate-400 focus:bg-white focus:outline-none focus:border-brand-500';
 
-export default function ProblemReportModal({ getDiagnostics, redact = [], onClose, submit = postReport }: ProblemReportModalProps) {
+export default function ProblemReportModal({
+  getDiagnostics,
+  redact = [],
+  onClose,
+  submit = postReport,
+}: ProblemReportModalProps) {
   const [step, setStep] = useState<Step>('category');
   const [report, setReport] = useState<ProblemReportInput>(() => ({ ...emptyReport(), diagnostics: getDiagnostics() }));
   const [result, setResult] = useState<ReportResponse | null>(null);
@@ -82,8 +87,8 @@ export default function ProblemReportModal({ getDiagnostics, redact = [], onClos
       if (e.key !== 'Tab' || !dialogRef.current) return;
       const focusable = Array.from(
         dialogRef.current.querySelectorAll<HTMLElement>(
-          'button:not([disabled]), [href], input:not([disabled]), textarea:not([disabled]), [tabindex="0"]',
-        ),
+          'button:not([disabled]), [href], input:not([disabled]), textarea:not([disabled]), [tabindex="0"]'
+        )
       );
       if (focusable.length === 0) return;
       const first = focusable[0];
@@ -163,7 +168,11 @@ export default function ProblemReportModal({ getDiagnostics, redact = [], onClos
   const navButtons = (onBack: (() => void) | null, next: React.ReactNode) => (
     <div className="flex items-center justify-between gap-2 pt-1">
       {onBack ? (
-        <button type="button" onClick={onBack} className="flex items-center gap-1 px-3 py-1.5 text-xs font-medium rounded-[2px] border oh-btn text-slate-700 cursor-pointer">
+        <button
+          type="button"
+          onClick={onBack}
+          className="flex items-center gap-1 px-3 py-1.5 text-xs font-medium rounded-[2px] border oh-btn text-slate-700 cursor-pointer"
+        >
           <ArrowLeft size={13} />
           <span>Back</span>
         </button>
@@ -180,7 +189,9 @@ export default function ProblemReportModal({ getDiagnostics, redact = [], onClos
       onClick={onClick}
       disabled={disabled}
       className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-[2px] border ${
-        disabled ? 'bg-slate-100 border-[#CBD5E1] text-slate-400 cursor-not-allowed' : 'oh-btn-primary text-white cursor-pointer'
+        disabled
+          ? 'bg-slate-100 border-[#CBD5E1] text-slate-400 cursor-not-allowed'
+          : 'oh-btn-primary text-white cursor-pointer'
       }`}
     >
       {icon}
@@ -232,7 +243,9 @@ export default function ProblemReportModal({ getDiagnostics, redact = [], onClos
 
           {step === 'category' && (
             <>
-              <p className="text-xs text-slate-600">Pick the closest one. Your class keeps going while you fill this in.</p>
+              <p className="text-xs text-slate-600">
+                Pick the closest one. Your class keeps going while you fill this in.
+              </p>
               <fieldset className="space-y-1.5">
                 <legend className="sr-only">What went wrong?</legend>
                 {REPORT_CATEGORIES.map((c) => (
@@ -257,13 +270,18 @@ export default function ProblemReportModal({ getDiagnostics, redact = [], onClos
                   </label>
                 ))}
               </fieldset>
-              {navButtons(null, primary('Next', () => setStep('details'), !report.category))}
+              {navButtons(
+                null,
+                primary('Next', () => setStep('details'), !report.category)
+              )}
             </>
           )}
 
           {step === 'details' && (
             <>
-              <p className="text-xs text-slate-600">Skip anything you don’t know. Please don’t type names, room codes or PINs.</p>
+              <p className="text-xs text-slate-600">
+                Skip anything you don’t know. Please don’t type names, room codes or PINs.
+              </p>
               <label className="block space-y-1">
                 <span className="text-xs font-medium text-slate-700">What happened? (optional)</span>
                 <textarea
@@ -295,14 +313,18 @@ export default function ProblemReportModal({ getDiagnostics, redact = [], onClos
                 />
                 <span>Keep this description private (only the developer sees it, not the public report)</span>
               </label>
-              {navButtons(() => setStep('category'), primary('Next', () => setStep('private')))}
+              {navButtons(
+                () => setStep('category'),
+                primary('Next', () => setStep('private'))
+              )}
             </>
           )}
 
           {step === 'private' && (
             <>
               <p className="text-xs text-slate-600">
-                Both boxes are optional and private. They go to the developer by email and never appear in the public report.
+                Both boxes are optional and private. They go to the developer by email and never appear in the public
+                report.
               </p>
               <label className="block space-y-1">
                 <span className="text-xs font-medium text-slate-700">How can we reach you? (optional)</span>
@@ -326,23 +348,43 @@ export default function ProblemReportModal({ getDiagnostics, redact = [], onClos
                   className={fieldClass}
                 />
               </label>
-              {navButtons(() => setStep('details'), primary('Review', () => setStep('review')))}
+              {navButtons(
+                () => setStep('details'),
+                primary('Review', () => setStep('review'))
+              )}
             </>
           )}
 
           {step === 'review' && (
             <>
-              <p className="text-xs text-slate-600">Nothing has been sent yet. This is exactly what will go out when you press Send.</p>
-              <section aria-labelledby="report-public-heading" className="rounded-[2px] border border-amber-300 bg-amber-50/60">
-                <h3 id="report-public-heading" className="px-2.5 py-1.5 border-b border-amber-300 text-xs font-semibold text-amber-900">
+              <p className="text-xs text-slate-600">
+                Nothing has been sent yet. This is exactly what will go out when you press Send.
+              </p>
+              <section
+                aria-labelledby="report-public-heading"
+                className="rounded-[2px] border border-amber-300 bg-amber-50/60"
+              >
+                <h3
+                  id="report-public-heading"
+                  className="px-2.5 py-1.5 border-b border-amber-300 text-xs font-semibold text-amber-900"
+                >
                   Public on GitHub: anyone can read this
                 </h3>
-                <pre data-testid="report-public-preview" className="px-2.5 py-2 text-[11px] leading-snug whitespace-pre-wrap break-words font-mono text-slate-800 max-h-48 overflow-y-auto">
+                <pre
+                  data-testid="report-public-preview"
+                  className="px-2.5 py-2 text-[11px] leading-snug whitespace-pre-wrap break-words font-mono text-slate-800 max-h-48 overflow-y-auto"
+                >
                   {`${publicIssue.title}\n\n${publicIssue.body}`}
                 </pre>
               </section>
-              <section aria-labelledby="report-private-heading" className="rounded-[2px] border border-[#CBD5E1] bg-slate-50">
-                <h3 id="report-private-heading" className="px-2.5 py-1.5 border-b border-[#CBD5E1] text-xs font-semibold text-slate-800">
+              <section
+                aria-labelledby="report-private-heading"
+                className="rounded-[2px] border border-[#CBD5E1] bg-slate-50"
+              >
+                <h3
+                  id="report-private-heading"
+                  className="px-2.5 py-1.5 border-b border-[#CBD5E1] text-xs font-semibold text-slate-800"
+                >
                   Private: emailed to the developer only
                 </h3>
                 <dl data-testid="report-private-preview" className="px-2.5 py-2 text-[11px] space-y-1 text-slate-700">
@@ -362,14 +404,20 @@ export default function ProblemReportModal({ getDiagnostics, redact = [], onClos
                     <dt className="font-semibold">Anything else</dt>
                     <dd className="whitespace-pre-wrap break-words">{prepared.comments || 'Not given.'}</dd>
                   </div>
-                  <div className="text-slate-500">The email also repeats the public report. Subject: {privateEmail.subject}</div>
+                  <div className="text-slate-500">
+                    The email also repeats the public report. Subject: {privateEmail.subject}
+                  </div>
                 </dl>
               </section>
               <p className="text-[11px] text-slate-500">
                 Never included: names, room codes, PINs, chat, drawings or worksheets.
-                {diagnosticLines(prepared.diagnostics).length > 0 && ' The diagnostics above are about the app and this device only.'}
+                {diagnosticLines(prepared.diagnostics).length > 0 &&
+                  ' The diagnostics above are about the app and this device only.'}
               </p>
-              {navButtons(() => setStep('private'), primary('Send report', () => void handleSend(), false, <Send size={13} />))}
+              {navButtons(
+                () => setStep('private'),
+                primary('Send report', () => void handleSend(), false, <Send size={13} />)
+              )}
             </>
           )}
 
@@ -401,23 +449,39 @@ export default function ProblemReportModal({ getDiagnostics, redact = [], onClos
               <>
                 <p className="flex items-start gap-1.5 text-sm text-red-800">
                   <AlertCircle size={15} className="mt-0.5 shrink-0" />
-                  <span>{failureText} You can still send it yourself: copy or download it, then email it to {REPORT_INBOX}.</span>
+                  <span>
+                    {failureText} You can still send it yourself: copy or download it, then email it to {REPORT_INBOX}.
+                  </span>
                 </p>
                 <div className="flex flex-wrap gap-2">
-                  <button type="button" onClick={() => void handleCopy()} className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-[2px] border oh-btn text-slate-700 cursor-pointer">
+                  <button
+                    type="button"
+                    onClick={() => void handleCopy()}
+                    className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-[2px] border oh-btn text-slate-700 cursor-pointer"
+                  >
                     <Copy size={13} />
                     <span>{copied ? 'Copied' : 'Copy report'}</span>
                   </button>
-                  <button type="button" onClick={handleDownload} className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-[2px] border oh-btn text-slate-700 cursor-pointer">
+                  <button
+                    type="button"
+                    onClick={handleDownload}
+                    className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-[2px] border oh-btn text-slate-700 cursor-pointer"
+                  >
                     <Download size={13} />
                     <span>Download report</span>
                   </button>
-                  <a href={buildMailtoLink(prepared)} className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-[2px] border oh-btn text-slate-700 cursor-pointer">
+                  <a
+                    href={buildMailtoLink(prepared)}
+                    className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-[2px] border oh-btn text-slate-700 cursor-pointer"
+                  >
                     <Mail size={13} />
                     <span>Open an email</span>
                   </a>
                 </div>
-                {navButtons(() => setStep('review'), primary('Try again', () => void handleSend()))}
+                {navButtons(
+                  () => setStep('review'),
+                  primary('Try again', () => void handleSend())
+                )}
               </>
             )}
           </div>

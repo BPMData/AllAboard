@@ -9,12 +9,7 @@ import {
   processWorksheetFile,
 } from '../lib/worksheetLoader';
 import { quadrantsByUser, type Quadrant } from '../lib/stampQuadrants';
-import {
-  sameWorksheet,
-  studentKey,
-  uploadWorksheetPages,
-  type RoundVariants,
-} from '../lib/roundVariants';
+import { sameWorksheet, studentKey, uploadWorksheetPages, type RoundVariants } from '../lib/roundVariants';
 
 const LETTERS = ['A', 'B', 'C', 'D'] as const;
 type Letter = (typeof LETTERS)[number];
@@ -59,7 +54,10 @@ interface SendWorksheetModalProps {
 const letterIndex = (l: Letter) => LETTERS.indexOf(l);
 
 /** A–D as they were last sent: A is the round's worksheet, B–D come from the saved variants. */
-function initialVariants(roundWorksheet: RoomBackground | null | undefined, saved: RoundVariants | null | undefined): Variant[] {
+function initialVariants(
+  roundWorksheet: RoomBackground | null | undefined,
+  saved: RoundVariants | null | undefined
+): Variant[] {
   const out: Variant[] = [{ letter: 'A', bg: roundWorksheet ?? null, rendering: false }];
   saved?.extra.forEach((bg, i) => {
     if (bg) out.push({ letter: LETTERS[i + 1], bg, rendering: false });
@@ -82,7 +80,7 @@ export function SendWorksheetModal({
 }: SendWorksheetModalProps) {
   const individual = round.mode === 'individual';
   const saved = individual ? roundVariants : null;
-  const nameOf = (userId: string | undefined) => (userId ? users.find((u) => u.userId === userId)?.name ?? '' : '');
+  const nameOf = (userId: string | undefined) => (userId ? (users.find((u) => u.userId === userId)?.name ?? '') : '');
   // Students are dealt out alphabetically by name (the same order the server uses at launch), then by board title.
   const sortedBoards = useMemo(
     () =>
@@ -261,7 +259,8 @@ export function SendWorksheetModal({
           const uid = b.assignedUserIds[0];
           const key = studentKey(nameOf(uid));
           if (key) delete pickByName[key];
-          if (key && overrides[b.id] && letters.includes(overrides[b.id])) pickByName[key] = letterIndex(overrides[b.id]);
+          if (key && overrides[b.id] && letters.includes(overrides[b.id]))
+            pickByName[key] = letterIndex(overrides[b.id]);
           if (uid && selected.has(b.id)) assigned[uid] = letterIndex(assignment.get(b.id)!);
         }
         const toIndex = (l: Letter) => (letters.includes(l) ? letterIndex(l) : 0);
@@ -287,7 +286,9 @@ export function SendWorksheetModal({
 
       setProgress('');
       if (skipped) {
-        setError(`Sent, but ${skipped} board${skipped === 1 ? ' was' : 's were'} not found (the round may have changed).`);
+        setError(
+          `Sent, but ${skipped} board${skipped === 1 ? ' was' : 's were'} not found (the round may have changed).`
+        );
         return;
       }
       onClose();
@@ -306,17 +307,25 @@ export function SendWorksheetModal({
     >
       {options.map((l) => (
         <option key={l} value={l}>
-          {l}{variantFor(l) ? '' : ' (no file)'}
+          {l}
+          {variantFor(l) ? '' : ' (no file)'}
         </option>
       ))}
     </select>
   );
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 p-4" role="dialog" aria-modal="true" aria-labelledby="send-worksheet-title">
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 p-4"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="send-worksheet-title"
+    >
       <div className="w-full max-w-3xl max-h-[90vh] flex flex-col rounded-[3px] border-2 border-[#CBD5E1] bg-white overflow-hidden">
         <div className="oh-panel-header px-5 py-3 border-b border-[#CBD5E1]">
-          <h3 id="send-worksheet-title" className="font-bold text-slate-900">Send worksheet to {round.title}</h3>
+          <h3 id="send-worksheet-title" className="font-bold text-slate-900">
+            Send worksheet to {round.title}
+          </h3>
         </div>
         <div className="p-5 space-y-5 overflow-y-auto text-sm text-slate-800">
           <section className="space-y-2">
@@ -342,7 +351,11 @@ export function SendWorksheetModal({
                       ? `${v.bg.fileName} · ${v.bg.pages.length} page${v.bg.pages.length === 1 ? '' : 's'}${v.note ? ` (${v.note})` : ''}`
                       : 'No file yet'}
                 </span>
-                {v.error && <span role="alert" className="text-xs text-red-700">{v.error}</span>}
+                {v.error && (
+                  <span role="alert" className="text-xs text-red-700">
+                    {v.error}
+                  </span>
+                )}
                 {v.letter !== 'A' && (
                   <button
                     type="button"
@@ -361,7 +374,12 @@ export function SendWorksheetModal({
                 disabled={sending}
                 onClick={() => {
                   const next = LETTERS.find((l) => !letters.includes(l));
-                  if (next) setVariants((prev) => [...prev, { letter: next, bg: null, rendering: false }].sort((a, b) => a.letter.localeCompare(b.letter)));
+                  if (next)
+                    setVariants((prev) =>
+                      [...prev, { letter: next, bg: null, rendering: false }].sort((a, b) =>
+                        a.letter.localeCompare(b.letter)
+                      )
+                    );
                 }}
                 className="px-2 py-1 text-xs rounded-[2px] border oh-btn text-slate-700 cursor-pointer"
               >
@@ -373,14 +391,27 @@ export function SendWorksheetModal({
           <section className="space-y-1">
             <h4 className="font-semibold">Who gets which</h4>
             <label className="flex gap-2">
-              <input type="radio" name="sw-mode" checked={effectiveMode === 'same'} onChange={() => chooseMode('same')} />
+              <input
+                type="radio"
+                name="sw-mode"
+                checked={effectiveMode === 'same'}
+                onChange={() => chooseMode('same')}
+              />
               Same worksheet (A) for all selected
             </label>
             <label className="flex gap-2">
-              <input type="radio" name="sw-mode" checked={effectiveMode === 'rotate'} onChange={() => chooseMode('rotate')} />
+              <input
+                type="radio"
+                name="sw-mode"
+                checked={effectiveMode === 'rotate'}
+                onChange={() => chooseMode('rotate')}
+              />
               Deal out {letters.join(', ')} in turn (alphabetical by student)
             </label>
-            <label className={`flex gap-2 ${cornerDisabledReason ? 'text-slate-400' : ''}`} title={cornerDisabledReason || undefined}>
+            <label
+              className={`flex gap-2 ${cornerDisabledReason ? 'text-slate-400' : ''}`}
+              title={cornerDisabledReason || undefined}
+            >
               <input
                 type="radio"
                 name="sw-mode"
@@ -396,7 +427,15 @@ export function SendWorksheetModal({
                 {(['tl', 'tr', 'bl', 'br', 'none'] as CornerKey[]).map((k) => (
                   <label key={k} className="flex items-center justify-between gap-2 text-xs">
                     {CORNER_LABEL[k]} →
-                    {letterSelect(cornerMap[k], (l) => { setRuleTouched(true); setCornerMap((m) => ({ ...m, [k]: l })); }, LETTERS, `${CORNER_LABEL[k]} worksheet`)}
+                    {letterSelect(
+                      cornerMap[k],
+                      (l) => {
+                        setRuleTouched(true);
+                        setCornerMap((m) => ({ ...m, [k]: l }));
+                      },
+                      LETTERS,
+                      `${CORNER_LABEL[k]} worksheet`
+                    )}
                   </label>
                 ))}
               </div>
@@ -405,9 +444,23 @@ export function SendWorksheetModal({
 
           <section className="space-y-2">
             <div className="flex items-center gap-3">
-              <h4 className="font-semibold">Boards ({selectedBoards.length}/{boards.length})</h4>
-              <button type="button" onClick={() => setSelected(new Set(boards.map((b) => b.id)))} className="text-xs text-brand-700 hover:underline cursor-pointer">Select all</button>
-              <button type="button" onClick={() => setSelected(new Set())} className="text-xs text-brand-700 hover:underline cursor-pointer">Select none</button>
+              <h4 className="font-semibold">
+                Boards ({selectedBoards.length}/{boards.length})
+              </h4>
+              <button
+                type="button"
+                onClick={() => setSelected(new Set(boards.map((b) => b.id)))}
+                className="text-xs text-brand-700 hover:underline cursor-pointer"
+              >
+                Select all
+              </button>
+              <button
+                type="button"
+                onClick={() => setSelected(new Set())}
+                className="text-xs text-brand-700 hover:underline cursor-pointer"
+              >
+                Select none
+              </button>
             </div>
             <table className="w-full text-xs">
               <thead className="text-left text-slate-500">
@@ -448,9 +501,16 @@ export function SendWorksheetModal({
                       </td>
                       {effectiveMode === 'corner' && <td className="py-1">{q ? CORNER_GLYPH[q] : 'none'}</td>}
                       <td className="py-1">
-                        {on
-                          ? letterSelect(assignment.get(b.id)!, (l) => setOverrides((o) => ({ ...o, [b.id]: l })), LETTERS.filter((l) => letters.includes(l) || l === assignment.get(b.id)), `Worksheet for ${b.title}`)
-                          : <span className="text-slate-400">—</span>}
+                        {on ? (
+                          letterSelect(
+                            assignment.get(b.id)!,
+                            (l) => setOverrides((o) => ({ ...o, [b.id]: l })),
+                            LETTERS.filter((l) => letters.includes(l) || l === assignment.get(b.id)),
+                            `Worksheet for ${b.title}`
+                          )
+                        ) : (
+                          <span className="text-slate-400">—</span>
+                        )}
                       </td>
                     </tr>
                   );
@@ -477,23 +537,36 @@ export function SendWorksheetModal({
           )}
           {!ruleTouched && Object.keys(currentLetters).length > 0 && (
             <p className="text-xs text-slate-500">
-              Boards keep the worksheet they already have. Pick a rule above to deal them out again, or change one board below.
+              Boards keep the worksheet they already have. Pick a rule above to deal them out again, or change one board
+              below.
             </p>
           )}
 
           {withWork > 0 && (
             <p className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-[2px] p-2">
-              {withWork} board{withWork === 1 ? ' already has' : 's already have'} student work. Their ink stays, but the worksheet underneath will change.
+              {withWork} board{withWork === 1 ? ' already has' : 's already have'} student work. Their ink stays, but
+              the worksheet underneath will change.
             </p>
           )}
           {missingLetters.length > 0 && (
-            <p className="text-xs text-red-700">Add a file for worksheet {missingLetters.join(', ')} or change who gets it.</p>
+            <p className="text-xs text-red-700">
+              Add a file for worksheet {missingLetters.join(', ')} or change who gets it.
+            </p>
           )}
           {cornerSummary && <p className="text-xs text-slate-600">{cornerSummary}</p>}
-          {error && <p role="alert" className="text-sm text-red-700">{error}</p>}
+          {error && (
+            <p role="alert" className="text-sm text-red-700">
+              {error}
+            </p>
+          )}
         </div>
         <div className="flex justify-end gap-2 px-5 py-3 border-t border-slate-200">
-          <button type="button" disabled={sending} onClick={onClose} className="px-3 py-1.5 text-sm rounded-[2px] border oh-btn text-slate-700 cursor-pointer">
+          <button
+            type="button"
+            disabled={sending}
+            onClick={onClose}
+            className="px-3 py-1.5 text-sm rounded-[2px] border oh-btn text-slate-700 cursor-pointer"
+          >
             Cancel
           </button>
           <button

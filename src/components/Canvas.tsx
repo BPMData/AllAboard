@@ -1,17 +1,17 @@
-import React,{ useCallback,useEffect,useMemo,useRef,useState } from 'react';
-import { Circle,Group,Text as KonvaText,Layer,Line,Rect,Shape,Stage } from 'react-konva';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Circle, Group, Text as KonvaText, Layer, Line, Rect, Shape, Stage } from 'react-konva';
 import type { Socket } from 'socket.io-client';
 import { exportAllBoardsToPdf } from '../lib/batchPdfExport';
 import {
-getActiveRound,
-getAllBoardsByRound,
-getBoardsInRound,
-getLaunchedRounds,
-getNextRoundNumber,
-getPreparedRounds,
-getRoundById,
-getRounds,
-isPreparedRound,
+  getActiveRound,
+  getAllBoardsByRound,
+  getBoardsInRound,
+  getLaunchedRounds,
+  getNextRoundNumber,
+  getPreparedRounds,
+  getRoundById,
+  getRounds,
+  isPreparedRound,
 } from '../lib/breakoutRounds';
 import { isPhoneViewport } from '../lib/compactLayout';
 import type { ElementGroup } from '../lib/elementGroups';
@@ -25,58 +25,53 @@ import {
   pickDriveFile,
 } from '../lib/googleDrive';
 import {
-computeNotesGone,
-getNoteFontSize,
-getPaletteColors,
-getSelectionBounds,
-hlInk,
-isSeeThroughHighlight,
-noteSize,
-traceHollowTipShape
+  computeNotesGone,
+  getNoteFontSize,
+  getPaletteColors,
+  getSelectionBounds,
+  hlInk,
+  isSeeThroughHighlight,
+  noteSize,
+  traceHollowTipShape,
 } from '../lib/inkCore';
 import type { PageRange } from '../lib/pageRange';
 import type { RoundVariants } from '../lib/roundVariants';
-import {
-authorKeyOf,
-summarizeSelectionAuthors
-} from '../lib/selectionAuthors';
-import type { ClientToServerEvents,ServerToClientEvents } from '../lib/socketContract';
-import {
-hasNameStamp
-} from '../lib/stamps';
+import { authorKeyOf, summarizeSelectionAuthors } from '../lib/selectionAuthors';
+import type { ClientToServerEvents, ServerToClientEvents } from '../lib/socketContract';
+import { hasNameStamp } from '../lib/stamps';
 import { cn } from '../lib/utils';
 import { layoutPages } from '../lib/worksheetLayout';
 import {
-BUILT_IN_TEMPLATES,
-BuiltInTemplateId,
-DEFAULT_WORKSHEET_IMPORT_SCALE,
-MAX_PDF_PAGES,
-WORKSHEET_IMPORT_SCALE_STORAGE_KEY,
-buildWorksheetBackground,
-getPdfPageCount,
-isPdfFile,
-normalizeWorksheetImportScale,
-processWorksheetFile
+  BUILT_IN_TEMPLATES,
+  BuiltInTemplateId,
+  DEFAULT_WORKSHEET_IMPORT_SCALE,
+  MAX_PDF_PAGES,
+  WORKSHEET_IMPORT_SCALE_STORAGE_KEY,
+  buildWorksheetBackground,
+  getPdfPageCount,
+  isPdfFile,
+  normalizeWorksheetImportScale,
+  processWorksheetFile,
 } from '../lib/worksheetLoader';
 import {
-BreakoutConfig,
-BreakoutGroupDraft,
-CanvasElement,
-ChatMessage,
-ClassroomTimerState,
-ConfigureBreakoutPayload,
-GridMode,
-HollowShapeKind,
-RemoteCursor,
-RoomBackground,
-SpotlightPayload,
-StampKind,
-StudentStatus,
-SubBoardData,
-TimerControlPayload,
-ToolType,
-User,
-type RestoreClassWork
+  BreakoutConfig,
+  BreakoutGroupDraft,
+  CanvasElement,
+  ChatMessage,
+  ClassroomTimerState,
+  ConfigureBreakoutPayload,
+  GridMode,
+  HollowShapeKind,
+  RemoteCursor,
+  RoomBackground,
+  SpotlightPayload,
+  StampKind,
+  StudentStatus,
+  SubBoardData,
+  TimerControlPayload,
+  ToolType,
+  User,
+  type RestoreClassWork,
 } from '../types';
 import {
   EMPTY_ROUND_TEMPLATES,
@@ -93,7 +88,7 @@ import {
 } from './canvas/canvasHelpers';
 import { CanvasToolbar } from './canvas/CanvasToolbar';
 import { CanvasViewportOverlays } from './canvas/CanvasViewportOverlays';
-import { InkLayer,MultiplyHighlightLayer,UNFOCUSED_INK_OPACITY,WorksheetPageNode } from './canvas/KonvaLayers';
+import { InkLayer, MultiplyHighlightLayer, UNFOCUSED_INK_OPACITY, WorksheetPageNode } from './canvas/KonvaLayers';
 import { createCanvasElementRenderer } from './canvas/renderCanvasElement';
 import { TeacherClassroomBar } from './canvas/TeacherClassroomBar';
 import { useCanvasHistory } from './canvas/useCanvasHistory';
@@ -102,15 +97,15 @@ import { useCanvasLaser } from './canvas/useCanvasLaser';
 import { useCanvasPointerTools } from './canvas/useCanvasPointerTools';
 import { useStageViewport } from './canvas/useStageViewport';
 import {
-BreakoutManagerModal,
-DriveSaveModal,
-LiveGridOverview,
-PdfPageRangeModal,
-RestoreSnapshotModal,
-WorksheetTemplateModal,
-type RoundWorksheetChoice,
+  BreakoutManagerModal,
+  DriveSaveModal,
+  LiveGridOverview,
+  PdfPageRangeModal,
+  RestoreSnapshotModal,
+  WorksheetTemplateModal,
+  type RoundWorksheetChoice,
 } from './CanvasModals';
-import { LoadLessonModal,SaveLessonModal,type LessonRequest } from './LessonPackModals';
+import { LoadLessonModal, SaveLessonModal, type LessonRequest } from './LessonPackModals';
 import { STATUS_OPTIONS } from './StudentStatusBadge';
 import { useClassWorkFiles } from './useClassWorkFiles';
 
@@ -282,12 +277,8 @@ export default function Canvas({
   const [hollowShape, setHollowShape] = useState<HollowShapeKind>(() =>
     readLocalHollowShape('allaboard-hollow-shape', 'circle')
   );
-  const [hollowWidth, setHollowWidth] = useState<number>(() =>
-    readLocalNum('allaboard-hollow-width', 36, 4, 120)
-  );
-  const [hollowWeight, setHollowWeight] = useState<number>(() =>
-    readLocalNum('allaboard-hollow-weight', 3, 1, 25)
-  );
+  const [hollowWidth, setHollowWidth] = useState<number>(() => readLocalNum('allaboard-hollow-width', 36, 4, 120));
+  const [hollowWeight, setHollowWeight] = useState<number>(() => readLocalNum('allaboard-hollow-weight', 3, 1, 25));
   const [showHollowMenu, setShowHollowMenu] = useState<boolean>(false);
   const hollowMenuRef = useRef<HTMLDivElement>(null);
 
@@ -317,25 +308,15 @@ export default function Canvas({
   const [tool, setTool] = useState<ToolType>('solid');
   const [stampKind, setStampKind] = useState<StampKind>('check');
   const [customTeacherStampText, setCustomTeacherStampText] = useState<string>('CHECK THIS');
-  const [gridMode, setGridMode] = useState<GridMode>(() =>
-    readLocalGridMode('allaboard-grid-mode', 'dots')
-  );
+  const [gridMode, setGridMode] = useState<GridMode>(() => readLocalGridMode('allaboard-grid-mode', 'dots'));
   const [showGridMenu, setShowGridMenu] = useState<boolean>(false);
   const gridMenuRef = useRef<HTMLDivElement>(null);
 
   // Derived active color & width based on whether Highlighter (See-Through or Cover), Eraser, Hollow, or Pen is active
-  const paletteMode: 'pen' | 'hl' | 'cover' =
-    tool === 'highlighter' ? (isCoverMode ? 'cover' : 'hl') : 'pen';
-  const color =
-    tool === 'highlighter' ? (isCoverMode ? coverColor : hlColor) : penColor;
+  const paletteMode: 'pen' | 'hl' | 'cover' = tool === 'highlighter' ? (isCoverMode ? 'cover' : 'hl') : 'pen';
+  const color = tool === 'highlighter' ? (isCoverMode ? coverColor : hlColor) : penColor;
   const strokeWidth =
-    tool === 'highlighter'
-      ? hlWidth
-      : tool === 'eraser'
-      ? eraserWidth
-      : tool === 'hollow'
-      ? hollowWidth
-      : penWidth;
+    tool === 'highlighter' ? hlWidth : tool === 'eraser' ? eraserWidth : tool === 'hollow' ? hollowWidth : penWidth;
 
   // Phones: the full toolbar would cover most of the board, so it folds behind a "Tools" button (closed by default).
   // Tablets, Chromebooks and laptops always show it.
@@ -441,7 +422,7 @@ export default function Canvas({
     editingNote,
     setEditingNote,
     noteTextareaRef,
-    noteClosedAtRef
+    noteClosedAtRef,
   } = useCanvasInteractionState();
 
   // Confirmation States
@@ -491,9 +472,7 @@ export default function Canvas({
   const [pendingPdfRange, setPendingPdfRange] = useState<{ file: File; totalPages: number } | null>(null);
   const [showTemplateModal, setShowTemplateModal] = useState(false);
   const [selectedTemplateId, setSelectedTemplateId] = useState<BuiltInTemplateId>('checkin-columns');
-  const [templatePromptText, setTemplatePromptText] = useState(
-    BUILT_IN_TEMPLATES[0].defaultPrompt
-  );
+  const [templatePromptText, setTemplatePromptText] = useState(BUILT_IN_TEMPLATES[0].defaultPrompt);
 
   // Breakout & Individual Assignment Manager Modal State (Teacher Only)
   const [showBreakoutModal, setShowBreakoutModal] = useState(false);
@@ -506,16 +485,10 @@ export default function Canvas({
   const [draftEditRoundId, setDraftEditRoundId] = useState<string>('');
   /** null = follow the live active round; 'all' = every round; otherwise a round id. */
   const [teacherViewingRoundId, setTeacherViewingRoundId] = useState<string | 'all' | null>(null);
-  const [draftAllowSelfSelect, setDraftAllowSelfSelect] = useState<boolean>(
-    breakoutConfig.allowSelfSelect
-  );
-  const [draftChatScope, setDraftChatScope] = useState<'unified' | 'board'>(
-    breakoutConfig.chatScope
-  );
+  const [draftAllowSelfSelect, setDraftAllowSelfSelect] = useState<boolean>(breakoutConfig.allowSelfSelect);
+  const [draftChatScope, setDraftChatScope] = useState<'unified' | 'board'>(breakoutConfig.chatScope);
   const [draftWorksheetChoice, setDraftWorksheetChoice] = useState<RoundWorksheetChoice>('current');
-  const [draftWorksheetTopic, setDraftWorksheetTopic] = useState<string>(
-    "Today's Core Concept: Photosynthesis"
-  );
+  const [draftWorksheetTopic, setDraftWorksheetTopic] = useState<string>("Today's Core Concept: Photosynthesis");
   const [showLiveGridOverview, setShowLiveGridOverview] = useState<boolean>(false);
 
   // Launched rounds only. Prepared rounds are listed in the breakout manager until they're launched.
@@ -542,7 +515,7 @@ export default function Canvas({
   const effectiveViewingRoundId: string | 'all' | null =
     teacherViewingRoundId === 'all' || getRoundById(breakoutConfig, teacherViewingRoundId)
       ? teacherViewingRoundId
-      : breakoutConfig.activeRoundId ?? null;
+      : (breakoutConfig.activeRoundId ?? null);
 
   const viewingRound = useMemo(
     () =>
@@ -577,9 +550,7 @@ export default function Canvas({
   const [customTimeInput, setCustomTimeInput] = useState<string>('7:00');
   const [displayRemainingMs, setDisplayRemainingMs] = useState<number>(0);
   const timerMenuRef = useRef<HTMLDivElement>(null);
-  const [pdfExportProgress, setPdfExportProgress] = useState<{ current: number; total: number } | null>(
-    null
-  );
+  const [pdfExportProgress, setPdfExportProgress] = useState<{ current: number; total: number } | null>(null);
 
   useEffect(() => {
     const updateRemaining = () => {
@@ -621,8 +592,8 @@ export default function Canvas({
       effectiveViewingRoundId === 'all'
         ? 'all-rounds'
         : effectiveViewingRoundId
-        ? `round-${getRoundById(breakoutConfig, effectiveViewingRoundId)?.number ?? ''}`
-        : 'boards';
+          ? `round-${getRoundById(breakoutConfig, effectiveViewingRoundId)?.number ?? ''}`
+          : 'boards';
     try {
       setPdfExportProgress({ current: 1, total: Math.max(1, allSubBoards.length + 1) });
       await exportAllBoardsToPdf({
@@ -642,12 +613,7 @@ export default function Canvas({
   const [lessonModal, setLessonModal] = useState<'save' | 'load' | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const {
-    laserPoints,
-    laserNow,
-    laserStrokeRef,
-    sendLaserPoint,
-  } = useCanvasLaser({
+  const { laserPoints, laserNow, laserStrokeRef, sendLaserPoint } = useCanvasLaser({
     laserSocket,
     activeBoardId,
     isTeacher,
@@ -659,12 +625,12 @@ export default function Canvas({
   const effectiveTool: ToolType = !canDraw
     ? 'pan'
     : isSpacePressed
-    ? 'pan'
-    : tool === 'move-bg' && (!isTeacher || !background)
-    ? 'pan'
-    : tool === 'laser' && !isTeacher
-    ? 'pan'
-    : tool;
+      ? 'pan'
+      : tool === 'move-bg' && (!isTeacher || !background)
+        ? 'pan'
+        : tool === 'laser' && !isTeacher
+          ? 'pan'
+          : tool;
 
   // Close Highlighter/Cover, Hollow, Grid, Status, or Text Size popout menu when clicking outside or pressing Escape
   useEffect(() => {
@@ -709,9 +675,7 @@ export default function Canvas({
   const initializeDraftGroups = useCallback(
     (count: number, randomize = true) => {
       const students = users.filter((u) => !u.isTeacher);
-      const shuffled = randomize
-        ? [...students].sort(() => Math.random() - 0.5)
-        : [...students];
+      const shuffled = randomize ? [...students].sort(() => Math.random() - 0.5) : [...students];
 
       const nextGroups: BreakoutGroupDraft[] = [];
       for (let i = 0; i < count; i++) {
@@ -731,9 +695,7 @@ export default function Canvas({
 
   const loadDraftGroupsForRound = useCallback(
     (roundId: string | null | undefined): boolean => {
-      const current = roundId
-        ? getBoardsInRound(subBoards, roundId).filter((sb) => sb.kind === 'group')
-        : [];
+      const current = roundId ? getBoardsInRound(subBoards, roundId).filter((sb) => sb.kind === 'group') : [];
       if (current.length === 0) return false;
       setDraftGroupCount(current.length);
       setDraftGroups(
@@ -779,8 +741,7 @@ export default function Canvas({
   };
 
   const handleOpenBreakoutModal = () => {
-    const initialTarget =
-      viewingRound || activeRound || (rounds.length > 0 ? rounds[rounds.length - 1] : null);
+    const initialTarget = viewingRound || activeRound || (rounds.length > 0 ? rounds[rounds.length - 1] : null);
     setDraftRoundAction(initialTarget ? 'update-current' : 'new-round');
     setDraftEditRoundId(initialTarget?.id || '');
     setDraftBreakoutMode(initialTarget?.mode ?? 'individual');
@@ -798,10 +759,7 @@ export default function Canvas({
     return elements.filter((el) => idSet.has(el.id) && !allGoneNoteIds.has(el.id));
   }, [elements, selectedIds, allGoneNoteIds]);
 
-  const selectedTextElements = useMemo(
-    () => selectedElements.filter((el) => el.tool === 'text'),
-    [selectedElements]
-  );
+  const selectedTextElements = useMemo(() => selectedElements.filter((el) => el.tool === 'text'), [selectedElements]);
 
   const selectionAuthors = useMemo(() => {
     if (!isTeacher || selectedElements.length === 0) return [];
@@ -830,29 +788,18 @@ export default function Canvas({
     if (!base) return null;
     const dx = selectionDragOffset?.dx || 0;
     const dy = selectionDragOffset?.dy || 0;
-    return [base[0] + dx, base[1] + dy, base[2] + dx, base[3] + dy] as [
-      number,
-      number,
-      number,
-      number,
-    ];
+    return [base[0] + dx, base[1] + dy, base[2] + dx, base[3] + dy] as [number, number, number, number];
   }, [selectedElements, selectionDragOffset]);
 
   const activeTextSize = editingNote
     ? editingNote.fontSize
     : selectedTextElements.length > 0
-    ? getNoteFontSize(selectedTextElements[0])
-    : textFontSize;
+      ? getNoteFontSize(selectedTextElements[0])
+      : textFontSize;
 
   // Per-board action-aware Undo & Redo history helpers
 
-  const {
-    recordUndo,
-    canLocalUndo,
-    canRedo,
-    performUndo,
-    performRedo,
-  } = useCanvasHistory({
+  const { recordUndo, canLocalUndo, canRedo, performUndo, performRedo } = useCanvasHistory({
     laserSocket,
     activeBoardId,
     onUndo,
@@ -912,16 +859,7 @@ export default function Canvas({
         onElementsBatchUpdate(updates, false);
       }
     },
-    [
-      tool,
-      isCoverMode,
-      editingNote,
-      selectedElements,
-      canDraw,
-      hlStrength,
-      recordUndo,
-      onElementsBatchUpdate,
-    ]
+    [tool, isCoverMode, editingNote, selectedElements, canDraw, hlStrength, recordUndo, onElementsBatchUpdate]
   );
 
   // Brush / highlight / eraser / hollow stroke width (each persisted independently)
@@ -1002,15 +940,27 @@ export default function Canvas({
     }));
   }, [background]);
 
-  const classWork = useClassWorkFiles({
-    roomId, exportedBy: userName, elements: fullMainElements, messages: fullMainMessages,
-    background: fullMainBackground, subBoards, breakoutConfig, roundTemplates, roundTemplateInk, roundVariants,
-  }, onTeacherImportRoom, (restored) => {
-    const restoredBackground = restored.background || background;
-    if (restored.elements.length || restoredBackground) {
-      setTimeout(() => fitElementsAndBackgroundInView(restored.elements, restoredBackground), 80);
+  const classWork = useClassWorkFiles(
+    {
+      roomId,
+      exportedBy: userName,
+      elements: fullMainElements,
+      messages: fullMainMessages,
+      background: fullMainBackground,
+      subBoards,
+      breakoutConfig,
+      roundTemplates,
+      roundTemplateInk,
+      roundVariants,
+    },
+    onTeacherImportRoom,
+    (restored) => {
+      const restoredBackground = restored.background || background;
+      if (restored.elements.length || restoredBackground) {
+        setTimeout(() => fitElementsAndBackgroundInView(restored.elements, restoredBackground), 80);
+      }
     }
-  });
+  );
 
   const {
     commitEditingNote,
@@ -1023,7 +973,7 @@ export default function Canvas({
     handleViewportPointerDown,
     handleViewportPointerMove,
     handleViewportPointerUp,
-    handleViewportDoubleClick
+    handleViewportDoubleClick,
   } = useCanvasPointerTools({
     onCursorMove,
     noteTextareaRef,
@@ -1120,7 +1070,7 @@ export default function Canvas({
     smoothLevel,
     onElementAppendPoints,
     onElementsBatchUpdate,
-    onElementsReplace
+    onElementsReplace,
   });
 
   // Auto-fit when switching between sub-boards
@@ -1227,9 +1177,7 @@ export default function Canvas({
         return;
       }
       setWorksheetError(
-        err instanceof GoogleError
-          ? friendlyGoogleError(err.code)
-          : err?.message || 'Could not import from Drive.'
+        err instanceof GoogleError ? friendlyGoogleError(err.code) : err?.message || 'Could not import from Drive.'
       );
     } finally {
       if (driveAbortRef.current === controller) {
@@ -1268,7 +1216,12 @@ export default function Canvas({
     document.body.removeChild(link);
   };
 
-  const renderElement = createCanvasElementRenderer({ editingNote, selectionDragOffset, selectedIds, draggingNotePreview });
+  const renderElement = createCanvasElementRenderer({
+    editingNote,
+    selectionDragOffset,
+    selectedIds,
+    draggingNotePreview,
+  });
 
   const gridSpacing = Math.max(20, Math.round(40 * stageScale));
   const activeSwatches = useMemo(() => getPaletteColors(paletteMode), [paletteMode]);
@@ -1610,17 +1563,28 @@ export default function Canvas({
           {classWork.downloadError && (
             <div role="alert" className="rounded border bg-white p-3 text-sm shadow-lg">
               <p>{classWork.downloadError}</p>
-              <button type="button" className="mr-4 underline" disabled={classWork.isDownloading} onClick={classWork.handleExportJSON}>
+              <button
+                type="button"
+                className="mr-4 underline"
+                disabled={classWork.isDownloading}
+                onClick={classWork.handleExportJSON}
+              >
                 {classWork.isDownloading ? 'Saving…' : 'Retry download'}
               </button>
-              <button type="button" onClick={classWork.dismissDownloadError}>Dismiss</button>
+              <button type="button" onClick={classWork.dismissDownloadError}>
+                Dismiss
+              </button>
             </div>
           )}
           {classWork.restoreNotice && (
             <div role="alert" className="rounded border bg-white p-3 text-sm shadow-lg">
               <p>{classWork.restoreNotice}</p>
-              <button type="button" className="mr-4 underline" onClick={classWork.reviewRestore}>Review restore</button>
-              <button type="button" onClick={classWork.discardRestore}>Dismiss</button>
+              <button type="button" className="mr-4 underline" onClick={classWork.reviewRestore}>
+                Review restore
+              </button>
+              <button type="button" onClick={classWork.discardRestore}>
+                Dismiss
+              </button>
             </div>
           )}
         </div>
@@ -1637,42 +1601,31 @@ export default function Canvas({
         onDoubleClick={handleViewportDoubleClick}
         onContextMenu={(e) => e.preventDefault()}
         className={cn(
-          "flex-1 relative overflow-hidden touch-none",
-          showLiveGridOverview && isTeacher && "hidden",
+          'flex-1 relative overflow-hidden touch-none',
+          showLiveGridOverview && isTeacher && 'hidden',
           effectiveTool === 'pan' || effectiveTool === 'move-bg'
             ? isPanning || isMovingBg
-              ? "cursor-grabbing"
-              : "cursor-grab"
+              ? 'cursor-grabbing'
+              : 'cursor-grab'
             : effectiveTool === 'select'
-            ? selectionDragOffset
-              ? "cursor-grabbing"
-              : hoveredNoteId
-              ? "cursor-move"
-              : "cursor-crosshair"
-            : effectiveTool === 'text'
-            ? draggingNotePreview
-              ? "cursor-grabbing"
-              : hoveredNoteId
-              ? "cursor-move"
-              : "cursor-text"
-            : "cursor-none"
+              ? selectionDragOffset
+                ? 'cursor-grabbing'
+                : hoveredNoteId
+                  ? 'cursor-move'
+                  : 'cursor-crosshair'
+              : effectiveTool === 'text'
+                ? draggingNotePreview
+                  ? 'cursor-grabbing'
+                  : hoveredNoteId
+                    ? 'cursor-move'
+                    : 'cursor-text'
+                : 'cursor-none'
         )}
         style={getCanvasGridStyle(gridMode, gridSpacing, stagePos)}
       >
-        <Stage
-          width={dimensions.width}
-          height={dimensions.height}
-          onWheel={handleWheel}
-          ref={stageRef}
-        >
+        <Stage width={dimensions.width} height={dimensions.height} onWheel={handleWheel} ref={stageRef}>
           {/* Layer 1: Indelible Teacher Background Worksheet Layer */}
-          <Layer
-            x={stagePos.x}
-            y={stagePos.y}
-            scaleX={stageScale}
-            scaleY={stageScale}
-            listening={false}
-          >
+          <Layer x={stagePos.x} y={stagePos.y} scaleX={stageScale} scaleY={stageScale} listening={false}>
             {computedBackgroundPages.map((pg) => (
               <WorksheetPageNode
                 key={pg.key}
@@ -1687,27 +1640,13 @@ export default function Canvas({
           </Layer>
 
           {/* Layer 2..N: Per-Student Isolated Multiply-Highlight Layer + Top Ink Layer (OverBoard architecture) */}
-          {elementsGroupedByUser.map(
-            ({ userId: groupUserId, userElements, goneNoteIds, hasSeeThroughHighlights }) => {
-              const screenOpacity =
-                focusedInkAuthor && authorKeyOf(groupUserId) !== focusedInkAuthor ? UNFOCUSED_INK_OPACITY : 1;
-              return (
-                <React.Fragment key={groupUserId}>
-                  {hasSeeThroughHighlights && (
-                    <MultiplyHighlightLayer
-                      x={stagePos.x}
-                      y={stagePos.y}
-                      scaleX={stageScale}
-                      scaleY={stageScale}
-                      screenOpacity={screenOpacity}
-                    >
-                      {userElements
-                        .filter((el) => isSeeThroughHighlight(el) || el.tool === 'eraser')
-                        .map((el) => renderElement(el, goneNoteIds))}
-                    </MultiplyHighlightLayer>
-                  )}
-
-                  <InkLayer
+          {elementsGroupedByUser.map(({ userId: groupUserId, userElements, goneNoteIds, hasSeeThroughHighlights }) => {
+            const screenOpacity =
+              focusedInkAuthor && authorKeyOf(groupUserId) !== focusedInkAuthor ? UNFOCUSED_INK_OPACITY : 1;
+            return (
+              <React.Fragment key={groupUserId}>
+                {hasSeeThroughHighlights && (
+                  <MultiplyHighlightLayer
                     x={stagePos.x}
                     y={stagePos.y}
                     scaleX={stageScale}
@@ -1715,29 +1654,39 @@ export default function Canvas({
                     screenOpacity={screenOpacity}
                   >
                     {userElements
-                      .filter((el) => !isSeeThroughHighlight(el))
+                      .filter((el) => isSeeThroughHighlight(el) || el.tool === 'eraser')
                       .map((el) => renderElement(el, goneNoteIds))}
-                  </InkLayer>
-                </React.Fragment>
-              );
-            }
-          )}
+                  </MultiplyHighlightLayer>
+                )}
+
+                <InkLayer
+                  x={stagePos.x}
+                  y={stagePos.y}
+                  scaleX={stageScale}
+                  scaleY={stageScale}
+                  screenOpacity={screenOpacity}
+                >
+                  {userElements.filter((el) => !isSeeThroughHighlight(el)).map((el) => renderElement(el, goneNoteIds))}
+                </InkLayer>
+              </React.Fragment>
+            );
+          })}
 
           {/* Top Overlay Layer: Live Remote Cursors (filtered to current activeBoardId) & Local Brush/Stamp Preview */}
-          <Layer
-            x={stagePos.x}
-            y={stagePos.y}
-            scaleX={stageScale}
-            scaleY={stageScale}
-            listening={false}
-          >
+          <Layer x={stagePos.x} y={stagePos.y} scaleX={stageScale} scaleY={stageScale} listening={false}>
             {laserPoints.map((point, index) => {
               const previous = laserPoints[index - 1];
               const opacity = Math.max(0, 1 - (laserNow - point.time) / 1200);
               return (
                 <Group key={point.id} opacity={opacity}>
                   {previous && previous.userId === point.userId && previous.strokeId === point.strokeId && (
-                    <Line points={[previous.x, previous.y, point.x, point.y]} stroke="#ef4444" strokeWidth={4 / stageScale} lineCap="round" lineJoin="round" />
+                    <Line
+                      points={[previous.x, previous.y, point.x, point.y]}
+                      stroke="#ef4444"
+                      strokeWidth={4 / stageScale}
+                      lineCap="round"
+                      lineJoin="round"
+                    />
                   )}
                   <Circle x={point.x} y={point.y} radius={6 / stageScale} fill="#ef4444" opacity={0.35} />
                   <Circle x={point.x} y={point.y} radius={2.5 / stageScale} fill="#ff3030" />
@@ -1750,12 +1699,7 @@ export default function Canvas({
               if ((rc.boardId || 'main') !== activeBoardId) return null;
               return (
                 <Group key={rc.userId} x={rc.x} y={rc.y}>
-                  <Circle
-                    radius={5 / stageScale}
-                    fill={rc.color}
-                    stroke="#ffffff"
-                    strokeWidth={1.5 / stageScale}
-                  />
+                  <Circle radius={5 / stageScale} fill={rc.color} stroke="#ffffff" strokeWidth={1.5 / stageScale} />
                   <KonvaText
                     x={8 / stageScale}
                     y={-6 / stageScale}
@@ -1784,13 +1728,7 @@ export default function Canvas({
                     if (!rawCtx) return;
                     rawCtx.save();
                     rawCtx.beginPath();
-                    traceHollowTipShape(
-                      rawCtx,
-                      worldPos.x,
-                      worldPos.y,
-                      strokeWidth / 2,
-                      hollowShape
-                    );
+                    traceHollowTipShape(rawCtx, worldPos.x, worldPos.y, strokeWidth / 2, hollowShape);
                     rawCtx.strokeStyle = color;
                     rawCtx.lineWidth = 1.4 / stageScale;
                     rawCtx.setLineDash([3 / stageScale, 3 / stageScale]);
@@ -1806,8 +1744,8 @@ export default function Canvas({
                     effectiveTool === 'stamp'
                       ? Math.max(16, strokeWidth * 1.8 + 10)
                       : effectiveTool === 'eraser'
-                      ? Math.max(8, strokeWidth * 1.5) / 2
-                      : strokeWidth / 2
+                        ? Math.max(8, strokeWidth * 1.5) / 2
+                        : strokeWidth / 2
                   }
                   stroke={effectiveTool === 'eraser' ? '#64748b' : color}
                   strokeWidth={1.2 / stageScale}

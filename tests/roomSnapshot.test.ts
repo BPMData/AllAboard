@@ -37,7 +37,16 @@ describe('roomSnapshot helpers', () => {
         layout: 'stack',
         opacity: 1,
       },
-      subBoards: { r1_ind_u1: { id: 'r1_ind_u1', title: 'A', assignedUserIds: ['u1'], elements: [], background: null, messages: [] } },
+      subBoards: {
+        r1_ind_u1: {
+          id: 'r1_ind_u1',
+          title: 'A',
+          assignedUserIds: ['u1'],
+          elements: [],
+          background: null,
+          messages: [],
+        },
+      },
       breakoutConfig: { mode: 'main', allowSelfSelect: false, chatScope: 'unified' },
     });
 
@@ -56,28 +65,57 @@ describe('roomSnapshot helpers', () => {
 
   it('round-trips worksheets, ink, chat, and breakout rounds in a portable class-work file', async () => {
     const worksheet = (id: string): RoomBackground => ({
-      id, fileName: id + '.png', pages: [{ dataUrl: '/api/assets/' + id, width: 20, height: 30 }],
-      x: 0, y: 0, scale: 1, layout: 'stack', opacity: 1,
+      id,
+      fileName: id + '.png',
+      pages: [{ dataUrl: '/api/assets/' + id, width: 20, height: 30 }],
+      x: 0,
+      y: 0,
+      scale: 1,
+      layout: 'stack',
+      opacity: 1,
     });
     const mainInk: CanvasElement = {
-      id: 'main-ink', userId: 't', userName: 'Teacher', tool: 'solid', color: '#000', strokeWidth: 2, points: [1, 2],
+      id: 'main-ink',
+      userId: 't',
+      userName: 'Teacher',
+      tool: 'solid',
+      color: '#000',
+      strokeWidth: 2,
+      points: [1, 2],
     };
     const message = { id: 'm1', userId: 's1', userName: 'Sam', text: 'Done', timestamp: 123 };
     const variants = emptyRoundVariants();
     variants.extra[0] = worksheet('variant');
     variants.assigned.s1 = 1;
     const source: SnapshotSource = {
-      roomId: 'math', exportedBy: 'Teacher', background: worksheet('main'), elements: [mainInk], messages: [message],
-      subBoards: { team: {
-        id: 'team', title: 'Team', kind: 'group', roundId: 'r1', assignedUserIds: ['s1'], background: worksheet('group'),
-        elements: [{ ...mainInk, id: 'team-ink', boardId: 'team' }], messages: [message],
-      } },
+      roomId: 'math',
+      exportedBy: 'Teacher',
+      background: worksheet('main'),
+      elements: [mainInk],
+      messages: [message],
+      subBoards: {
+        team: {
+          id: 'team',
+          title: 'Team',
+          kind: 'group',
+          roundId: 'r1',
+          assignedUserIds: ['s1'],
+          background: worksheet('group'),
+          elements: [{ ...mainInk, id: 'team-ink', boardId: 'team' }],
+          messages: [message],
+        },
+      },
       breakoutConfig: {
-        mode: 'groups', activeRoundId: 'r1', allowSelfSelect: false, chatScope: 'board',
+        mode: 'groups',
+        activeRoundId: 'r1',
+        allowSelfSelect: false,
+        chatScope: 'board',
         rounds: [{ id: 'r1', number: 1, title: 'Practice', mode: 'groups', createdAt: 123 }],
         autoIndividualBackground: worksheet('auto'),
       },
-      roundTemplates: { r1: worksheet('group') }, roundTemplateInk: { r1: [mainInk] }, roundVariants: { r1: variants },
+      roundTemplates: { r1: worksheet('group') },
+      roundTemplateInk: { r1: [mainInk] },
+      roundVariants: { r1: variants },
     };
     const fetched: string[] = [];
     const { json, fileName } = await buildSnapshotJson(source, async (url) => {
@@ -90,8 +128,12 @@ describe('roomSnapshot helpers', () => {
     const { pending, error } = parseSnapshotText(fileName, json, 'fallback');
     assert.equal(error, null);
     assert.deepEqual(pending, {
-      ...source, fileName, exportedAt: JSON.parse(json).exportedAt,
-      assets: Object.fromEntries(urls.map((url) => [url, 'data:image/png;base64,' + Buffer.from(url).toString('base64')])),
+      ...source,
+      fileName,
+      exportedAt: JSON.parse(json).exportedAt,
+      assets: Object.fromEntries(
+        urls.map((url) => [url, 'data:image/png;base64,' + Buffer.from(url).toString('base64')])
+      ),
     });
   });
 

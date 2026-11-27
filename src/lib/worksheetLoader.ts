@@ -42,7 +42,7 @@ export const BUILT_IN_TEMPLATES: BuiltInTemplateDefinition[] = [
     id: 'checkin-columns',
     name: 'Task Pulse Check (Got It / Working / Help)',
     description: 'Three spacious columns where students drop a stamp or sign their name based on their progress.',
-    defaultPrompt: 'Put a stamp where you feel you are on today\'s task',
+    defaultPrompt: "Put a stamp where you feel you are on today's task",
     promptPlaceholder: 'e.g. Put a stamp where you feel you are on Lab #3...',
   },
   {
@@ -56,15 +56,12 @@ export const BUILT_IN_TEMPLATES: BuiltInTemplateDefinition[] = [
     id: 'frayer-model',
     name: 'Collaborative Concept Map (4-Box Frayer)',
     description: 'Central concept box surrounded by Definition, Visual Sketch, Examples, and Non-Examples.',
-    defaultPrompt: 'Today\'s Core Concept: Photosynthesis',
-    promptPlaceholder: 'e.g. Today\'s Core Concept: Quadratic Functions...',
+    defaultPrompt: "Today's Core Concept: Photosynthesis",
+    promptPlaceholder: "e.g. Today's Core Concept: Quadratic Functions...",
   },
 ];
 
-export function generateTemplateBackground(
-  templateId: BuiltInTemplateId,
-  customPromptText: string
-): RoomBackground {
+export function generateTemplateBackground(templateId: BuiltInTemplateId, customPromptText: string): RoomBackground {
   const width = 1400;
   const height = 920;
   const canvas = document.createElement('canvas');
@@ -439,19 +436,12 @@ async function renderImageFileToPage(file: File, importScale?: number): Promise<
         let baseHeight = img.naturalHeight || img.height;
 
         if (baseWidth > MAX_IMAGE_DIMENSION || baseHeight > MAX_IMAGE_DIMENSION) {
-          const ratio = Math.min(
-            MAX_IMAGE_DIMENSION / baseWidth,
-            MAX_IMAGE_DIMENSION / baseHeight
-          );
+          const ratio = Math.min(MAX_IMAGE_DIMENSION / baseWidth, MAX_IMAGE_DIMENSION / baseHeight);
           baseWidth = Math.round(baseWidth * ratio);
           baseHeight = Math.round(baseHeight * ratio);
         }
 
-        const { width, height, renderWidth, renderHeight } = scalePageDimensions(
-          baseWidth,
-          baseHeight,
-          importScale
-        );
+        const { width, height, renderWidth, renderHeight } = scalePageDimensions(baseWidth, baseHeight, importScale);
 
         const canvas = document.createElement('canvas');
         canvas.width = renderWidth;
@@ -474,21 +464,12 @@ async function renderImageFileToPage(file: File, importScale?: number): Promise<
   });
 }
 
-async function renderPdfToPages(
-  file: File,
-  range?: PageRange,
-  importScale?: number
-): Promise<BackgroundPage[]> {
+async function renderPdfToPages(file: File, range?: PageRange, importScale?: number): Promise<BackgroundPage[]> {
   const arrayBuffer = await file.arrayBuffer();
   const loadingTask = pdfjsLib.getDocument({ data: arrayBuffer });
   const pdf = await loadingTask.promise;
 
-  const { first, last } = clampPageRange(
-    range?.first ?? 1,
-    range?.last ?? MAX_PDF_PAGES,
-    pdf.numPages,
-    MAX_PDF_PAGES
-  );
+  const { first, last } = clampPageRange(range?.first ?? 1, range?.last ?? MAX_PDF_PAGES, pdf.numPages, MAX_PDF_PAGES);
   const pages: BackgroundPage[] = [];
 
   for (let pageNum = first; pageNum <= last; pageNum++) {
@@ -498,11 +479,7 @@ async function renderPdfToPages(
     const baseWidth = Math.round(unscaledViewport.width * baseScale);
     const baseHeight = Math.round(unscaledViewport.height * baseScale);
 
-    const { width, height, renderWidth } = scalePageDimensions(
-      baseWidth,
-      baseHeight,
-      importScale
-    );
+    const { width, height, renderWidth } = scalePageDimensions(baseWidth, baseHeight, importScale);
     const renderScale = renderWidth / Math.max(unscaledViewport.width, 1);
     const viewport = page.getViewport({ scale: renderScale });
 
@@ -551,8 +528,7 @@ export function buildWorksheetBackground(pages: BackgroundPage[], fileName: stri
 }
 
 /** File types the worksheet pickers accept. */
-export const WORKSHEET_FILE_ACCEPT =
-  '.png,.jpg,.jpeg,.webp,.pdf,image/png,image/jpeg,image/webp,application/pdf';
+export const WORKSHEET_FILE_ACCEPT = '.png,.jpg,.jpeg,.webp,.pdf,image/png,image/jpeg,image/webp,application/pdf';
 
 /**
  * One file → one worksheet background, keeping the first MAX_PDF_PAGES pages of a long PDF.

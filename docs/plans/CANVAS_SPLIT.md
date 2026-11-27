@@ -21,6 +21,7 @@ Break `src/components/Canvas.tsx` (6,411 lines, 186 React hooks) into focused, r
    - Move `renderElement` (lines 3254–3506) into a pure rendering helper / component taking the element, selection/drag/focus props, and note-edit state.
 
 ### Phase 1 Checkpoint
+
 ```sh
 npm run lint
 npm test
@@ -41,6 +42,7 @@ npm run test:e2e
      - Resize observer `useEffect` (lines ~785–801), `screenToWorld`, `getLocalPosFromEvent`, `resetView`, `fitElementsAndBackgroundInView`, `fitAllContent`, `handleWheel`, `zoomStep`.
 
 ### Phase 2 Checkpoint
+
 ```sh
 npm run lint
 npm test
@@ -63,6 +65,7 @@ npm run test:e2e
      - Keyboard shortcut `useEffect`s (Ctrl/Cmd+Z/Y/C/V/D, Escape, Delete/Backspace, tool shortcuts).
 
 ### Phase 3 Checkpoint
+
 ```sh
 npm run lint
 npm test
@@ -90,6 +93,7 @@ npm run test:e2e
 5. Update `docs/ARCHITECTURE.md` §3 with the new `src/components/canvas/*` files and updated `Canvas.tsx` line count.
 
 ### Final Verification
+
 ```sh
 npm run lint
 npm test

@@ -1,4 +1,7 @@
-export interface PageRange { first: number; last: number } // 1-based, inclusive
+export interface PageRange {
+  first: number;
+  last: number;
+} // 1-based, inclusive
 
 export const MAX_PDF_PAGES = 30;
 export const MAX_RENDER_PIXEL_DIMENSION = 2400;
@@ -35,8 +38,7 @@ export function scalePageDimensions(
   renderHeight: number;
   multiplier: number;
 } {
-  const multiplier =
-    importScale === undefined ? 1 : normalizeWorksheetImportScale(importScale);
+  const multiplier = importScale === undefined ? 1 : normalizeWorksheetImportScale(importScale);
   const safeBaseW = Math.max(1, baseWidth);
   const safeBaseH = Math.max(1, baseHeight);
   const width = Math.max(1, Math.round(safeBaseW * multiplier));
@@ -45,10 +47,7 @@ export function scalePageDimensions(
   let renderWidth = width;
   let renderHeight = height;
   if (renderWidth > MAX_RENDER_PIXEL_DIMENSION || renderHeight > MAX_RENDER_PIXEL_DIMENSION) {
-    const capRatio = Math.min(
-      MAX_RENDER_PIXEL_DIMENSION / renderWidth,
-      MAX_RENDER_PIXEL_DIMENSION / renderHeight
-    );
+    const capRatio = Math.min(MAX_RENDER_PIXEL_DIMENSION / renderWidth, MAX_RENDER_PIXEL_DIMENSION / renderHeight);
     renderWidth = Math.max(1, Math.round(renderWidth * capRatio));
     renderHeight = Math.max(1, Math.round(renderHeight * capRatio));
   }

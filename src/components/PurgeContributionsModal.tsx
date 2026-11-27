@@ -63,18 +63,11 @@ export default function PurgeContributionsModal({
               {step === 2 ? <Trash2 size={18} /> : <AlertTriangle size={18} />}
             </div>
             <div>
-              <h2
-                id="purge-contributions-title"
-                className="font-display font-bold text-base text-slate-900"
-              >
-                {step === 1
-                  ? `${actionMode === 'ban' ? 'Banned' : 'Kicked'} ${targetName}`
-                  : 'Are you really sure?'}
+              <h2 id="purge-contributions-title" className="font-display font-bold text-base text-slate-900">
+                {step === 1 ? `${actionMode === 'ban' ? 'Banned' : 'Kicked'} ${targetName}` : 'Are you really sure?'}
               </h2>
               <p className="text-xs text-slate-500">
-                {step === 1
-                  ? 'Optional cleanup'
-                  : `Permanently removing ${targetName}’s room contributions`}
+                {step === 1 ? 'Optional cleanup' : `Permanently removing ${targetName}’s room contributions`}
               </p>
             </div>
           </div>
@@ -91,63 +84,63 @@ export default function PurgeContributionsModal({
         </div>
 
         <div className="p-5 space-y-4">
-        {step === 1 ? (
-          <>
-            <p className="text-sm font-medium text-slate-800 leading-snug">
-              Delete all their contributions to the room (chat messages, drawings, annotations)?
-            </p>
-            {countsSummary && (
-              <p className="px-3 py-2 rounded-[3px] bg-slate-50 border border-[#CBD5E1] text-xs text-slate-600">
-                Found in this room: <span className="font-semibold text-slate-800">{countsSummary}</span>
+          {step === 1 ? (
+            <>
+              <p className="text-sm font-medium text-slate-800 leading-snug">
+                Delete all their contributions to the room (chat messages, drawings, annotations)?
               </p>
-            )}
-            <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-200">
-              <button
-                type="button"
-                disabled={isBusy}
-                onClick={onCancel}
-                className="px-4 py-1.5 rounded-[2px] border oh-btn text-xs font-semibold text-slate-700 transition-colors cursor-pointer disabled:opacity-40"
-              >
-                No
-              </button>
-              <button
-                type="button"
-                disabled={isBusy}
-                onClick={() => setStep(2)}
-                className="px-4 py-1.5 rounded-[2px] border oh-btn-danger text-xs font-semibold text-white transition-colors cursor-pointer disabled:opacity-40"
-              >
-                Yes
-              </button>
-            </div>
-          </>
-        ) : (
-          <>
-            <p className="text-xs text-slate-600 leading-relaxed">
-              This will immediately and permanently delete all chat messages, drawings, and annotations by{' '}
-              <span className="font-semibold text-slate-900">{targetName}</span> across the entire room
-              (including breakout boards). This cannot be undone.
-            </p>
-            <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-200">
-              <button
-                type="button"
-                disabled={isBusy}
-                onClick={onCancel}
-                className="px-4 py-1.5 rounded-[2px] border oh-btn text-xs font-semibold text-slate-700 transition-colors cursor-pointer disabled:opacity-40"
-              >
-                No
-              </button>
-              <button
-                type="button"
-                disabled={isBusy}
-                onClick={onConfirmDelete}
-                className="flex items-center gap-1.5 px-4 py-1.5 rounded-[2px] border oh-btn-danger text-xs font-semibold text-white transition-colors cursor-pointer disabled:opacity-40"
-              >
-                <Trash2 size={13} />
-                <span>{isBusy ? 'Deleting...' : 'Yes'}</span>
-              </button>
-            </div>
-          </>
-        )}
+              {countsSummary && (
+                <p className="px-3 py-2 rounded-[3px] bg-slate-50 border border-[#CBD5E1] text-xs text-slate-600">
+                  Found in this room: <span className="font-semibold text-slate-800">{countsSummary}</span>
+                </p>
+              )}
+              <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-200">
+                <button
+                  type="button"
+                  disabled={isBusy}
+                  onClick={onCancel}
+                  className="px-4 py-1.5 rounded-[2px] border oh-btn text-xs font-semibold text-slate-700 transition-colors cursor-pointer disabled:opacity-40"
+                >
+                  No
+                </button>
+                <button
+                  type="button"
+                  disabled={isBusy}
+                  onClick={() => setStep(2)}
+                  className="px-4 py-1.5 rounded-[2px] border oh-btn-danger text-xs font-semibold text-white transition-colors cursor-pointer disabled:opacity-40"
+                >
+                  Yes
+                </button>
+              </div>
+            </>
+          ) : (
+            <>
+              <p className="text-xs text-slate-600 leading-relaxed">
+                This will immediately and permanently delete all chat messages, drawings, and annotations by{' '}
+                <span className="font-semibold text-slate-900">{targetName}</span> across the entire room (including
+                breakout boards). This cannot be undone.
+              </p>
+              <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-200">
+                <button
+                  type="button"
+                  disabled={isBusy}
+                  onClick={onCancel}
+                  className="px-4 py-1.5 rounded-[2px] border oh-btn text-xs font-semibold text-slate-700 transition-colors cursor-pointer disabled:opacity-40"
+                >
+                  No
+                </button>
+                <button
+                  type="button"
+                  disabled={isBusy}
+                  onClick={onConfirmDelete}
+                  className="flex items-center gap-1.5 px-4 py-1.5 rounded-[2px] border oh-btn-danger text-xs font-semibold text-white transition-colors cursor-pointer disabled:opacity-40"
+                >
+                  <Trash2 size={13} />
+                  <span>{isBusy ? 'Deleting...' : 'Yes'}</span>
+                </button>
+              </div>
+            </>
+          )}
         </div>
       </div>
     </div>
