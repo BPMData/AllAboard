@@ -9,6 +9,12 @@
 > code), do only that phase, open a PR with "Merge with **Create a merge commit**" at the top of the description, and
 > stop. Do not merge. If an earlier phase's PR is still open, stop and ask.
 
+## Status
+
+All phases done (one branch, one commit per phase). Inputs after: `useCanvasPointerTools` 12, `CanvasToolbar` 12,
+`TeacherClassroomBar` 13, `useClassroomActions` 4, `CanvasViewportOverlays` 10; `CanvasProps` 60 → 34. `exhaustive-deps`
+warnings: still 57 (3 moved with their callbacks from `Canvas.tsx` to `useToolSettings.ts`).
+
 ## Why
 
 The splits (#78–#80) moved code into files without moving its state, so everything still lives in `Canvas.tsx` /
