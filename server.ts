@@ -1,3 +1,4 @@
+import type { ClientToServerEvents, ServerToClientEvents } from './src/lib/socketContract.ts';
 import express from 'express';
 import { createServer } from 'http';
 import { Server } from 'socket.io';
@@ -259,7 +260,7 @@ export async function startServer(options: StartServerOptions = {}) {
 
   const app = express();
   const httpServer = createServer(app);
-  const io = new Server(httpServer, {
+  const io = new Server<ClientToServerEvents, ServerToClientEvents>(httpServer, {
     cors: {
       origin: '*',
     },
@@ -773,7 +774,7 @@ export async function startServer(options: StartServerOptions = {}) {
   // board's traffic. Instead keep each user's latest position per board channel and send each channel one
   // `cursors-batch` every CURSOR_EMIT_MS. A batch with several movers includes the sender (clients skip their own userId); a lone mover's isn't echoed back.
   /** board channel → userId → latest cursor (and the socket that sent it). */
-  const pendingCursors = new Map<string, Map<string, { socketId: string; cursor: Record<string, unknown> }>>();
+  const pendingCursors = new Map<string, Map<string, { socketId: string; cursor: Parameters<ClientToServerEvents['cursor-move']>[0] }>>();
 
   function flushCursors() {
     for (const [channel, byUser] of pendingCursors) {
@@ -2805,18 +2806,21 @@ export async function startServer(options: StartServerOptions = {}) {
     }
 
     /** Publish an accepted edit to its viewers, the teacher overview, and the room store. */
-    function publishDrawingEdit(
+    function publishDrawingEdit<K extends 'element-start' | 'element-append-points' | 'element-update' | 'elements-batch-updated' | 'elements-batch-added' | 'elements-batch-removed' | 'elements-replaced' | 'element-removed' | 'state-sync'>(
       room: RoomState,
       change: DrawingChange,
-      event: string,
-      payload: { boardId: string; [key: string]: unknown },
+      event: K,
+      payload: Parameters<ServerToClientEvents[K]>[0] & { boardId: string },
       options: { includeSender?: boolean; immediateSave?: boolean } = {}
     ) {
       room.lastActiveAt = Date.now();
       scheduleSaveToDisk(room, options.immediateSave);
       noteChange(room, payload.boardId, change);
       const audience = options.includeSender ? io : socket;
-      audience.to(boardAudience(room.id, payload.boardId)).emit(event, payload);
+      const channel = audience.to(boardAudience(room.id, payload.boardId));
+      // Socket.IO decorates broadcast acknowledgments; drawing events have no acknowledgments.
+      const emit = channel.emit as (event: K, payload: Parameters<ServerToClientEvents[K]>[0]) => boolean;
+      emit.call(channel, event, payload);
     }
 
     socket.on('element-start', (element) => {
@@ -3094,7 +3098,9 @@ export async function startServer(options: StartServerOptions = {}) {
 
     // Atomic edits that keep stacking order (the eraser's split/remove, and its undo): each group removes its ids
     // and puts its elements where the first of them was. Same rules as batch add/remove; all or nothing.
-    socket.on('elements-replace', ({ boardId = 'main', groups } = {} as any) => {
+    socket.on('elements-replace', (payload) => {
+      const boardId = payload?.boardId === undefined ? 'main' : payload.boardId;
+      const groups = payload?.groups;
       const meta = socketMeta.get(socket.id);
       if (!meta || !Array.isArray(groups) || groups.length === 0 || groups.length > MAX_BATCH_ELEMENTS) return;
       const room = rooms.get(meta.roomId);
