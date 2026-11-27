@@ -21,6 +21,14 @@ project of **OverBoard** (`src/lib/inkCore.ts` is ported from it).
 
 Teachers are identified by a per-room **PIN**, not a login.
 
+## If you change this behavior
+
+| Behavior | Where to make the change | What to verify |
+|---|---|---|
+| Production startup or server imports | [Server entry point](../server.ts) and [shared boot check](../scripts/smoke.sh) | After the build, plain Node 22 loads the server, serves a healthy `/healthz` and returns the app page. PR CI and deployment both run `bash scripts/smoke.sh`. |
+| A drawing tool changes a board | Validate the edit in its [socket handler](../server.ts), then call `publishDrawingEdit`. Choose the teacher overview change and whether the sender needs the server result. | Another student on the board sees the live edit, a teacher viewing a different board gets the overview update, and the edit survives restart. Reordering needs a full-board overview. [Board channel tests](../tests/server.test.ts) · [Eraser and undo](../tests/eraserEdits.test.ts) |
+| Saving or opening class work | [Snapshot writer and reader](../src/lib/roomSnapshot.ts), [shared data types](../src/types.ts) and [local file and Drive actions](../src/components/useClassWorkFiles.ts) | Round-trip the main board, breakout boards, worksheets, and ink. Embed each referenced image once and accept existing files. [Snapshot tests](../tests/roomSnapshot.test.ts) · [Drive save and restore](../e2e/googleDrive.spec.ts) |
+
 ## 2. Stack
 
 | Layer | What |
@@ -39,7 +47,7 @@ Teachers are identified by a per-room **PIN**, not a login.
 | `roomStore.ts` | ~350 | SQLite store: one row per room plus content-addressed assets (`assets`, `room_assets`). Has a JSON fallback if `node:sqlite` is missing. Fails open to `os.tmpdir()`. |
 | `backupMirror.ts` | ~375 | `BackupMirror` (batch, assets-first, retry, flush on SIGTERM) over `BackupBackend`: `GcsBackend` (Cloud Storage JSON API + metadata token) or `DirBackend` (folder). |
 | `src/App.tsx` | ~1800 | Client root: identity (`localStorage`), socket lifecycle, **all client state** (elements, messages, subBoards, settings), lobby/welcome screen, handlers passed down as props. |
-| `src/components/Canvas.tsx` | ~5200 | The whiteboard: Konva stage, tools, selection/lasso, worksheet layer, stamps (`STAMP_OPTIONS`), teacher toolbars, breakout UI, import/export JSON, PDF export. **The biggest file; search before scrolling.** |
+| `src/components/Canvas.tsx` | ~6400 | The whiteboard: Konva stage, tools, selection/lasso, worksheet layer, stamps (`STAMP_OPTIONS`), teacher toolbars, breakout UI, class-work controls, PDF export. **The biggest file; search before scrolling.** |
 | `src/components/CanvasModals.tsx` | ~1070 | Breakout manager, live grid overview (teacher sees all boards), import modal (`PendingSnapshotData`). |
 | `src/components/Chat.tsx` | ~1000 | Chat sidebar (resizable/collapsible), roster, room-code bar. |
 | `src/components/RoomExistsModal.tsx`, `PurgeContributionsModal.tsx` | — | Lobby collision warning; teacher "purge a student's work." |
@@ -190,7 +198,7 @@ Cloud Run service "allaboard"  ── one container :3000 (node server.ts, Build
 - **Teacher overview digests.** Teachers don't get live traffic for boards they aren't viewing. Instead, every
   `OVERVIEW_SYNC_MS` (1.5 s, `src/lib/boardDigest.ts`) each teacher gets one `boards-digest` with the **changed elements**
   of every other board (`upserts`/`removed`, or the whole board after a clear or reorder). That's enough for the live
-  grid and moderation. **If you add a delta event, send it to `boardAudience` *and* call `noteChange`.**
+  grid and moderation. Drawing handlers call `publishDrawingEdit` after accepting a change. It records activity, schedules persistence, updates the overview digest, and emits to the board channel.
 - **Students only hold their own board's ink.** `init` and `breakout-sync` are built per socket (`subBoardsFor`):
   teachers get every board; students get every board's metadata, background and chat, but `elements: []` except on
   their own board (`placeSocket` sends the real contents when they move). So a student's Save class work contains only their
@@ -222,7 +230,7 @@ Cloud Run service "allaboard"  ── one container :3000 (node server.ts, Build
      `/api/assets/…` is tracked automatically.
 4. **Backup (≤ 10 s, immediate on SIGTERM)** to `gs://allaboard-data` over the JSON API. Images are written before rooms.
    Restored at boot, with images restored lazily.
-5. **Exports** (`handleExportJSON`) are **snapshot v2**: the room JSON plus an `assets` map `{url → data URL}` embedding each
+5. **Exports** (`buildSnapshotJson` in `src/lib/roomSnapshot.ts`) are **snapshot v2**: the room JSON plus an `assets` map `{url → data URL}` embedding each
    image once, so files stay portable. Imports accept v1 (inline base64) and v2.
 
 ## 9. Testing notes

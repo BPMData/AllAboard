@@ -245,13 +245,10 @@ export interface RemoteCursor {
 
 export type ImportRestoreMode = 'replace' | 'readonly' | 'merge';
 
-export interface RoomSnapshot {
-  version: 1 | 2;
-  /** v2+: worksheet images, keyed by their `/api/assets/<hash>` URL, value = base64 data URL. */
+/** Class work carried by both downloaded snapshots and the teacher's restore request. */
+export interface ClassWorkData {
+  /** v2+: worksheet images keyed by their server asset URL. */
   assets?: Record<string, string>;
-  roomId: string;
-  exportedAt: number;
-  exportedBy: string;
   elements: CanvasElement[];
   messages: ChatMessage[];
   background?: RoomBackground | null;
@@ -265,18 +262,18 @@ export interface RoomSnapshot {
   roundVariants?: Record<string, RoundVariants>;
 }
 
-export interface PendingSnapshotData {
+export interface RoomSnapshot extends ClassWorkData {
+  version: 1 | 2;
+  roomId: string;
+  exportedAt: number;
+  exportedBy: string;
+}
+
+export interface PendingSnapshotData extends ClassWorkData {
   fileName: string;
   roomId: string;
   exportedAt?: number;
   exportedBy?: string;
-  elements: CanvasElement[];
-  messages: ChatMessage[];
-  background?: RoomBackground | null;
-  subBoards?: Record<string, SubBoardData>;
-  breakoutConfig?: BreakoutConfig;
-  assets?: Record<string, string>;
-  roundTemplates?: Record<string, RoomBackground | null>;
-  roundTemplateInk?: Record<string, CanvasElement[]>;
-  roundVariants?: Record<string, RoundVariants>;
 }
+
+export type RestoreClassWork = (data: ClassWorkData, mode: ImportRestoreMode) => Promise<{ ok: boolean; error?: string }>;

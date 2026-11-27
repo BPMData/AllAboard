@@ -9,7 +9,7 @@ import {
   SpotlightPayload,
   RoomBackground,
   RemoteCursor,
-  ImportRestoreMode,
+  type RestoreClassWork,
   SubBoardData,
   BreakoutConfig,
   ConfigureBreakoutPayload,
@@ -1088,21 +1088,8 @@ export default function App() {
     [socket, activeBoardId]
   );
 
-  const handleTeacherImportRoom = useCallback(
-    (
-      snapshot: {
-        elements: CanvasElement[];
-        messages: ChatMessage[];
-        background?: RoomBackground | null;
-        subBoards?: Record<string, SubBoardData>;
-        breakoutConfig?: BreakoutConfig;
-        assets?: Record<string, string>;
-        roundTemplates?: Record<string, RoomBackground | null>;
-        roundTemplateInk?: Record<string, CanvasElement[]>;
-        roundVariants?: Record<string, RoundVariants>;
-      },
-      mode: ImportRestoreMode
-    ): Promise<{ ok: boolean; error?: string }> => {
+  const handleTeacherImportRoom = useCallback<RestoreClassWork>(
+    (snapshot, mode) => {
       return new Promise((resolve) => {
         if (!socket) {
           resolve({ ok: false, error: 'Not connected to server.' });
@@ -1110,18 +1097,7 @@ export default function App() {
         }
         socket.emit(
           'teacher:import-room',
-          {
-            elements: snapshot.elements,
-            messages: snapshot.messages,
-            background: snapshot.background,
-            subBoards: snapshot.subBoards,
-            breakoutConfig: snapshot.breakoutConfig,
-            assets: snapshot.assets,
-            roundTemplates: snapshot.roundTemplates,
-            roundTemplateInk: snapshot.roundTemplateInk,
-            roundVariants: snapshot.roundVariants,
-            mode,
-          },
+          { ...snapshot, mode },
           (response: { ok: boolean; error?: string }) => {
             resolve(response || { ok: false, error: 'No response from server.' });
           }

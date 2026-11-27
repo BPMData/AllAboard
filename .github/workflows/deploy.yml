@@ -34,23 +34,8 @@ jobs:
       - name: Production build
         run: npm run build
 
-      - name: Node 22 production type-stripping check
-        run: node -e "import('./server.ts').then(() => console.log('OK'))"
-
       - name: Production boot smoke check
-        run: |
-          DATA_DIR="$(mktemp -d)"
-          LOG="$(mktemp)"
-          NODE_ENV=production PORT=3456 DATA_DIR="$DATA_DIR" node server.ts >"$LOG" 2>&1 &
-          SERVER_PID=$!
-          trap 'kill "$SERVER_PID" 2>/dev/null || true' EXIT
-          for _ in $(seq 1 30); do
-            kill -0 "$SERVER_PID" 2>/dev/null || { cat "$LOG"; exit 1; }
-            if curl -sf http://127.0.0.1:3456/healthz >/dev/null; then break; fi
-            sleep 1
-          done
-          curl -sf http://127.0.0.1:3456/healthz | grep -q '"status":"ok"'
-          curl -sf http://127.0.0.1:3456/ | grep -q '<div id="root">'
+        run: bash scripts/smoke.sh
 
       - name: Authenticate to Google Cloud
         uses: google-github-actions/auth@v3

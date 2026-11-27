@@ -2164,7 +2164,7 @@ describe('AllAboard server & Socket.IO integration tests', () => {
       assert.equal(init.subBoards['r1_ind_s1'].elements.length, 0);
     });
 
-    it('delivers ink to students sharing a group board', async () => {
+    it('publishes a group edit to a classmate, the teacher overview, and the saved room', async () => {
       const { teacher, s1, s2 } = await setupClass('chan-group');
       const synced = waitForEvent<any>(s2, 'breakout-sync');
       await emitAck(teacher, 'teacher:configure-breakout', {
@@ -2176,10 +2176,28 @@ describe('AllAboard server & Socket.IO integration tests', () => {
       const groupId = Object.keys(subBoards).find((id) => subBoards[id].kind === 'group')!;
       await delay(50);
 
-      const got = waitForEvent<any>(s2, 'element-append-points');
+      const started = waitForEvent(s2, 'element-start');
+      const firstDigest = waitForEvent(teacher, 'boards-digest');
       s1.emit('element-start', stroke('g1', groupId, 's1'));
+      await Promise.all([started, firstDigest]);
+      await srv.flushRoomsToDiskAsync(); // The append must mark an already-clean room dirty.
+
+      const live = waitForEvent(s2, 'element-append-points');
+      const overview = waitForEvent(teacher, 'boards-digest');
       s1.emit('element-append-points', { id: 'g1', boardId: groupId, newPoints: [5, 5] });
-      assert.deepEqual((await got).newPoints, [5, 5]);
+      const [delta, digest] = await Promise.all([live, overview]);
+      assert.deepEqual(delta, { id: 'g1', boardId: groupId, newPoints: [5, 5] });
+      const expectedPoints = [0, 0, 5, 5];
+      assert.deepEqual(digest.boards.find((d: any) => d.boardId === groupId)?.upserts[0].points, expectedPoints);
+
+      await srv.flushRoomsToDiskAsync();
+      const saved = srv.store.loadRoom<{ subBoards: Record<string, { elements: { points: number[] }[] }> }>('chan-group');
+      assert.deepEqual(saved?.state.subBoards[groupId].elements[0].points, expectedPoints);
+      for (const socket of openSockets.splice(0)) socket.disconnect();
+      await srv.close();
+      srv = await startServer({ port: 0, host: '127.0.0.1', dataDir: tmpDir, skipVite: true });
+      const { init } = await joinTracked({ roomId: 'chan-group', userId: 't1', name: 'Teacher', teacherPin: '1234' });
+      assert.deepEqual(init.subBoards[groupId].elements[0].points, expectedPoints);
     });
 
     it('catches a student up on the main board they missed during a breakout', async () => {

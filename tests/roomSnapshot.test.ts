@@ -1,6 +1,8 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { parseSnapshotText, snapshotFileName } from '../src/lib/roomSnapshot';
+import type { CanvasElement, RoomBackground } from '../src/types';
+import { emptyRoundVariants } from '../src/lib/roundVariants';
+import { buildSnapshotJson, parseSnapshotText, snapshotFileName, type SnapshotSource } from '../src/lib/roomSnapshot';
 
 describe('roomSnapshot helpers', () => {
   it('formats snapshotFileName with roomId and ISO date', () => {
@@ -50,6 +52,47 @@ describe('roomSnapshot helpers', () => {
     assert.deepEqual(res.pending.assets, { '/api/assets/abc': 'data:image/jpeg;base64,AAA' });
     assert.ok(res.pending.subBoards?.r1_ind_u1);
     assert.equal(res.pending.breakoutConfig?.mode, 'main');
+  });
+
+  it('round-trips worksheets, ink, chat, and breakout rounds in a portable class-work file', async () => {
+    const worksheet = (id: string): RoomBackground => ({
+      id, fileName: id + '.png', pages: [{ dataUrl: '/api/assets/' + id, width: 20, height: 30 }],
+      x: 0, y: 0, scale: 1, layout: 'stack', opacity: 1,
+    });
+    const mainInk: CanvasElement = {
+      id: 'main-ink', userId: 't', userName: 'Teacher', tool: 'solid', color: '#000', strokeWidth: 2, points: [1, 2],
+    };
+    const message = { id: 'm1', userId: 's1', userName: 'Sam', text: 'Done', timestamp: 123 };
+    const variants = emptyRoundVariants();
+    variants.extra[0] = worksheet('variant');
+    variants.assigned.s1 = 1;
+    const source: SnapshotSource = {
+      roomId: 'math', exportedBy: 'Teacher', background: worksheet('main'), elements: [mainInk], messages: [message],
+      subBoards: { team: {
+        id: 'team', title: 'Team', kind: 'group', roundId: 'r1', assignedUserIds: ['s1'], background: worksheet('group'),
+        elements: [{ ...mainInk, id: 'team-ink', boardId: 'team' }], messages: [message],
+      } },
+      breakoutConfig: {
+        mode: 'groups', activeRoundId: 'r1', allowSelfSelect: false, chatScope: 'board',
+        rounds: [{ id: 'r1', number: 1, title: 'Practice', mode: 'groups', createdAt: 123 }],
+        autoIndividualBackground: worksheet('auto'),
+      },
+      roundTemplates: { r1: worksheet('group') }, roundTemplateInk: { r1: [mainInk] }, roundVariants: { r1: variants },
+    };
+    const fetched: string[] = [];
+    const { json, fileName } = await buildSnapshotJson(source, async (url) => {
+      fetched.push(url);
+      return new Response(url, { headers: { 'content-type': 'image/png' } });
+    });
+    const urls = ['main', 'group', 'auto', 'variant'].map((id) => '/api/assets/' + id);
+    assert.deepEqual(fetched.sort(), urls.sort(), 'the shared worksheet is fetched once');
+    assert.equal(JSON.parse(json).version, 2);
+    const { pending, error } = parseSnapshotText(fileName, json, 'fallback');
+    assert.equal(error, null);
+    assert.deepEqual(pending, {
+      ...source, fileName, exportedAt: JSON.parse(json).exportedAt,
+      assets: Object.fromEntries(urls.map((url) => [url, 'data:image/png;base64,' + Buffer.from(url).toString('base64')])),
+    });
   });
 
   it('falls back to fallbackRoomId when snapshot roomId is missing or empty', () => {
