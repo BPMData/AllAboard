@@ -1,6 +1,5 @@
 import React, { useCallback, useMemo, useState } from 'react';
 import type { LessonResponse } from '../components/LessonPackModals';
-import ProblemReportModal from '../components/ProblemReportModal';
 import { STORAGE_KEYS, generateFreshRoomCode } from '../lib/identity';
 import type { LessonRequestEvent } from '../lib/lessonPack';
 import { describeUserAgent, type ReportDiagnostics } from '../lib/problemReport';
@@ -35,23 +34,17 @@ type RoomPrompt = {
 };
 type PurgePrompt = { targetUserId: string; targetName: string; mode: 'kick' | 'ban' };
 
-interface Options {
+/** The live socket and the drawing emitter from `useRoomSocket`. */
+export interface ClassroomConnection {
   socket: ReturnType<typeof useRoomSocket>['socket'];
-  activeBoardId: string;
-  setSubBoards: Setter<Record<string, SubBoardData>>;
   emitDrawing: ReturnType<typeof useRoomSocket>['emitDrawing'];
+}
+
+/** Room and user values the actions read. */
+export interface ClassroomRoomState {
+  activeBoardId: string;
   userId: string;
-  setIsTeacher: Setter<boolean>;
   roomId: string;
-  setTeacherSelectedBoardId: Setter<string>;
-  setBackground: Setter<RoomBackground | null>;
-  setRemoteCursors: Setter<Record<string, RemoteCursor>>;
-  setIsNameLocked: Setter<boolean>;
-  setKickNotice: Setter<string | null>;
-  setPendingPurgePrompt: Setter<PurgePrompt | null>;
-  setIsPurgingContributions: Setter<boolean>;
-  setRoomId: Setter<string>;
-  isJoinedRef: React.RefObject<boolean>;
   effectiveRoomId: string;
   isJoined: boolean;
   isTeacher: boolean;
@@ -63,76 +56,107 @@ interface Options {
   roomSettings: RoomSettings;
   isChatHidden: boolean;
   userName: string;
-  initialTeacherPin: string;
-  setIsJoined: Setter<boolean>;
-  setUserName: Setter<string>;
   liveRoomId: string;
   userKey: string;
   userColor: string;
-  setHasEditedLobbyRoom: Setter<boolean>;
-  isCheckingRoom: boolean;
-  setIsCheckingRoom: Setter<boolean>;
-  setPendingRoomPrompt: Setter<RoomPrompt | null>;
-  hasEditedLobbyRoom: boolean;
-  hadInitialUrlRoom: boolean;
-  showTeacherSetupOnJoin: boolean;
-  displayNameInputRef: React.RefObject<HTMLInputElement | null>;
-  pendingRoomPrompt: RoomPrompt | null;
   isNameLocked: boolean;
-  isPurgingContributions: boolean;
-  pendingPurgePrompt: PurgePrompt | null;
   elements: CanvasElement[];
   messages: ChatMessage[];
 }
-export function useClassroomActions({
-  socket,
-  activeBoardId,
-  setSubBoards,
-  emitDrawing,
-  userId,
-  setIsTeacher,
-  roomId,
-  setTeacherSelectedBoardId,
-  setBackground,
-  setRemoteCursors,
-  setIsNameLocked,
-  setKickNotice,
-  setPendingPurgePrompt,
-  setIsPurgingContributions,
-  setRoomId,
-  isJoinedRef,
-  effectiveRoomId,
-  isJoined,
-  isTeacher,
-  breakoutConfig,
-  subBoards,
-  activeBackground,
-  activeElements,
-  users,
-  roomSettings,
-  isChatHidden,
-  userName,
-  initialTeacherPin,
-  setIsJoined,
-  setUserName,
-  liveRoomId,
-  userKey,
-  userColor,
-  setHasEditedLobbyRoom,
-  isCheckingRoom,
-  setIsCheckingRoom,
-  setPendingRoomPrompt,
-  hasEditedLobbyRoom,
-  hadInitialUrlRoom,
-  showTeacherSetupOnJoin,
-  displayNameInputRef,
-  pendingRoomPrompt,
-  isNameLocked,
-  isPurgingContributions,
-  pendingPurgePrompt,
-  elements,
-  messages,
-}: Options) {
+
+/** `App` state setters the actions write. */
+export interface ClassroomRoomSetters {
+  setSubBoards: Setter<Record<string, SubBoardData>>;
+  setIsTeacher: Setter<boolean>;
+  setTeacherSelectedBoardId: Setter<string>;
+  setBackground: Setter<RoomBackground | null>;
+  setRemoteCursors: Setter<Record<string, RemoteCursor>>;
+  setIsNameLocked: Setter<boolean>;
+  setKickNotice: Setter<string | null>;
+  setPendingPurgePrompt: Setter<PurgePrompt | null>;
+  setIsPurgingContributions: Setter<boolean>;
+  setRoomId: Setter<string>;
+  setIsJoined: Setter<boolean>;
+  setUserName: Setter<string>;
+  setHasEditedLobbyRoom: Setter<boolean>;
+  setIsCheckingRoom: Setter<boolean>;
+  setPendingRoomPrompt: Setter<RoomPrompt | null>;
+}
+
+/** Lobby form values, refs and pending prompts. */
+export interface ClassroomLobby {
+  initialTeacherPin: string;
+  hasEditedLobbyRoom: boolean;
+  isCheckingRoom: boolean;
+  pendingRoomPrompt: RoomPrompt | null;
+  hadInitialUrlRoom: boolean;
+  showTeacherSetupOnJoin: boolean;
+  displayNameInputRef: React.RefObject<HTMLInputElement | null>;
+  isJoinedRef: React.RefObject<boolean>;
+  pendingPurgePrompt: PurgePrompt | null;
+  isPurgingContributions: boolean;
+}
+
+interface Options {
+  connection: ClassroomConnection;
+  roomState: ClassroomRoomState;
+  roomSetters: ClassroomRoomSetters;
+  lobby: ClassroomLobby;
+}
+export function useClassroomActions({ connection, roomState, roomSetters, lobby }: Options) {
+  // Destructured once so every useCallback below lists fields, not the (new-every-render) group objects.
+  const { socket, emitDrawing } = connection;
+  const {
+    activeBoardId,
+    userId,
+    roomId,
+    effectiveRoomId,
+    isJoined,
+    isTeacher,
+    breakoutConfig,
+    subBoards,
+    activeBackground,
+    activeElements,
+    users,
+    roomSettings,
+    isChatHidden,
+    userName,
+    liveRoomId,
+    userKey,
+    userColor,
+    isNameLocked,
+    elements,
+    messages,
+  } = roomState;
+  const {
+    setSubBoards,
+    setIsTeacher,
+    setTeacherSelectedBoardId,
+    setBackground,
+    setRemoteCursors,
+    setIsNameLocked,
+    setKickNotice,
+    setPendingPurgePrompt,
+    setIsPurgingContributions,
+    setRoomId,
+    setIsJoined,
+    setUserName,
+    setHasEditedLobbyRoom,
+    setIsCheckingRoom,
+    setPendingRoomPrompt,
+  } = roomSetters;
+  const {
+    initialTeacherPin,
+    hasEditedLobbyRoom,
+    isCheckingRoom,
+    pendingRoomPrompt,
+    hadInitialUrlRoom,
+    showTeacherSetupOnJoin,
+    displayNameInputRef,
+    isJoinedRef,
+    pendingPurgePrompt,
+    isPurgingContributions,
+  } = lobby;
   const handleAuthenticateTeacher = useCallback(
     (pin: string): Promise<{ ok: boolean; error?: string; mode?: string }> => {
       return new Promise((resolve) => {
@@ -476,9 +500,14 @@ export function useClassroomActions({
     // Recomputed when the dialog opens (showProblemReport), so a PIN saved since then is included.
   }, [roomId, effectiveRoomId, userName, initialTeacherPin, users, roomSettings.bannedUsers, showProblemReport]);
 
-  const problemReportModal = showProblemReport ? (
-    <ProblemReportModal getDiagnostics={getReportDiagnostics} redact={reportRedactions} onClose={closeProblemReport} />
-  ) : null;
+  /** App renders `<ProblemReportModal>` from this while `isOpen`. */
+  const problemReport = {
+    isOpen: showProblemReport,
+    open: openProblemReport,
+    close: closeProblemReport,
+    diagnostics: getReportDiagnostics,
+    redact: reportRedactions,
+  };
 
   /** After a lesson loads into a new room: remember its PIN (so the join makes us teacher there) and go there. */
   const handleOpenLoadedLessonRoom = useCallback(
@@ -895,8 +924,7 @@ export function useClassroomActions({
     generateUnusedRoomCode,
     handleTeacherLessonRequest,
     getSavedTeacherPin,
-    openProblemReport,
-    problemReportModal,
+    problemReport,
     handleOpenLoadedLessonRoom,
     handleLeaveRoom,
     handleSwitchRoom,
