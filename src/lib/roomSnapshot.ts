@@ -87,7 +87,7 @@ export interface EmbeddedAssets {
 
 /**
  * Downloads each asset URL and returns it as a data URL, so an exported file carries its own images.
- * Never throws: failures are listed in `failed` (room saves log them; lesson saves stop and say so).
+ * Each missing page URL is returned in `failed` so callers can stop an incomplete save.
  */
 export async function embedAssets(
   urls: string[],
@@ -115,14 +115,24 @@ export type SnapshotSource = Omit<RoomSnapshot, 'version' | 'exportedAt' | 'asse
 /** Build the portable class-work file from the viewer's main board and breakout state. */
 export async function buildSnapshotJson(source: SnapshotSource, fetcher?: (url: string) => Promise<Response>) {
   const { roundTemplates = {}, roundTemplateInk = {}, roundVariants = {}, ...room } = source;
-  const urls = backgroundAssetUrls([
+  const backgrounds = [
     room.background,
     ...Object.values(room.subBoards ?? {}).map((board) => board?.background),
     room.breakoutConfig?.autoIndividualBackground,
     ...Object.values(roundTemplates),
     ...Object.values(roundVariants).flatMap(variantBackgrounds),
-  ]);
-  const { assets } = await embedAssets(urls, fetcher);
+  ];
+  const { assets, failed } = await embedAssets(backgroundAssetUrls(backgrounds), fetcher);
+  if (failed.length) {
+    const missing = new Set(failed);
+    const pages = new Set<string>();
+    for (const background of backgrounds) {
+      background?.pages?.forEach((page, index) => {
+        if (missing.has(page?.dataUrl)) pages.add(`${background.fileName || 'Worksheet'} (page ${index + 1})`);
+      });
+    }
+    throw new Error(`Could not save class work. Missing worksheet pages: ${[...pages].join(', ')}.`);
+  }
   const now = new Date();
   const snapshot: RoomSnapshot = {
     version: 2,

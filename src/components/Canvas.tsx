@@ -4122,6 +4122,7 @@ export default function Canvas({
 
           <button
             type="button"
+            disabled={classWork.isDownloading}
             onClick={classWork.handleExportJSON}
             className="flex items-center gap-1.5 px-2 py-1 text-xs font-medium oh-btn border text-slate-700 rounded-[2px] transition-colors whitespace-nowrap shrink-0 cursor-pointer"
             title="Save everything in this room as a .json file: every student's board, the worksheets and the chat log. Open it later with Open class work."
@@ -5530,6 +5531,27 @@ export default function Canvas({
         />
       )}
       {classWork.restoreDialog && <RestoreSnapshotModal {...classWork.restoreDialog} />}
+
+      {(classWork.downloadError || classWork.restoreNotice) && (
+        <div className="fixed bottom-4 left-1/2 z-[70] -translate-x-1/2 max-w-lg space-y-2">
+          {classWork.downloadError && (
+            <div role="alert" className="rounded border bg-white p-3 text-sm shadow-lg">
+              <p>{classWork.downloadError}</p>
+              <button type="button" className="mr-4 underline" disabled={classWork.isDownloading} onClick={classWork.handleExportJSON}>
+                {classWork.isDownloading ? 'Saving…' : 'Retry download'}
+              </button>
+              <button type="button" onClick={classWork.dismissDownloadError}>Dismiss</button>
+            </div>
+          )}
+          {classWork.restoreNotice && (
+            <div role="alert" className="rounded border bg-white p-3 text-sm shadow-lg">
+              <p>{classWork.restoreNotice}</p>
+              <button type="button" className="mr-4 underline" onClick={classWork.reviewRestore}>Review restore</button>
+              <button type="button" onClick={classWork.discardRestore}>Dismiss</button>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Infinite Canvas Viewport (Hidden when Teacher is in Live Grid Overview) */}
       <div

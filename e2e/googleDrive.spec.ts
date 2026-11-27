@@ -561,6 +561,55 @@ test.describe('Google Drive integration (stubbed Google)', () => {
     return requests;
   }
 
+  test('missing worksheet pages stop local downloads and Drive replacements until retry succeeds', async ({ page }) => {
+    await installFakeGoogle(page);
+    const uploads = await fakeDriveUploads(page);
+    await joinRoom(page, uniqueRoom('asset-retry'), 'Ms T', '4829');
+    const drive = page.getByRole('button', { name: 'Save Room to Drive', exact: true });
+    await drive.click();
+    await page.getByRole('button', { name: 'Save', exact: true }).click();
+    await expect(page.getByText(/Saved .* to My Drive/)).toBeVisible();
+
+    const asset = '/api/assets/' + 'a'.repeat(64);
+    const png = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+nmR8AAAAASUVORK5CYII=';
+    let missing = true;
+    await page.route('**' + asset, route => route.fulfill(missing
+      ? { status: 404, body: '' }
+      : { contentType: 'image/png', body: Buffer.from(png, 'base64') }));
+    const snapshot = { elements: [], messages: [], background: {
+      id: 'worksheet', fileName: 'Fractions.png', pages: [{ dataUrl: asset, width: 1, height: 1 }],
+      layout: 'stack', scale: 1, x: 0, y: 0, opacity: 1,
+    } };
+    await page.locator('input[accept=".json,application/json"]').setInputFiles({
+      name: 'class.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(snapshot)),
+    });
+    await page.getByRole('button', { name: 'Restore Room Snapshot' }).click();
+    await expect(page.getByTitle('Remove background worksheet from this board')).toBeVisible();
+
+    const downloads: string[] = [];
+    page.on('download', download => downloads.push(download.suggestedFilename()));
+    await page.getByRole('button', { name: 'Save class work', exact: true }).click();
+    await expect(page.getByRole('alert').filter({ hasText: 'Fractions.png (page 1)' })).toBeVisible();
+    expect(downloads).toHaveLength(0);
+    missing = false;
+    const download = page.waitForEvent('download');
+    await page.getByRole('button', { name: 'Retry download' }).click();
+    const path = await (await download).path();
+    const local = JSON.parse(await (await import('node:fs/promises')).readFile(path!, 'utf8'));
+    expect(local.assets[asset]).toBe('data:image/png;base64,' + png);
+
+    missing = true;
+    await drive.click();
+    await page.getByRole('button', { name: 'Replace', exact: true }).click();
+    await expect(page.getByRole('alert').filter({ hasText: 'Fractions.png (page 1)' })).toBeVisible();
+    expect(uploads.map(upload => upload.method)).toEqual(['POST', 'PUT']);
+    missing = false;
+    await page.getByRole('button', { name: 'Retry save' }).click();
+    await expect(page.getByText(/Saved .* to My Drive/)).toBeVisible();
+    expect(uploads.map(upload => upload.method)).toEqual(['POST', 'PUT', 'PATCH', 'PUT']);
+    expect(uploads[3].meta.assets[asset]).toBe(local.assets[asset]);
+  });
+
   test('Save Room to Drive asks for a name and folder, then replaces the same file on the next save', async ({ page }) => {
     await installFakeGoogle(page);
     const requests = await fakeDriveUploads(page);
