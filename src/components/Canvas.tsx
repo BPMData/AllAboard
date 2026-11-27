@@ -426,29 +426,8 @@ export default function Canvas({
   } = useCanvasInteractionState();
 
   // Confirmation States
-  const [confirmClearAll, setConfirmClearAll] = useState(false);
   const [confirmClearMine, setConfirmClearMine] = useState(false);
-  const [confirmRemoveWorksheet, setConfirmRemoveWorksheet] = useState(false);
   const [showHotkeysModal, setShowHotkeysModal] = useState(false);
-  const removeWorksheetTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  useEffect(() => {
-    return () => {
-      if (removeWorksheetTimerRef.current) {
-        clearTimeout(removeWorksheetTimerRef.current);
-      }
-    };
-  }, []);
-
-  useEffect(() => {
-    if (!background) {
-      if (removeWorksheetTimerRef.current) {
-        clearTimeout(removeWorksheetTimerRef.current);
-        removeWorksheetTimerRef.current = null;
-      }
-      setConfirmRemoveWorksheet(false);
-    }
-  }, [background]);
 
   // Worksheet Upload & Built-In Templates State (Teacher Only)
   const worksheetInputRef = useRef<HTMLInputElement>(null);
@@ -545,42 +524,8 @@ export default function Canvas({
     return r ? `R${r.number}` : '';
   };
 
-  // Classroom Countdown Timer & Batch Multi-Page PDF Export States
-  const [showTimerMenu, setShowTimerMenu] = useState<boolean>(false);
-  const [customTimeInput, setCustomTimeInput] = useState<string>('7:00');
-  const [displayRemainingMs, setDisplayRemainingMs] = useState<number>(0);
-  const timerMenuRef = useRef<HTMLDivElement>(null);
+  // Batch Multi-Page PDF Export State (the countdown timer UI lives in canvas/ClassroomTimerControl)
   const [pdfExportProgress, setPdfExportProgress] = useState<{ current: number; total: number } | null>(null);
-
-  useEffect(() => {
-    const updateRemaining = () => {
-      if (!timer) {
-        setDisplayRemainingMs(0);
-        return;
-      }
-      if (timer.isRunning && timer.endsAt !== null) {
-        setDisplayRemainingMs(Math.max(0, timer.endsAt - Date.now()));
-      } else {
-        setDisplayRemainingMs(Math.max(0, timer.remainingMs || 0));
-      }
-    };
-    updateRemaining();
-    if (timer?.isRunning && timer?.endsAt !== null) {
-      const interval = setInterval(updateRemaining, 250);
-      return () => clearInterval(interval);
-    }
-  }, [timer]);
-
-  useEffect(() => {
-    if (!showTimerMenu) return;
-    const onDocDown = (e: MouseEvent) => {
-      if (timerMenuRef.current && !timerMenuRef.current.contains(e.target as Node)) {
-        setShowTimerMenu(false);
-      }
-    };
-    document.addEventListener('mousedown', onDocDown);
-    return () => document.removeEventListener('mousedown', onDocDown);
-  }, [showTimerMenu]);
 
   const handleBatchExportAllPdf = async () => {
     if (pdfExportProgress) return;
@@ -1334,71 +1279,50 @@ export default function Canvas({
       <TeacherClassroomBar
         isTeacher={isTeacher}
         toolbarCollapsed={toolbarCollapsed}
-        handleOpenBreakoutModal={handleOpenBreakoutModal}
-        breakoutConfig={breakoutConfig}
-        activeRoundBoards={activeRoundBoards}
-        onConfigureBreakout={onConfigureBreakout}
-        viewingRound={viewingRound}
-        setTeacherViewingRoundId={setTeacherViewingRoundId}
-        activeRound={activeRound}
-        subBoards={subBoards}
-        rounds={rounds}
-        effectiveViewingRoundId={effectiveViewingRoundId}
-        activeBoardId={activeBoardId}
-        onSelectBoard={onSelectBoard}
-        setShowLiveGridOverview={setShowLiveGridOverview}
-        fullMainElements={fullMainElements}
-        teacherVisibleBoards={teacherVisibleBoards}
-        roundShortLabel={roundShortLabel}
-        activeBoardTitle={activeBoardTitle}
-        showLiveGridOverview={showLiveGridOverview}
-        pdfExportProgress={pdfExportProgress}
-        handleBatchExportAllPdf={handleBatchExportAllPdf}
-        timerMenuRef={timerMenuRef}
-        setShowTimerMenu={setShowTimerMenu}
         timer={timer}
-        displayRemainingMs={displayRemainingMs}
-        showTimerMenu={showTimerMenu}
-        onTeacherTimerControl={onTeacherTimerControl}
-        customTimeInput={customTimeInput}
-        setCustomTimeInput={setCustomTimeInput}
-        setShowTemplateModal={setShowTemplateModal}
-        isUploadingWorksheet={isUploadingWorksheet}
-        worksheetInputRef={worksheetInputRef}
-        background={background}
-        driveBusy={driveBusy}
-        handleWorksheetFromDrive={handleWorksheetFromDrive}
-        driveCanCancel={driveCanCancel}
-        handleCancelDriveImport={handleCancelDriveImport}
-        worksheetImportScale={worksheetImportScale}
-        handleUpdateWorksheetImportScale={handleUpdateWorksheetImportScale}
-        setTool={setTool}
-        tool={tool}
-        effectiveTool={effectiveTool}
-        onTeacherUpdateBackground={onTeacherUpdateBackground}
-        elements={elements}
-        confirmRemoveWorksheet={confirmRemoveWorksheet}
-        setConfirmRemoveWorksheet={setConfirmRemoveWorksheet}
-        removeWorksheetTimerRef={removeWorksheetTimerRef}
-        onTeacherSetBackground={onTeacherSetBackground}
-        worksheetError={worksheetError}
-        fileInputRef={fileInputRef}
-        onTeacherLessonRequest={onTeacherLessonRequest}
-        setLessonModal={setLessonModal}
         classWork={classWork}
-        onTeacherToggleLock={onTeacherToggleLock}
-        isCanvasLocked={isCanvasLocked}
-        onTeacherToggleHideCursors={onTeacherToggleHideCursors}
-        hideStudentCursors={hideStudentCursors}
-        onTeacherToggleOneNameStamp={onTeacherToggleOneNameStamp}
-        oneNameStamp={oneNameStamp}
-        focusedInkAuthor={focusedInkAuthor}
-        setInkFocusKey={setInkFocusKey}
-        boardInkAuthors={boardInkAuthors}
-        confirmClearAll={confirmClearAll}
-        onTeacherClearAll={onTeacherClearAll}
-        setConfirmClearAll={setConfirmClearAll}
-        onAssignUserToBoard={onAssignUserToBoard}
+        teacherActions={{
+          onConfigureBreakout,
+          onTeacherTimerControl,
+          onTeacherUpdateBackground,
+          onTeacherSetBackground,
+          onTeacherLessonRequest,
+          onTeacherToggleLock,
+          onTeacherToggleHideCursors,
+          onTeacherToggleOneNameStamp,
+          onTeacherClearAll,
+          onAssignUserToBoard,
+        }}
+        roundsView={{
+          breakoutConfig,
+          rounds,
+          activeRound,
+          viewingRound,
+          effectiveViewingRoundId,
+          activeRoundBoards,
+          teacherVisibleBoards,
+          subBoards,
+          roundShortLabel,
+          setTeacherViewingRoundId,
+        }}
+        worksheetImport={{
+          isUploadingWorksheet,
+          worksheetInputRef,
+          fileInputRef,
+          driveBusy,
+          driveCanCancel,
+          handleWorksheetFromDrive,
+          handleCancelDriveImport,
+          worksheetImportScale,
+          handleUpdateWorksheetImportScale,
+          worksheetError,
+        }}
+        moderation={{ isCanvasLocked, hideStudentCursors, oneNameStamp }}
+        board={{ activeBoardId, activeBoardTitle, onSelectBoard, elements, fullMainElements, background }}
+        liveGrid={{ showLiveGridOverview, setShowLiveGridOverview, pdfExportProgress, handleBatchExportAllPdf }}
+        modals={{ handleOpenBreakoutModal, setShowTemplateModal, setLessonModal }}
+        toolState={{ tool, effectiveTool, setTool }}
+        inkFocus={{ focusedInkAuthor, setInkFocusKey, boardInkAuthors }}
       />
 
       {/* Teacher Live Grid Overview of All Student / Group Boards */}
