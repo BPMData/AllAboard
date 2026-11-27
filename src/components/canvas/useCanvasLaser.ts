@@ -1,8 +1,13 @@
 import type { MutableRefObject } from 'react';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { CanvasProps } from '../Canvas';
+import type { Socket } from 'socket.io-client';
+import type { ClientToServerEvents, ServerToClientEvents } from '../../lib/socketContract';
 
-type Options = Pick<CanvasProps, 'laserSocket' | 'activeBoardId' | 'isTeacher' | 'userId'> & {
+type Options = {
+  laserSocket: Socket<ServerToClientEvents, ClientToServerEvents> | null;
+  activeBoardId: string;
+  isTeacher: boolean;
+  userId: string;
   activePointerIdRef: MutableRefObject<number | null>;
 };
 
