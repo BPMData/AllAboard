@@ -1089,20 +1089,20 @@ export default function App() {
   );
 
   const handleTeacherImportRoom = useCallback<RestoreClassWork>(
-    (snapshot, mode) => {
-      return new Promise((resolve) => {
-        if (!socket) {
-          resolve({ ok: false, error: 'Not connected to server.' });
-          return;
-        }
-        socket.emit(
-          'teacher:import-room',
-          { ...snapshot, mode },
-          (response: { ok: boolean; error?: string }) => {
-            resolve(response || { ok: false, error: 'No response from server.' });
-          }
-        );
-      });
+    async (snapshot, mode) => {
+      if (!socket?.connected) {
+        return { ok: false, connectionError: true, error: 'Reconnect to send the restore. Your selected file is ready.' };
+      }
+      try {
+        const response = await socket.timeout(60_000).emitWithAck('teacher:import-room', { ...snapshot, mode });
+        if (response && typeof response.ok === 'boolean') return response;
+      } catch {
+        // The server may have applied the snapshot before its acknowledgment was lost.
+      }
+      return {
+        ok: false, connectionError: true,
+        error: 'Restore unconfirmed. Check the board after reconnecting before you retry.',
+      };
     },
     [socket]
   );

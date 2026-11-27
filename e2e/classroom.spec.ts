@@ -142,6 +142,63 @@ test.describe('lobby', () => {
 });
 
 test.describe('teacher and students', () => {
+  test('a lost restore acknowledgment keeps the file for review without resending it', async ({ page }) => {
+    await page.clock.install();
+    let restoreRequests = 0;
+    let firstAck = '';
+    let dropped = false;
+    let upgraded = false;
+    let heartbeat: () => void;
+    let simulatedPing = false;
+    await page.routeWebSocket(/\/socket\.io\//, client => {
+      const server = client.connectToServer();
+      heartbeat = () => { simulatedPing = true; client.send('2'); };
+      client.onMessage(frame => {
+        if (frame === '3' && simulatedPing) { simulatedPing = false; return; }
+        if (frame === '5') upgraded = true; // Engine.IO finished upgrading from polling.
+        if (typeof frame === 'string') {
+          const restore = /^42(\d+)\["teacher:import-room",/.exec(frame);
+          if (restore && ++restoreRequests === 1) firstAck = '43' + restore[1] + '[';
+        }
+        server.send(frame);
+      });
+      server.onMessage(frame => {
+        if (firstAck && typeof frame === 'string' && frame.startsWith(firstAck)) {
+          dropped = true;
+          firstAck = '';
+          return;
+        }
+        client.send(frame);
+      });
+    });
+    await joinRoom(page, uniqueRoom('restore-review'), 'Ms T', PIN);
+    await expect.poll(() => upgraded).toBe(true);
+    await page.locator('input[accept=".json,application/json"]').setInputFiles({
+      name: 'history.json', mimeType: 'application/json',
+      buffer: Buffer.from(JSON.stringify({ elements: [], messages: [
+        { id: 'saved', userId: 't', userName: 'Teacher', text: 'Restored once', timestamp: 42 },
+      ] })),
+    });
+    await page.getByRole('button', { name: /Merge into Current Room/ }).click();
+    await page.getByRole('button', { name: 'Restore Room Snapshot' }).click();
+    await expect.poll(() => dropped).toBe(true);
+    // The real server's clock isn't accelerated. Keep its transport alive while advancing the client's ack timer.
+    await page.clock.fastForward(30_000);
+    heartbeat!();
+    await expect.poll(() => simulatedPing).toBe(false);
+    await page.clock.fastForward(30_001);
+    await expect(page.getByRole('alert').filter({ hasText: 'Restore unconfirmed' })).toBeVisible();
+    await expect(page.getByText('Restored once', { exact: true })).toBeVisible();
+    await page.getByRole('button', { name: 'Review restore' }).click();
+    await expect(page.getByText('history.json', { exact: true })).toBeVisible();
+    await expect(page.getByRole('button', { name: /Merge into Current Room/ })).toHaveClass(/oh-btn-active/);
+    expect(restoreRequests).toBe(1);
+    await page.getByRole('button', { name: 'Restore Room Snapshot' }).click();
+    await expect(page.getByText('Open Class Work (.json)')).toBeHidden();
+    await expect.poll(() => restoreRequests).toBe(2);
+    await expect(page.getByRole('button', { name: 'Review restore' })).toBeHidden();
+  });
+
   test('teacher shares an anonymized breakout board to Main', async ({ browser }) => {
     const room = uniqueRoom('share');
     const teacher = await newUser(browser);

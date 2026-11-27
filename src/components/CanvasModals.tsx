@@ -1713,6 +1713,7 @@ export function RestoreSnapshotModal({
           </div>
           <button
             type="button"
+            disabled={isImporting}
             onClick={onCancel}
             className="p-1 text-slate-400 hover:text-slate-700 rounded-[2px] border border-transparent hover:border-[#CBD5E1] cursor-pointer"
           >
@@ -1759,6 +1760,7 @@ export function RestoreSnapshotModal({
 
               <button
                 type="button"
+                disabled={isImporting}
                 onClick={() => setImportMode('replace')}
                 className={cn(
                   "w-full text-left p-3 rounded-[3px] border transition-colors flex items-start justify-between gap-3 cursor-pointer",
@@ -1780,6 +1782,7 @@ export function RestoreSnapshotModal({
 
               <button
                 type="button"
+                disabled={isImporting}
                 onClick={() => setImportMode('readonly')}
                 className={cn(
                   "w-full text-left p-3 rounded-[3px] border transition-colors flex items-start justify-between gap-3 cursor-pointer",
@@ -1801,6 +1804,7 @@ export function RestoreSnapshotModal({
 
               <button
                 type="button"
+                disabled={isImporting}
                 onClick={() => setImportMode('merge')}
                 className={cn(
                   "w-full text-left p-3 rounded-[3px] border transition-colors flex items-start justify-between gap-3 cursor-pointer",
@@ -1827,6 +1831,7 @@ export function RestoreSnapshotModal({
         <div className="oh-panel-header flex items-center justify-end gap-2 px-5 py-3 border-t border-[#CBD5E1]">
           <button
             type="button"
+            disabled={isImporting}
             onClick={onCancel}
             className="px-4 py-1.5 rounded-[2px] border oh-btn text-xs font-medium text-slate-700 transition-colors cursor-pointer"
           >
@@ -2166,7 +2171,8 @@ interface DriveSaveModalProps {
   lastSave: DriveSaveRecord | null;
   accountEmail?: string | null;
   busy: 'saving' | 'choosing-folder' | 'creating-folder' | null;
-  error: string | null;
+  error?: string;
+  retrySave?: boolean;
   onChangeFolder: () => void;
   onCreateFolder: (name: string) => Promise<boolean>;
   onSwitchAccount?: () => void;
@@ -2185,6 +2191,7 @@ export function DriveSaveModal({
   accountEmail,
   busy,
   error,
+  retrySave,
   onChangeFolder,
   onCreateFolder,
   onSwitchAccount,
@@ -2345,7 +2352,7 @@ export function DriveSaveModal({
               ? `Replaces the copy of this room you saved earlier in ${folder.name}.`
               : `Saves a new file in ${folder.name}.`}
           </p>
-          {error && <p className="text-xs text-red-600 font-medium">{error}</p>}
+          {error && <p role="alert" className="text-xs text-red-600 font-medium">{error}</p>}
         </div>
 
         <div className="oh-panel-header flex items-center justify-end gap-2 px-5 py-3 border-t border-[#CBD5E1]">
@@ -2361,7 +2368,7 @@ export function DriveSaveModal({
             disabled={Boolean(busy)}
             className="px-4 py-1.5 rounded-[2px] border oh-btn-primary text-xs font-semibold text-white transition-colors cursor-pointer disabled:opacity-60"
           >
-            {busy === 'saving' ? 'Saving...' : willReplace ? 'Replace' : 'Save'}
+            {busy === 'saving' ? 'Saving...' : retrySave ? 'Retry save' : willReplace ? 'Replace' : 'Save'}
           </button>
         </div>
       </form>

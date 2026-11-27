@@ -28,6 +28,9 @@ export function useClassWorkFiles(
   const [pendingSnapshot, setPendingSnapshot] = useState<PendingSnapshotData | null>(null);
   const [importMode, setImportMode] = useState<ImportRestoreMode>('replace');
   const [importError, setImportError] = useState<string | null>(null);
+  const [restoreNotice, setRestoreNotice] = useState<string | null>(null);
+  const [downloadError, setDownloadError] = useState<string | null>(null);
+  const [isDownloading, setIsDownloading] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
   const [driveSaveDialog, setDriveSaveDialog] = useState<{
     defaultFileName: string;
@@ -35,7 +38,7 @@ export function useClassWorkFiles(
     lastSave: DriveSaveRecord | null;
   } | null>(null);
   const [driveSaveBusy, setDriveSaveBusy] = useState<'saving' | 'choosing-folder' | 'creating-folder' | null>(null);
-  const [driveSaveError, setDriveSaveError] = useState<string | null>(null);
+  const [driveSaveError, setDriveSaveError] = useState<{ message: string; retrySave?: boolean } | null>(null);
   const [driveAccount, setDriveAccount] = useState<DriveAccount | null>(null);
   const [driveOpening, setDriveOpening] = useState(false);
   const [driveNotice, setDriveNotice] = useState<{ text: string; isError?: boolean } | null>(null);
@@ -50,17 +53,26 @@ export function useClassWorkFiles(
 
   // Export complete Room Snapshot (.json) including main board + all breakout/individual subBoards
   const handleExportJSON = async () => {
-    const { json, fileName } = await buildSnapshotJson(source);
-    const blob = new Blob([json], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
+    if (isDownloading) return;
+    setIsDownloading(true);
+    try {
+      const { json, fileName } = await buildSnapshotJson(source);
+      const blob = new Blob([json], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
 
-    const link = document.createElement('a');
-    link.download = fileName;
-    link.href = url;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
+      const link = document.createElement('a');
+      link.download = fileName;
+      link.href = url;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+      setDownloadError(null);
+    } catch (err) {
+      setDownloadError(err instanceof Error ? err.message : 'Could not download class work.');
+    } finally {
+      setIsDownloading(false);
+    }
   };
 
   const showDriveNotice = (text: string, isError = false) => {
@@ -100,7 +112,7 @@ export function useClassWorkFiles(
     } catch (err: any) {
       const message = driveErrorText(err, 'Could not switch Google account.');
       if (driveSaveDialog) {
-        setDriveSaveError(message);
+        setDriveSaveError({ message });
       } else {
         setDriveOpenError(message);
       }
@@ -133,7 +145,7 @@ export function useClassWorkFiles(
       void refreshDriveAccount();
       if (folder) setDriveSaveDialog((d) => (d ? { ...d, folder } : d));
     } catch (err: any) {
-      setDriveSaveError(driveErrorText(err, 'Could not open Google Drive.'));
+      setDriveSaveError({ message: driveErrorText(err, 'Could not open Google Drive.') });
     } finally {
       setDriveSaveBusy(null);
     }
@@ -149,7 +161,7 @@ export function useClassWorkFiles(
       setDriveSaveDialog((d) => (d ? { ...d, folder: created } : d));
       return true;
     } catch (err: any) {
-      setDriveSaveError(driveErrorText(err, 'Could not create Google Drive folder.'));
+      setDriveSaveError({ message: driveErrorText(err, 'Could not create Google Drive folder.') });
       return false;
     } finally {
       setDriveSaveBusy(null);
@@ -169,7 +181,7 @@ export function useClassWorkFiles(
       setDriveSaveDialog(null);
       showDriveNotice(`Saved ${saved.fileName} to ${saved.folder.name}`);
     } catch (err: any) {
-      setDriveSaveError(driveErrorText(err, 'Could not save to Google Drive.'));
+      setDriveSaveError({ message: driveErrorText(err, 'Could not save to Google Drive.'), retrySave: true });
     } finally {
       setDriveSaveBusy(null);
     }
@@ -197,6 +209,7 @@ export function useClassWorkFiles(
 
   const openSnapshotText = (fileName: string, text: string) => {
     const { pending, error } = parseSnapshotText(fileName, text, roomId);
+    setRestoreNotice(null);
     setImportError(error);
     setPendingSnapshot(pending);
     if (!error) setImportMode('replace');
@@ -222,6 +235,10 @@ export function useClassWorkFiles(
     setIsImporting(true);
     try {
       const result = await onTeacherImportRoom(classWork, importMode);
+      if (result.connectionError) {
+        setRestoreNotice(result.error || 'Check the board after reconnecting before you retry.');
+        return;
+      }
       if (!result.ok) {
         setImportError(result.error || 'Failed to restore room snapshot.');
         return;
@@ -239,18 +256,22 @@ export function useClassWorkFiles(
   return {
     handleFileChange, handleExportJSON, handleOpenFromDrive, handleSaveToDrive, handleSwitchDriveAccount,
     refreshDriveAccount, driveOpening, driveAccount, driveOpenError, driveNotice,
+    isDownloading, downloadError, dismissDownloadError: () => setDownloadError(null),
+    restoreNotice, reviewRestore: () => setRestoreNotice(null),
+    discardRestore: () => { setRestoreNotice(null); setPendingSnapshot(null); },
     saveDialog: driveSaveDialog && {
       ...driveSaveDialog,
       accountEmail: driveAccount?.email,
       busy: driveSaveBusy,
-      error: driveSaveError,
+      error: driveSaveError?.message,
+      retrySave: driveSaveError?.retrySave,
       onChangeFolder: handleDriveChangeFolder,
       onCreateFolder: handleDriveCreateFolder,
       onSwitchAccount: handleSwitchDriveAccount,
       onSave: handleDriveSaveConfirm,
       onCancel: () => { if (!driveSaveBusy) setDriveSaveDialog(null); },
     },
-    restoreDialog: pendingSnapshot && {
+    restoreDialog: !restoreNotice && pendingSnapshot && {
       roomId, pendingSnapshot, importError, importMode, setImportMode, isImporting,
       onConfirmImport: handleConfirmImport,
       onCancel: () => { setPendingSnapshot(null); setImportError(null); },

@@ -276,4 +276,5 @@ export interface PendingSnapshotData extends ClassWorkData {
   exportedBy?: string;
 }
 
-export type RestoreClassWork = (data: ClassWorkData, mode: ImportRestoreMode) => Promise<{ ok: boolean; error?: string }>;
+export type RestoreClassWork = (data: ClassWorkData, mode: ImportRestoreMode) =>
+  Promise<{ ok: boolean; error?: string; connectionError?: boolean }>;
