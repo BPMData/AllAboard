@@ -24,16 +24,7 @@ import {
   isWorksheetMime,
   pickDriveFile,
 } from '../lib/googleDrive';
-import {
-  computeNotesGone,
-  getNoteFontSize,
-  getPaletteColors,
-  getSelectionBounds,
-  hlInk,
-  isSeeThroughHighlight,
-  noteSize,
-  traceHollowTipShape,
-} from '../lib/inkCore';
+import { computeNotesGone, getSelectionBounds, isSeeThroughHighlight, traceHollowTipShape } from '../lib/inkCore';
 import type { PageRange } from '../lib/pageRange';
 import type { RoundVariants } from '../lib/roundVariants';
 import { authorKeyOf, summarizeSelectionAuthors } from '../lib/selectionAuthors';
@@ -61,11 +52,9 @@ import {
   ClassroomTimerState,
   ConfigureBreakoutPayload,
   GridMode,
-  HollowShapeKind,
   RemoteCursor,
   RoomBackground,
   SpotlightPayload,
-  StampKind,
   StudentStatus,
   SubBoardData,
   TimerControlPayload,
@@ -78,12 +67,8 @@ import {
   EMPTY_ROUND_VARIANTS,
   EMPTY_TEMPLATE_INK,
   PAGE_GAP,
-  TEXT_SIZE_DROPDOWN_PRESETS,
   getCanvasGridStyle,
-  readLocalColor,
   readLocalGridMode,
-  readLocalHollowShape,
-  readLocalNum,
   saveLocal,
 } from './canvas/canvasHelpers';
 import { CanvasToolbar } from './canvas/CanvasToolbar';
@@ -96,6 +81,7 @@ import { useCanvasInteractionState } from './canvas/useCanvasInteractionState';
 import { useCanvasLaser } from './canvas/useCanvasLaser';
 import { useCanvasPointerTools } from './canvas/useCanvasPointerTools';
 import { useStageViewport } from './canvas/useStageViewport';
+import { useToolSettings } from './canvas/useToolSettings';
 import {
   BreakoutManagerModal,
   DriveSaveModal,
@@ -271,52 +257,20 @@ export default function Canvas({
   onShowChat,
   onReportProblem,
 }: CanvasProps) {
-  // OverBoard-style Separate Tool Settings & Memory
-  const [penColor, setPenColor] = useState<string>(() => readLocalColor('allaboard-pen-color', '#111111'));
-  const [penWidth, setPenWidth] = useState<number>(() => readLocalNum('allaboard-pen-width', 6, 1, 50));
-  const [hollowShape, setHollowShape] = useState<HollowShapeKind>(() =>
-    readLocalHollowShape('allaboard-hollow-shape', 'circle')
-  );
-  const [hollowWidth, setHollowWidth] = useState<number>(() => readLocalNum('allaboard-hollow-width', 36, 4, 120));
-  const [hollowWeight, setHollowWeight] = useState<number>(() => readLocalNum('allaboard-hollow-weight', 3, 1, 25));
+  // Per-tool settings (color, widths, highlighter, text size, ...) live in canvas/useToolSettings.
   const [showHollowMenu, setShowHollowMenu] = useState<boolean>(false);
   const hollowMenuRef = useRef<HTMLDivElement>(null);
-
-  const [hlColor, setHlColor] = useState<string>(() => readLocalColor('allaboard-hl-color', '#fdd835'));
-  const [hlWidth, setHlWidth] = useState<number>(() => readLocalNum('allaboard-hl-width', 22, 4, 60));
-  const [hlStrength, setHlStrength] = useState<number>(() => readLocalNum('allaboard-hl-strength', 45, 10, 100));
-  const [eraserWidth, setEraserWidth] = useState<number>(() => readLocalNum('allaboard-eraser-width', 60, 8, 400));
-  const [isCoverMode, setIsCoverMode] = useState<boolean>(false);
-  const [coverColor, setCoverColor] = useState<string>(() => readLocalColor('allaboard-cover-color', '#111111'));
-  const [textFontSize, setTextFontSize] = useState<number>(() => readLocalNum('allaboard-text-size', 26, 12, 96));
-  const [smoothLevel, setSmoothLevel] = useState<number>(() => readLocalNum('allaboard-smooth-v2', 0, 0, 8));
-  const [fingerScrolls, setFingerScrolls] = useState<boolean>(() => {
-    try {
-      return localStorage.getItem('allaboard-finger-scrolls') === '1';
-    } catch {
-      return false;
-    }
-  });
   const [showHlMenu, setShowHlMenu] = useState<boolean>(false);
   const hlMenuRef = useRef<HTMLDivElement>(null);
   const [showStatusMenu, setShowStatusMenu] = useState<boolean>(false);
   const statusMenuRef = useRef<HTMLDivElement>(null);
   const [showTextSizeMenu, setShowTextSizeMenu] = useState<boolean>(false);
   const textSizeMenuRef = useRef<HTMLDivElement>(null);
-  const customColorInputRef = useRef<HTMLInputElement>(null);
 
   const [tool, setTool] = useState<ToolType>('solid');
-  const [stampKind, setStampKind] = useState<StampKind>('check');
-  const [customTeacherStampText, setCustomTeacherStampText] = useState<string>('CHECK THIS');
   const [gridMode, setGridMode] = useState<GridMode>(() => readLocalGridMode('allaboard-grid-mode', 'dots'));
   const [showGridMenu, setShowGridMenu] = useState<boolean>(false);
   const gridMenuRef = useRef<HTMLDivElement>(null);
-
-  // Derived active color & width based on whether Highlighter (See-Through or Cover), Eraser, Hollow, or Pen is active
-  const paletteMode: 'pen' | 'hl' | 'cover' = tool === 'highlighter' ? (isCoverMode ? 'cover' : 'hl') : 'pen';
-  const color = tool === 'highlighter' ? (isCoverMode ? coverColor : hlColor) : penColor;
-  const strokeWidth =
-    tool === 'highlighter' ? hlWidth : tool === 'eraser' ? eraserWidth : tool === 'hollow' ? hollowWidth : penWidth;
 
   // Phones: the full toolbar would cover most of the board, so it folds behind a "Tools" button (closed by default).
   // Tablets, Chromebooks and laptops always show it.
@@ -426,7 +380,6 @@ export default function Canvas({
   } = useCanvasInteractionState();
 
   // Confirmation States
-  const [confirmClearMine, setConfirmClearMine] = useState(false);
   const [showHotkeysModal, setShowHotkeysModal] = useState(false);
 
   // Worksheet Upload & Built-In Templates State (Teacher Only)
@@ -736,15 +689,9 @@ export default function Canvas({
     return [base[0] + dx, base[1] + dy, base[2] + dx, base[3] + dy] as [number, number, number, number];
   }, [selectedElements, selectionDragOffset]);
 
-  const activeTextSize = editingNote
-    ? editingNote.fontSize
-    : selectedTextElements.length > 0
-      ? getNoteFontSize(selectedTextElements[0])
-      : textFontSize;
-
   // Per-board action-aware Undo & Redo history helpers
 
-  const { recordUndo, canLocalUndo, canRedo, performUndo, performRedo } = useCanvasHistory({
+  const history = useCanvasHistory({
     laserSocket,
     activeBoardId,
     onUndo,
@@ -756,117 +703,40 @@ export default function Canvas({
     setSelectedIds,
     setEditingNote,
   });
+  const { recordUndo, performUndo, performRedo } = history;
 
-  // Helper to update active color, open note, or selected elements (`restyle`)
-  const handleSelectColor = useCallback(
-    (nextColor: string) => {
-      if (tool === 'highlighter') {
-        if (isCoverMode) {
-          setCoverColor(nextColor);
-          saveLocal('allaboard-cover-color', nextColor);
-        } else {
-          setHlColor(nextColor);
-          saveLocal('allaboard-hl-color', nextColor);
-        }
-      } else {
-        setPenColor(nextColor);
-        saveLocal('allaboard-pen-color', nextColor);
-        if (tool === 'eraser' || tool === 'pan' || tool === 'move-bg') {
-          setTool('solid');
-        }
-      }
-      if (editingNote) {
-        setEditingNote((prev) => {
-          if (!prev) return null;
-          return {
-            ...prev,
-            color: nextColor === '#ffffff' ? '#0f172a' : nextColor,
-          };
-        });
-        requestAnimationFrame(() => noteTextareaRef.current?.focus());
-        return;
-      }
-      if (selectedElements.length > 0 && canDraw) {
-        const before = selectedElements;
-        const updates: Array<Partial<CanvasElement> & { id: string }> = [];
-        const after: CanvasElement[] = [];
-        for (const el of before) {
-          let resolvedColor = nextColor;
-          if (el.tool === 'text' && nextColor === '#ffffff') {
-            resolvedColor = '#0f172a';
-          } else if (el.tool === 'highlighter' && isSeeThroughHighlight(el)) {
-            resolvedColor = hlInk(nextColor, el.hlStrength ?? hlStrength);
-          }
-          updates.push({ id: el.id, color: resolvedColor });
-          after.push({ ...el, color: resolvedColor });
-        }
-        recordUndo({ kind: 'update', before, after, bringToFront: false });
-        onElementsBatchUpdate(updates, false);
-      }
-    },
-    [tool, isCoverMode, editingNote, selectedElements, canDraw, hlStrength, recordUndo, onElementsBatchUpdate]
-  );
-
-  // Brush / highlight / eraser / hollow stroke width (each persisted independently)
-  const handleSelectStrokeWidth = useCallback(
-    (nextWidth: number) => {
-      if (tool === 'eraser') {
-        const clamped = Math.max(8, Math.min(400, nextWidth));
-        setEraserWidth(clamped);
-        saveLocal('allaboard-eraser-width', String(clamped));
-      } else if (tool === 'highlighter') {
-        const clamped = Math.max(4, Math.min(60, nextWidth));
-        setHlWidth(clamped);
-        saveLocal('allaboard-hl-width', String(clamped));
-      } else if (tool === 'hollow') {
-        const clamped = Math.max(4, Math.min(120, nextWidth));
-        setHollowWidth(clamped);
-        saveLocal('allaboard-hollow-width', String(clamped));
-      } else {
-        const clamped = Math.max(1, Math.min(50, nextWidth));
-        setPenWidth(clamped);
-        saveLocal('allaboard-pen-width', String(clamped));
-      }
-      if (editingNote) {
-        requestAnimationFrame(() => noteTextareaRef.current?.focus());
-      }
-    },
-    [tool, editingNote]
-  );
-
-  // Dedicated Line Weight setter for the Hollow Shape Brush (1..25)
-  const handleSelectHollowWeight = useCallback((nextWeight: number) => {
-    const clamped = Math.max(1, Math.min(25, nextWeight));
-    setHollowWeight(clamped);
-    saveLocal('allaboard-hollow-weight', String(clamped));
-  }, []);
-
-  // Dedicated independent Text Size setter (S/M/L/XL presets, +/- buttons, slider, live note, selected notes)
-  const handleSelectTextFontSize = useCallback(
-    (nextSize: number, applyToSelection = true) => {
-      const clamped = Math.max(12, Math.min(96, Math.round(nextSize)));
-      setTextFontSize(clamped);
-      saveLocal('allaboard-text-size', String(clamped));
-      if (editingNote) {
-        setEditingNote((prev) => (prev ? { ...prev, fontSize: clamped } : null));
-        requestAnimationFrame(() => noteTextareaRef.current?.focus());
-        return;
-      }
-      if (applyToSelection && selectedTextElements.length > 0 && canDraw) {
-        const before = selectedTextElements;
-        const updates: Array<Partial<CanvasElement> & { id: string }> = [];
-        const after: CanvasElement[] = [];
-        for (const el of before) {
-          const [w, h] = noteSize(el.text || '', clamped);
-          updates.push({ id: el.id, fontSize: clamped, width: w, height: h });
-          after.push({ ...el, fontSize: clamped, width: w, height: h });
-        }
-        recordUndo({ kind: 'update', before, after, bringToFront: false });
-        onElementsBatchUpdate(updates, false);
-      }
-    },
-    [editingNote, selectedTextElements, canDraw, recordUndo, onElementsBatchUpdate]
-  );
+  const toolSettings = useToolSettings({
+    tool,
+    setTool,
+    editingNote,
+    setEditingNote,
+    noteTextareaRef,
+    selectedElements,
+    selectedTextElements,
+    canDraw,
+    recordUndo,
+    onElementsBatchUpdate,
+  });
+  const {
+    penColor,
+    penWidth,
+    hollowShape,
+    hollowWeight,
+    hlColor,
+    hlStrength,
+    isCoverMode,
+    coverColor,
+    textFontSize,
+    setTextFontSize,
+    smoothLevel,
+    fingerScrolls,
+    stampKind,
+    customTeacherStampText,
+    color,
+    strokeWidth,
+    activeTextSize,
+    handleSelectTextFontSize,
+  } = toolSettings;
 
   // Compute positioned geometry for each page of the background worksheet
   const computedBackgroundPages = useMemo(() => {
@@ -1169,10 +1039,8 @@ export default function Canvas({
   });
 
   const gridSpacing = Math.max(20, Math.round(40 * stageScale));
-  const activeSwatches = useMemo(() => getPaletteColors(paletteMode), [paletteMode]);
   const myStatus: StudentStatus = users.find((user) => user.userId === userId)?.status ?? 'none';
   const myStatusOption = myStatus !== 'none' ? STATUS_OPTIONS[myStatus] : null;
-  const activeTextPreset = TEXT_SIZE_DROPDOWN_PRESETS.find((preset) => preset.size === activeTextSize);
 
   return (
     <div className="flex flex-col h-full bg-white select-none relative">
@@ -1194,85 +1062,31 @@ export default function Canvas({
 
       {/* Primary Drawing & Studio Toolbar (`data-keep-note` lets users restyle an open note without closing it) */}
       <CanvasToolbar
-        isChatHidden={isChatHidden}
-        onShowChat={onShowChat}
-        unreadChatCount={unreadChatCount}
-        roomId={roomId}
-        onReportProblem={onReportProblem}
-        isPhone={isPhone}
-        setPhoneToolsOpen={setPhoneToolsOpen}
-        phoneToolsOpen={phoneToolsOpen}
-        strokeWidth={strokeWidth}
-        tool={tool}
-        color={color}
-        toolbarCollapsed={toolbarCollapsed}
-        canDraw={canDraw}
-        editingNote={editingNote}
-        commitEditingNote={commitEditingNote}
-        performUndo={performUndo}
-        setTool={setTool}
-        effectiveTool={effectiveTool}
-        isTeacher={isTeacher}
-        hollowMenuRef={hollowMenuRef}
-        setShowHollowMenu={setShowHollowMenu}
-        showHollowMenu={showHollowMenu}
-        hollowShape={hollowShape}
-        setHollowShape={setHollowShape}
-        hlMenuRef={hlMenuRef}
-        isCoverMode={isCoverMode}
-        setShowHlMenu={setShowHlMenu}
-        showHlMenu={showHlMenu}
-        setIsCoverMode={setIsCoverMode}
-        hlColor={hlColor}
-        hlStrength={hlStrength}
-        setHlStrength={setHlStrength}
-        coverColor={coverColor}
-        setCoverColor={setCoverColor}
-        canLocalUndo={canLocalUndo}
-        canRedo={canRedo}
-        performRedo={performRedo}
-        confirmClearMine={confirmClearMine}
-        setEditingNote={setEditingNote}
-        elements={elements}
-        userId={userId}
-        allGoneNoteIds={allGoneNoteIds}
-        recordUndo={recordUndo}
-        setSelectedIds={setSelectedIds}
-        onClearMine={onClearMine}
-        setConfirmClearMine={setConfirmClearMine}
+        history={history}
+        toolSettings={toolSettings}
+        menus={{
+          showHollowMenu,
+          setShowHollowMenu,
+          hollowMenuRef,
+          showHlMenu,
+          setShowHlMenu,
+          hlMenuRef,
+          showStatusMenu,
+          setShowStatusMenu,
+          statusMenuRef,
+          showTextSizeMenu,
+          setShowTextSizeMenu,
+          textSizeMenuRef,
+        }}
+        toolState={{ tool, effectiveTool, setTool }}
         classWork={classWork}
-        handleExportPNG={handleExportPNG}
-        statusMenuRef={statusMenuRef}
-        setShowStatusMenu={setShowStatusMenu}
-        showStatusMenu={showStatusMenu}
-        myStatusOption={myStatusOption}
-        myStatus={myStatus}
-        onSetStatus={onSetStatus}
-        setStampKind={setStampKind}
-        nameStampTaken={nameStampTaken}
-        stampKind={stampKind}
-        userName={userName}
-        customTeacherStampText={customTeacherStampText}
-        setCustomTeacherStampText={setCustomTeacherStampText}
-        activeSwatches={activeSwatches}
-        paletteMode={paletteMode}
-        handleSelectColor={handleSelectColor}
-        customColorInputRef={customColorInputRef}
-        handleSelectStrokeWidth={handleSelectStrokeWidth}
-        hollowWidth={hollowWidth}
-        hollowWeight={hollowWeight}
-        handleSelectHollowWeight={handleSelectHollowWeight}
-        textSizeMenuRef={textSizeMenuRef}
-        setShowTextSizeMenu={setShowTextSizeMenu}
-        showTextSizeMenu={showTextSizeMenu}
-        selectedTextElements={selectedTextElements}
-        activeTextPreset={activeTextPreset}
-        activeTextSize={activeTextSize}
-        handleSelectTextFontSize={handleSelectTextFontSize}
-        smoothLevel={smoothLevel}
-        setSmoothLevel={setSmoothLevel}
-        fingerScrolls={fingerScrolls}
-        setFingerScrolls={setFingerScrolls}
+        chat={{ isChatHidden, onShowChat, unreadChatCount }}
+        phoneLayout={{ isPhone, phoneToolsOpen, setPhoneToolsOpen, toolbarCollapsed }}
+        noteEditing={{ editingNote, setEditingNote, commitEditingNote, selectedTextElements }}
+        user={{ userId, userName, isTeacher, canDraw, nameStampTaken }}
+        status={{ myStatus, myStatusOption, onSetStatus }}
+        clearMine={{ elements, allGoneNoteIds, setSelectedIds, onClearMine }}
+        room={{ roomId, onReportProblem, handleExportPNG }}
       />
 
       {/* Teacher Classroom Moderation, Breakout Switchboard & Worksheet Deck OR Student Sub-Board Bar */}

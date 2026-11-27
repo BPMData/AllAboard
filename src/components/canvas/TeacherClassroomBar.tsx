@@ -31,10 +31,10 @@ import {
   RoomBackground,
   SubBoardData,
   TimerControlPayload,
-  ToolType,
 } from '../../types';
 import { type LessonRequest } from '../LessonPackModals';
 import { useClassWorkFiles } from '../useClassWorkFiles';
+import type { ToolState } from './useToolSettings';
 import { ClassroomTimerControl, StudentTimerBadge, timerHasTime } from './ClassroomTimerControl';
 
 /** Teacher-only room actions the bar calls (all from `App.tsx`). */
@@ -109,12 +109,6 @@ export interface TeacherModalOpeners {
   handleOpenBreakoutModal: () => void;
   setShowTemplateModal: React.Dispatch<React.SetStateAction<boolean>>;
   setLessonModal: React.Dispatch<React.SetStateAction<'save' | 'load'>>;
-}
-
-export interface ToolState {
-  tool: ToolType;
-  effectiveTool: ToolType;
-  setTool: React.Dispatch<React.SetStateAction<ToolType>>;
 }
 
 export interface InkFocus {
