@@ -12,10 +12,7 @@ export interface PageRect {
 /**
  * Picks a grid column count (1..n) whose overall page block comes closest to `targetAspect`.
  */
-export function gridColumns(
-  pages: Array<Pick<BackgroundPage, 'width' | 'height'>>,
-  targetAspect = 16 / 9
-): number {
+export function gridColumns(pages: Array<Pick<BackgroundPage, 'width' | 'height'>>, targetAspect = 16 / 9): number {
   const n = pages.length;
   if (n <= 1) return 1;
 

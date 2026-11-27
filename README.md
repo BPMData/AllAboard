@@ -11,6 +11,7 @@
 ## Features
 
 ### Infinite Collaborative Canvas
+
 - **Per-Student Isolated Ink & Eraser**: Each student's strokes live on their own isolated layer—students can erase or undo their own work without ever rubbing out a classmate's drawing or the teacher's background worksheet.
 - **Drawing & Annotation Toolkit**:
   - Freehand Pen, Highlighter, and Per-User Eraser Brush
@@ -20,14 +21,16 @@
 - **Live Multiplayer Cursors**: Throttled real-time cursors with student names and active tool indicators.
 
 ### Non-Erasable Teacher Worksheets & Templates
+
 - **Upload PDFs & Images**: Upload `.pdf`, `.png`, `.jpg`, or `.webp` files directly onto the board as a locked background layer underneath student ink. Multi-page PDFs can be arranged side-by-side or stacked vertically.
 - **Built-In Customizable Classroom Templates**:
-  1. **Task Check-In Columns** (*Got It / Still Working / Need Help*)
-  2. **4-Corner Spectrum** (*Strongly Agree / Agree / Disagree / Strongly Disagree*)
-  3. **4-Box Frayer Model** (*Definition / Characteristics / Examples / Non-Examples* with custom center concept)
+  1. **Task Check-In Columns** (_Got It / Still Working / Need Help_)
+  2. **4-Corner Spectrum** (_Strongly Agree / Agree / Disagree / Strongly Disagree_)
+  3. **4-Box Frayer Model** (_Definition / Characteristics / Examples / Non-Examples_ with custom center concept)
 - **Adjust & Reposition**: Teachers can drag and resize the background worksheet directly on the canvas and lock it in place.
 
 ### Breakout Rooms & Individual Student Boards
+
 - **3 Classroom Modes**:
   - **Whole-Class Board**: Everyone collaborates on a single shared canvas.
   - **Individual Student Boards**: Every student automatically gets their own personal board (including late joiners)—ideal for individual Frayer Models or exit tickets.
@@ -36,6 +39,7 @@
 - **Teacher Live Grid Overview & Board Switcher**: View all student or group boards simultaneously in a live grid (with stroke counts and assigned students) or jump into any board from the top dropdown to give live feedback in red pen.
 
 ### IRC-Style Classroom Chat & Room Persistence
+
 - **Unified or Per-Board Chat**: Keep the entire class in one chat channel or scope chat messages to each breakout room.
 - **PIN-Protected Teacher Controls**: Claim or protect Teacher Mode with a room passcode, lock/unlock student drawing during instruction, or clear individual/all student ink.
 - **7-Day Room Persistence & Portable Snapshots**: Rooms automatically persist on the server for 7 days and can be exported/imported as `.json` snapshots (or `.png` images) at any time.
@@ -77,6 +81,7 @@ npm run test:e2e
 ---
 
 ## Tech Stack
+
 - **Frontend**: React 19, TypeScript, Tailwind CSS, Konva / React-Konva, PDF.js (`pdfjs-dist`), Lucide Icons
 - **Backend**: Node.js, Express, Socket.IO (WebSocket rooms with SQLite persistence)
 

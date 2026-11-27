@@ -3,7 +3,16 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import type { Socket } from 'socket.io-client';
 import { lessonAssetUrls, type LessonPack } from '../src/lib/lessonPack.ts';
-import { PNG, type ServerHandle, delay, emitAck, socketPool, startTestServer, waitForEvent, worksheet } from './socketHelpers.ts';
+import {
+  PNG,
+  type ServerHandle,
+  delay,
+  emitAck,
+  socketPool,
+  startTestServer,
+  waitForEvent,
+  worksheet,
+} from './socketHelpers.ts';
 
 /** A 100×100 worksheet page at (0, 0), so stamp corners are easy to place. */
 const board100 = (fileName: string) => ({ ...worksheet(fileName), pages: [{ dataUrl: PNG, width: 100, height: 100 }] });
@@ -22,7 +31,11 @@ const nameStamp = (id: string, userId: string, x: number, y: number) => ({
 });
 
 const variants = (extra: Partial<Record<'B' | 'C' | 'D', string>>, more: Record<string, unknown> = {}) => ({
-  extra: [extra.B ? worksheet(extra.B) : null, extra.C ? worksheet(extra.C) : null, extra.D ? worksheet(extra.D) : null],
+  extra: [
+    extra.B ? worksheet(extra.B) : null,
+    extra.C ? worksheet(extra.C) : null,
+    extra.D ? worksheet(extra.D) : null,
+  ],
   rule: 'same',
   ...more,
 });
@@ -62,7 +75,8 @@ describe('worksheet variants A–D on rounds', () => {
     return { res, sync: await sync };
   }
 
-  const fileOf = (sync: any, userId: string, round = 'r1') => sync.subBoards[`${round}_ind_${userId}`]?.background?.fileName;
+  const fileOf = (sync: any, userId: string, round = 'r1') =>
+    sync.subBoards[`${round}_ind_${userId}`]?.background?.fileName;
 
   it('V1 – deal out in turn: launch deals alphabetically, late joiners keep dealing', async () => {
     const { teacher } = await setupClass('v-1');
@@ -100,7 +114,10 @@ describe('worksheet variants A–D on rounds', () => {
       prepare: true,
       mode: 'individual',
       customBackground: worksheet('a.png'),
-      variants: variants({ B: 'b.png', D: 'd.png' }, { rule: 'corner', cornerMap: { tl: 0, tr: 1, bl: 2, br: 3, none: 1 } }),
+      variants: variants(
+        { B: 'b.png', D: 'd.png' },
+        { rule: 'corner', cornerMap: { tl: 0, tr: 1, bl: 2, br: 3, none: 1 } }
+      ),
     });
     const { sync } = await configure(teacher, { action: 'resume', roundId: 'r1' });
     assert.equal(fileOf(sync, 's1'), 'a.png');
@@ -162,8 +179,15 @@ describe('worksheet variants A–D on rounds', () => {
       variants: variants({ B: 'b.png' }),
     });
     assert.equal(grp.roundVariants.r2, undefined, 'group rounds take no variants');
-    assert.equal((await emitAck<any>(teacher, 'teacher:set-round-variants', { roundId: 'r2', variants: variants({ B: 'b.png' }) })).ok, false);
-    assert.equal((await emitAck<any>(sam, 'teacher:set-round-variants', { roundId: 'r1', variants: variants({ B: 'b.png' }) })).ok, false);
+    assert.equal(
+      (await emitAck<any>(teacher, 'teacher:set-round-variants', { roundId: 'r2', variants: variants({ B: 'b.png' }) }))
+        .ok,
+      false
+    );
+    assert.equal(
+      (await emitAck<any>(sam, 'teacher:set-round-variants', { roundId: 'r1', variants: variants({ B: 'b.png' }) })).ok,
+      false
+    );
     const studentSync = waitForEvent<any>(sam, 'breakout-sync');
     await configure(teacher, { action: 'resume', roundId: 'r1' });
     assert.equal((await studentSync).roundVariants, undefined, 'students never see variants');
@@ -182,7 +206,12 @@ describe('worksheet variants A–D on rounds', () => {
     pool.closeAll();
     await srv.close();
     ({ srv } = await startTestServer(dir));
-    const { socket: t2, init } = await pool.join(srv, { roomId: 'v-5', userId: 't1', name: 'Teacher', teacherPin: '1234' });
+    const { socket: t2, init } = await pool.join(srv, {
+      roomId: 'v-5',
+      userId: 't1',
+      name: 'Teacher',
+      teacherPin: '1234',
+    });
     assert.equal(init.roundVariants.r1.extra[0].fileName, 'b.png');
     assert.equal(init.roundVariants.r1.rule, 'rotate');
 
@@ -211,7 +240,10 @@ describe('worksheet variants A–D on rounds', () => {
       prepare: true,
       mode: 'individual',
       customBackground: worksheet('a.png'),
-      variants: variants({ B: 'b.png', C: 'c.png' }, { rule: 'corner', cornerMap: { tl: 2, tr: 1, bl: 0, br: 0, none: 2 }, lateJoiners: 'a', overrides: { sam: 1 } }),
+      variants: variants(
+        { B: 'b.png', C: 'c.png' },
+        { rule: 'corner', cornerMap: { tl: 2, tr: 1, bl: 0, br: 0, none: 2 }, lateJoiners: 'a', overrides: { sam: 1 } }
+      ),
     });
     let res = await emitAck<any>(teacher, 'teacher:export-lesson', {});
     let lesson: LessonPack = res.lesson;
@@ -232,12 +264,21 @@ describe('worksheet variants A–D on rounds', () => {
     extraServers.push(other);
     const { teacher: t2 } = await setupClass('v-6-src', other.srv);
     const has = await emitAck<any>(t2, 'teacher:has-assets', { urls: Object.keys(assets) });
-    for (const u of has.missing) assert.equal((await emitAck<any>(t2, 'teacher:upload-asset', { dataUrl: assets[u] })).ok, true);
+    for (const u of has.missing)
+      assert.equal((await emitAck<any>(t2, 'teacher:upload-asset', { dataUrl: assets[u] })).ok, true);
     res = await emitAck<any>(t2, 'teacher:load-lesson', { lesson, target: 'new', newRoomId: 'v-6-new', pin: '5678' });
     assert.equal(res.ok, true, res.error);
-    const { init } = await pool.join(other.srv, { roomId: 'v-6-new', userId: 't1', name: 'Teacher', teacherPin: '5678' });
+    const { init } = await pool.join(other.srv, {
+      roomId: 'v-6-new',
+      userId: 't1',
+      name: 'Teacher',
+      teacherPin: '5678',
+    });
     const v = init.roundVariants.r1;
-    assert.deepEqual(v.extra.map((bg: any) => bg?.fileName ?? null), ['b.png', 'c.png', null]);
+    assert.deepEqual(
+      v.extra.map((bg: any) => bg?.fileName ?? null),
+      ['b.png', 'c.png', null]
+    );
     assert.equal(v.rule, 'corner');
     assert.deepEqual(v.cornerMap, { tl: 2, tr: 1, bl: 0, br: 0, none: 2 });
     assert.equal(v.lateJoiners, 'a');
@@ -248,7 +289,12 @@ describe('worksheet variants A–D on rounds', () => {
     // A pack with a missing variant image is refused.
     const broken = structuredClone(lesson);
     broken.rounds[0].variants!.extra[1]!.pages[0].dataUrl = `/api/assets/${'2'.repeat(64)}`;
-    res = await emitAck<any>(t2, 'teacher:load-lesson', { lesson: broken, target: 'new', newRoomId: 'v-6-bad', pin: '5678' });
+    res = await emitAck<any>(t2, 'teacher:load-lesson', {
+      lesson: broken,
+      target: 'new',
+      newRoomId: 'v-6-bad',
+      pin: '5678',
+    });
     assert.match(res.error, /missing/);
   });
 });

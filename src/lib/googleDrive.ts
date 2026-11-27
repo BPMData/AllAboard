@@ -153,9 +153,7 @@ async function requestToken(prompt: '' | 'select_account'): Promise<string> {
   }
 
   inFlightTokenPromise = (async () => {
-    await loadScript('https://accounts.google.com/gsi/client', () =>
-      Boolean((window as any).google?.accounts?.oauth2)
-    );
+    await loadScript('https://accounts.google.com/gsi/client', () => Boolean((window as any).google?.accounts?.oauth2));
 
     const { clientId } = getGoogleConfig();
     if (!tokenClient || tokenClientForClientId !== clientId) {
@@ -235,9 +233,7 @@ export async function getDriveAccount(): Promise<DriveAccount | null> {
 
   inFlightAccountPromise = (async () => {
     try {
-      const res = await driveFetch(
-        'https://www.googleapis.com/drive/v3/about?fields=user(displayName,emailAddress)'
-      );
+      const res = await driveFetch('https://www.googleapis.com/drive/v3/about?fields=user(displayName,emailAddress)');
       const data = await res.json();
       const email = typeof data?.user?.emailAddress === 'string' ? data.user.emailAddress.trim() : '';
       if (!email) return null;
@@ -378,11 +374,7 @@ export function normalizeJsonFileName(name: string, fallback: string): string {
  * True when saving `fileName` into `folder` should replace the room's last save
  * (same name, same folder) instead of creating a new file.
  */
-export function replacesLastSave(
-  last: DriveSaveRecord | null,
-  fileName: string,
-  folder: DriveFolder
-): boolean {
+export function replacesLastSave(last: DriveSaveRecord | null, fileName: string, folder: DriveFolder): boolean {
   return Boolean(last && last.fileName === fileName && (last.folder.id ?? null) === (folder.id ?? null));
 }
 
@@ -601,10 +593,7 @@ export function formatElapsedTimer(elapsedMs: number): string {
   return `${mins}:${String(secs).padStart(2, '0')}`;
 }
 
-export function formatDownloadProgress(
-  doc: Pick<PickedDriveDoc, 'mimeType'>,
-  progress: DownloadDriveProgress
-): string {
+export function formatDownloadProgress(doc: Pick<PickedDriveDoc, 'mimeType'>, progress: DownloadDriveProgress): string {
   if (progress.stage === 'converting-pptx') {
     return 'Converting PowerPoint...';
   }
@@ -759,10 +748,7 @@ async function convertPowerPointAndExportPdf(
   }
 }
 
-export async function downloadDriveFile(
-  doc: PickedDriveDoc,
-  opts?: DownloadDriveOptions
-): Promise<File> {
+export async function downloadDriveFile(doc: PickedDriveDoc, opts?: DownloadDriveOptions): Promise<File> {
   const timeoutMs = opts?.timeoutMs ?? getDriveDownloadTimeoutMs();
   const scoped = createScopedAbort(opts?.signal, timeoutMs);
   const startedAt = Date.now();

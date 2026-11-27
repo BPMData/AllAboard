@@ -31,7 +31,11 @@ export interface ReportCategory {
 
 export const REPORT_CATEGORIES: ReportCategory[] = [
   { id: 'joining', label: 'Joining a room or staying connected', hint: "Can't get in, kicked out, keeps reconnecting" },
-  { id: 'sync', label: 'Drawing or seeing other people’s work', hint: 'Ink missing, slow, or different on another screen' },
+  {
+    id: 'sync',
+    label: 'Drawing or seeing other people’s work',
+    hint: 'Ink missing, slow, or different on another screen',
+  },
   { id: 'worksheets', label: 'Worksheets, PDFs or images', hint: "Won't upload, looks wrong, pages missing" },
   { id: 'breakouts', label: 'Breakout rounds or student boards', hint: 'Wrong board, rounds, groups, Live Grid' },
   { id: 'chat', label: 'Chat', hint: 'Messages missing, late or in the wrong place' },
@@ -73,7 +77,11 @@ export interface ReportDiagnostics {
 }
 
 /** Field order and the label each one gets in the report. */
-export const DIAGNOSTIC_FIELDS: { key: keyof ReportDiagnostics; label: string; type: 'string' | 'number' | 'boolean' }[] = [
+export const DIAGNOSTIC_FIELDS: {
+  key: keyof ReportDiagnostics;
+  label: string;
+  type: 'string' | 'number' | 'boolean';
+}[] = [
   { key: 'appVersion', label: 'App version', type: 'string' },
   { key: 'browser', label: 'Browser', type: 'string' },
   { key: 'os', label: 'Device', type: 'string' },
@@ -151,10 +159,13 @@ function escapeRegExp(text: string): string {
 export function scrubPublicText(text: string, redact: string[] = []): string {
   let out = String(text || '');
   const values = [...new Set(redact.map((v) => String(v || '').trim()).filter((v) => v.length >= 2))].sort(
-    (a, b) => b.length - a.length,
+    (a, b) => b.length - a.length
   );
   for (const value of values) {
-    out = out.replace(new RegExp(`(^|[^\\p{L}\\p{N}])${escapeRegExp(value)}(?=$|[^\\p{L}\\p{N}])`, 'giu'), '$1[removed]');
+    out = out.replace(
+      new RegExp(`(^|[^\\p{L}\\p{N}])${escapeRegExp(value)}(?=$|[^\\p{L}\\p{N}])`, 'giu'),
+      '$1[removed]'
+    );
   }
   // Generic patterns after the exact values, so a room code with digits in it is removed whole.
   out = out.replace(/[^\s@<>()]+@[^\s@<>()]+\.[a-z]{2,}/gi, '[email removed]');
@@ -251,7 +262,10 @@ function quoteBlock(text: string): string {
 }
 
 function oneLine(text: string): string {
-  return text.replace(/\s+/g, ' ').replace(/[`*_#<>[\]@]/g, '').trim();
+  return text
+    .replace(/\s+/g, ' ')
+    .replace(/[`*_#<>[\]@]/g, '')
+    .trim();
 }
 
 export interface PublicIssue {
@@ -278,7 +292,7 @@ export function buildPublicIssue(input: ProblemReportInput, redact: string[] = [
   const diag = diagnosticLines(input.diagnostics);
   parts.push('**Diagnostics:**', diag.length ? diag.map((l) => `- ${l}`).join('\n') : '_None._', '');
   parts.push(
-    `_Sent from ${REPORT_APP_NAME}'s "Something not working?" form. Contact details and private comments went to the developer by email, not here._`,
+    `_Sent from ${REPORT_APP_NAME}'s "Something not working?" form. Contact details and private comments went to the developer by email, not here._`
   );
   return { title, body: parts.join('\n'), labels: [...REPORT_LABELS] };
 }
@@ -298,12 +312,7 @@ export function looksLikeEmail(text: string): boolean {
 export function buildPrivateEmail(input: ProblemReportInput, redact: string[] = []): PrivateEmail {
   const category = categoryLabel(input.category);
   const issue = buildPublicIssue(input, redact);
-  const lines: string[] = [
-    `${REPORT_APP_NAME} problem report`,
-    '',
-    `What went wrong: ${category}`,
-    '',
-  ];
+  const lines: string[] = [`${REPORT_APP_NAME} problem report`, '', `What went wrong: ${category}`, ''];
   if (input.keepDescriptionPrivate) {
     lines.push('What happened (kept private):', scrubPublicText(input.whatHappened, redact) || 'Not given.', '');
     lines.push('How to make it happen again (kept private):', scrubPublicText(input.steps, redact) || 'Not given.', '');
@@ -322,12 +331,7 @@ export function buildPrivateEmail(input: ProblemReportInput, redact: string[] = 
 /** Plain-text copy of everything, for Copy / Download when automatic sending fails. */
 export function buildPlainReport(input: ProblemReportInput, redact: string[] = []): string {
   const email = buildPrivateEmail(input, redact);
-  return [
-    `Please email this report to ${REPORT_INBOX}`,
-    `Subject: ${email.subject}`,
-    '',
-    email.body,
-  ].join('\n');
+  return [`Please email this report to ${REPORT_INBOX}`, `Subject: ${email.subject}`, '', email.body].join('\n');
 }
 
 /** A mailto: link for the fallback. The body is left out when it would make the link too long for some mail apps. */

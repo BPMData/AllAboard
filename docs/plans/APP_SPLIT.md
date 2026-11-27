@@ -19,6 +19,7 @@ Reduce `src/App.tsx` from ~2,327 lines (~120 hooks, 26 `newSocket.on` listeners,
    - Preserve all `id`s, `aria-label`s, `placeholder`s, `title`s, button texts, and Tailwind classes verbatim.
 
 ### Phase 1 Checkpoint
+
 ```sh
 npm run lint
 npm test
@@ -35,6 +36,7 @@ npm test
    - **Important:** Check `App.tsx` refs synced for socket listeners (`userNameRef`, `isJoinedRef`, `isChatHiddenRef`, `activeBoardIdRef`, `chatScopeRef`) so listeners never read stale state.
 
 ### Phase 2 Checkpoint
+
 ```sh
 npm run lint
 npm test
@@ -53,6 +55,7 @@ npm run build
 3. Update `docs/ARCHITECTURE.md` §3 with `src/lib/identity.ts`, `src/components/LobbyScreen.tsx`, `src/hooks/useRoomSocket.ts`, and `src/hooks/useClassroomActions.ts`.
 
 ### Final Verification
+
 ```sh
 npm run lint
 npm test

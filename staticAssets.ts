@@ -29,7 +29,9 @@ export function distRouter(distPath: string): express.Router {
     if (!p) {
       p = fs.promises
         .readFile(file)
-        .then((raw) => new Promise<Buffer | null>((ok) => zlib.gzip(raw, { level: 9 }, (err, out) => ok(err ? null : out))))
+        .then(
+          (raw) => new Promise<Buffer | null>((ok) => zlib.gzip(raw, { level: 9 }, (err, out) => ok(err ? null : out)))
+        )
         .catch(() => null);
       gzipped.set(file, p);
     }

@@ -45,7 +45,10 @@ export function eraserRadius(eraser: Pick<CanvasElement, 'strokeWidth'>): number
 }
 
 /** The groups that apply an erase (forward) and that undo it (backward). */
-export function eraseGroups(result: EraseResult, eraserId: string): { forward: ElementGroup[]; backward: ElementGroup[] } {
+export function eraseGroups(
+  result: EraseResult,
+  eraserId: string
+): { forward: ElementGroup[]; backward: ElementGroup[] } {
   const forward: ElementGroup[] = result.edits.map((e) => ({ ids: e.before.map((el) => el.id), elements: e.after }));
   forward.push({ ids: [eraserId], elements: result.keptEraser });
   // In board order, so each element's `prevId` is already back when it's restored.
@@ -59,7 +62,11 @@ export function eraseGroups(result: EraseResult, eraserId: string): { forward: E
 }
 
 /** Points along a polyline no further apart than `step` (only where `near` says the segment matters). */
-function densify(pts: number[], step: number, near: (ax: number, ay: number, bx: number, by: number) => boolean): number[] {
+function densify(
+  pts: number[],
+  step: number,
+  near: (ax: number, ay: number, bx: number, by: number) => boolean
+): number[] {
   if (pts.length < 4) return pts.slice();
   const out: number[] = [pts[0], pts[1]];
   for (let i = 0; i + 3 < pts.length; i += 2) {
@@ -150,7 +157,12 @@ function coverage(el: CanvasElement, eraserPts: number[], r: number): 'none' | '
 }
 
 /** The eraser's points near the given boxes, as one eraser element per unbroken run. */
-function trimEraser(eraser: CanvasElement, boxes: [number, number, number, number][], r: number, makeId: () => string): CanvasElement[] {
+function trimEraser(
+  eraser: CanvasElement,
+  boxes: [number, number, number, number][],
+  r: number,
+  makeId: () => string
+): CanvasElement[] {
   const pts = eraser.points || [];
   const near = (x: number, y: number) =>
     boxes.some((b) => x >= b[0] - r && x <= b[2] + r && y >= b[1] - r && y <= b[3] + r);
@@ -181,7 +193,11 @@ export function eraseWithStroke(elements: CanvasElement[], eraser: CanvasElement
 
   const prevOf = new Map<string, string | null>();
   elements.forEach((el, i) => prevOf.set(el.id, i === 0 ? null : elements[i - 1].id));
-  const edit = (el: CanvasElement, after: CanvasElement[]): EraseEdit => ({ before: [el], after, prevId: prevOf.get(el.id) ?? null });
+  const edit = (el: CanvasElement, after: CanvasElement[]): EraseEdit => ({
+    before: [el],
+    after,
+    prevId: prevOf.get(el.id) ?? null,
+  });
   const edits: EraseEdit[] = [];
   const partial: [number, number, number, number][] = [];
   const stampIds = new Set(stampsHitByEraser(earlier, eraser).map((el) => el.id));
@@ -203,7 +219,12 @@ export function eraseWithStroke(elements: CanvasElement[], eraser: CanvasElement
         partial.push(getElementBounds(el));
         continue;
       }
-      edits.push(edit(el, runs.map((run) => ({ ...el, id: makeId(), points: run }))));
+      edits.push(
+        edit(
+          el,
+          runs.map((run) => ({ ...el, id: makeId(), points: run }))
+        )
+      );
       continue;
     }
     if (WHOLE_ONLY.has(el.tool)) {

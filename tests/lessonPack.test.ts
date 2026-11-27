@@ -40,7 +40,8 @@ const el = (id: string, userId: string, extra: Partial<CanvasElement> = {}): Can
   points: [0, 0, 1, 1],
   ...extra,
 });
-const nameStamp = (id: string, userId: string) => el(id, userId, { tool: 'stamp', stamp: 'username', points: undefined });
+const nameStamp = (id: string, userId: string) =>
+  el(id, userId, { tool: 'stamp', stamp: 'username', points: undefined });
 
 function input(over: Partial<LessonBuildInput> = {}): LessonBuildInput {
   const rounds: BreakoutRoundMeta[] = [
@@ -62,7 +63,12 @@ function input(over: Partial<LessonBuildInput> = {}): LessonBuildInput {
     exportedBy: 'Ms T',
     exportedAt: 100,
     mainBackground: bg('main.pdf', url('a'), url('b')),
-    mainElements: [el('t-ink', 'teacher'), el('s-ink', 'student-1'), nameStamp('s-stamp', 'student-1'), nameStamp('t-stamp', 'teacher')],
+    mainElements: [
+      el('t-ink', 'teacher'),
+      el('s-ink', 'student-1'),
+      nameStamp('s-stamp', 'student-1'),
+      nameStamp('t-stamp', 'teacher'),
+    ],
     teacherUserIds: new Set(['teacher']),
     mainInk: 'teacher',
     rounds,
@@ -101,13 +107,27 @@ describe('lesson packs (pure)', () => {
     assert.equal(pack.main.background?.fileName, 'main.pdf');
     assert.deepEqual(pack.assets, {});
     const text = JSON.stringify(pack);
-    for (const bad of ['student-1', 'student-2', 'student-1-name', "Sam's Board", 'activeRoundId', 'assignedUserIds', 'mode":"main']) {
+    for (const bad of [
+      'student-1',
+      'student-2',
+      'student-1-name',
+      "Sam's Board",
+      'activeRoundId',
+      'assignedUserIds',
+      'mode":"main',
+    ]) {
       assert.equal(text.includes(bad), false, `pack must not contain ${bad}`);
     }
     // Element authorship is a placeholder; the loader becomes the author.
     assert.ok(pack.main.elements.every((e) => e.userId === 'lesson' && e.userName === '' && e.boardId === undefined));
-    assert.deepEqual(pack.rounds.map((r) => r.title), ['Debate', 'Exit ticket', '']);
-    assert.deepEqual(pack.rounds.map((r) => r.key), ['a', 'b', 'c']);
+    assert.deepEqual(
+      pack.rounds.map((r) => r.title),
+      ['Debate', 'Exit ticket', '']
+    );
+    assert.deepEqual(
+      pack.rounds.map((r) => r.key),
+      ['a', 'b', 'c']
+    );
     // Prepared rounds keep their own settings.
     assert.equal(pack.rounds[1].allowSelfSelect, true);
     assert.equal(pack.rounds[1].chatScope, 'board');
@@ -118,8 +138,14 @@ describe('lesson packs (pure)', () => {
   it('2 – main ink: teacher only, all but name stamps, none', () => {
     const teacherIds = new Set(['teacher']);
     const els = input().mainElements;
-    assert.deepEqual(filterMainInk(els, 'teacher', teacherIds).map((e) => e.id), ['t-ink']);
-    assert.deepEqual(filterMainInk(els, 'all', teacherIds).map((e) => e.id), ['t-ink', 's-ink']);
+    assert.deepEqual(
+      filterMainInk(els, 'teacher', teacherIds).map((e) => e.id),
+      ['t-ink']
+    );
+    assert.deepEqual(
+      filterMainInk(els, 'all', teacherIds).map((e) => e.id),
+      ['t-ink', 's-ink']
+    );
     assert.deepEqual(filterMainInk(els, 'none', teacherIds), []);
     assert.equal(buildLessonPack(input({ mainInk: 'none' })).main.elements.length, 0);
   });
@@ -136,7 +162,10 @@ describe('lesson packs (pure)', () => {
   });
 
   it('round choice: roundIds, or prepared only without launched rounds', () => {
-    assert.deepEqual(buildLessonPack(input({ roundIds: ['r2'] })).rounds.map((r) => r.title), ['Exit ticket']);
+    assert.deepEqual(
+      buildLessonPack(input({ roundIds: ['r2'] })).rounds.map((r) => r.title),
+      ['Exit ticket']
+    );
     assert.deepEqual(
       buildLessonPack(input({ includeLaunchedRounds: false })).rounds.map((r) => r.title),
       ['Exit ticket', '']
@@ -177,7 +206,10 @@ describe('lesson packs (pure)', () => {
     assert.match(parseLessonText('x', JSON.stringify(tooManyGroups)).error ?? '', /more than 30 groups/);
     const noPages = { ...buildLessonPack(input()), main: { background: { fileName: 'x' }, elements: [] } };
     assert.match(parseLessonText('x', JSON.stringify(noPages)).error ?? '', /damaged/);
-    const bigInk = { ...buildLessonPack(input()), main: { background: null, elements: Array(10_001).fill({ tool: 'solid' }) } };
+    const bigInk = {
+      ...buildLessonPack(input()),
+      main: { background: null, elements: Array(10_001).fill({ tool: 'solid' }) },
+    };
     assert.match(parseLessonText('x', JSON.stringify(bigInk)).error ?? '', /too much ink/);
 
     const good = parseLessonText('x', JSON.stringify(buildLessonPack(input())));
@@ -203,7 +235,10 @@ describe('lesson packs (pure)', () => {
   });
 
   it('file names and round names', () => {
-    assert.equal(lessonFileName('Photosynthesis: Part 2!', new Date(2026, 10, 24)), 'photosynthesis-part-2-2026-11-24.allaboard');
+    assert.equal(
+      lessonFileName('Photosynthesis: Part 2!', new Date(2026, 10, 24)),
+      'photosynthesis-part-2-2026-11-24.allaboard'
+    );
     assert.equal(lessonFileName('   ', new Date(2026, 0, 5)), 'lesson-2026-01-05.allaboard');
     assert.equal(roundNameFromTitle('Round 3 · Groups · A · B'), 'A · B');
     assert.equal(roundNameFromTitle('Round 3 · Groups'), '');

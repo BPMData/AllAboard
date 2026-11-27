@@ -32,8 +32,14 @@ import {
   type DriveFolder,
 } from '../lib/googleDrive';
 
-export type LessonResponse<E extends LessonRequestEvent> = Parameters<NonNullable<Parameters<ClientToServerEvents[E]>[1]>>[0];
-export type LessonRequest = <E extends LessonRequestEvent>(event: E, payload: Parameters<ClientToServerEvents[E]>[0], timeoutMs?: number) => Promise<LessonResponse<E>>;
+export type LessonResponse<E extends LessonRequestEvent> = Parameters<
+  NonNullable<Parameters<ClientToServerEvents[E]>[1]>
+>[0];
+export type LessonRequest = <E extends LessonRequestEvent>(
+  event: E,
+  payload: Parameters<ClientToServerEvents[E]>[0],
+  timeoutMs?: number
+) => Promise<LessonResponse<E>>;
 
 /** Gmail and many school mail systems refuse attachments over about this size. */
 const EMAIL_LIMIT_BYTES = 25 * 1024 * 1024;
@@ -95,14 +101,18 @@ function ModalShell({
 
 function ErrorBox({ children }: { children: React.ReactNode }) {
   return (
-    <div role="alert" className="p-3 rounded-[3px] bg-red-50 border border-red-200 flex items-start gap-2 text-xs text-red-800">
+    <div
+      role="alert"
+      className="p-3 rounded-[3px] bg-red-50 border border-red-200 flex items-start gap-2 text-xs text-red-800"
+    >
       <AlertCircle size={15} className="text-red-600 shrink-0 mt-0.5" />
       <div>{children}</div>
     </div>
   );
 }
 
-const btn = 'px-3 py-1.5 rounded-[2px] border oh-btn text-xs font-medium text-slate-700 transition-colors cursor-pointer disabled:opacity-50';
+const btn =
+  'px-3 py-1.5 rounded-[2px] border oh-btn text-xs font-medium text-slate-700 transition-colors cursor-pointer disabled:opacity-50';
 const btnPrimary =
   'flex items-center gap-1.5 px-4 py-1.5 rounded-[2px] border oh-btn-primary text-xs font-semibold text-white disabled:opacity-50 transition-colors cursor-pointer';
 
@@ -316,7 +326,12 @@ export function SaveLessonModal({
         ) : (
           rounds.map((r) => (
             <label key={r.id} className="flex items-start gap-2 cursor-pointer">
-              <input type="checkbox" checked={selected.has(r.id)} onChange={() => toggleRound(r.id)} className="mt-0.5" />
+              <input
+                type="checkbox"
+                checked={selected.has(r.id)}
+                onChange={() => toggleRound(r.id)}
+                className="mt-0.5"
+              />
               <span>
                 {roundNameFromTitle(r.title) || `Round ${r.number}`} · {r.mode === 'groups' ? 'Groups' : 'Individual'} ·{' '}
                 {roundTemplates[r.id]?.fileName || 'blank'}
@@ -343,7 +358,8 @@ export function SaveLessonModal({
         </label>
       )}
       <p className="p-2.5 rounded-[3px] bg-slate-50 border border-[#CBD5E1]">
-        Never saved: student boards, chat, {includeStudentPicks ? 'other ' : ''}student names, groups' members, your PIN.
+        Never saved: student boards, chat, {includeStudentPicks ? 'other ' : ''}student names, groups' members, your
+        PIN.
       </p>
 
       <div aria-live="polite" className="space-y-1">
@@ -357,7 +373,11 @@ export function SaveLessonModal({
         {build.status === 'error' && (
           <ErrorBox>
             {build.error}{' '}
-            <button type="button" onClick={() => setRetry((n) => n + 1)} className="underline font-semibold cursor-pointer">
+            <button
+              type="button"
+              onClick={() => setRetry((n) => n + 1)}
+              className="underline font-semibold cursor-pointer"
+            >
               Try again
             </button>
           </ErrorBox>
@@ -371,7 +391,9 @@ export function SaveLessonModal({
           </div>
         )}
         {driveMessage && (
-          <div className={driveMessage.isError ? 'text-red-600 font-medium' : 'text-emerald-700'}>{driveMessage.text}</div>
+          <div className={driveMessage.isError ? 'text-red-600 font-medium' : 'text-emerald-700'}>
+            {driveMessage.text}
+          </div>
         )}
       </div>
     </ModalShell>
@@ -572,12 +594,21 @@ export function LoadLessonModal({
           className="hidden"
           onChange={onFile}
         />
-        <button type="button" onClick={() => fileInputRef.current?.click()} className={cn(btn, 'flex items-center gap-1.5')}>
+        <button
+          type="button"
+          onClick={() => fileInputRef.current?.click()}
+          className={cn(btn, 'flex items-center gap-1.5')}
+        >
           <FolderOpen size={13} />
           Choose file…
         </button>
         {driveConfigured && (
-          <button type="button" disabled={driveOpening} onClick={openFromDrive} className={cn(btn, 'flex items-center gap-1.5')}>
+          <button
+            type="button"
+            disabled={driveOpening}
+            onClick={openFromDrive}
+            className={cn(btn, 'flex items-center gap-1.5')}
+          >
             <HardDrive size={13} className="text-emerald-600" />
             {driveOpening ? 'Opening…' : 'Open from Drive'}
           </button>
@@ -606,7 +637,8 @@ export function LoadLessonModal({
               {lesson.rounds.map((r) => (
                 <li key={r.key}>
                   {r.title || (r.mode === 'groups' ? 'Groups' : 'Individual')} ·{' '}
-                  {r.mode === 'groups' ? `${r.groups?.length ?? 0} groups` : 'Individual'} · {r.worksheet?.fileName || 'blank'}
+                  {r.mode === 'groups' ? `${r.groups?.length ?? 0} groups` : 'Individual'} ·{' '}
+                  {r.worksheet?.fileName || 'blank'}
                   {r.ink?.length ? ` + teacher ink (${r.ink.length})` : ''}
                   {variantsNote(r.variants)}
                 </li>
@@ -626,7 +658,13 @@ export function LoadLessonModal({
         <div className="space-y-2">
           <div className="font-semibold text-slate-800">Load into</div>
           <label className="flex items-start gap-2 cursor-pointer">
-            <input type="radio" name="lesson-target" checked={target === 'new'} onChange={() => setTarget('new')} className="mt-0.5" />
+            <input
+              type="radio"
+              name="lesson-target"
+              checked={target === 'new'}
+              onChange={() => setTarget('new')}
+              className="mt-0.5"
+            />
             <span>A new room</span>
           </label>
           {target === 'new' && (

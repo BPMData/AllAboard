@@ -67,20 +67,20 @@ Google buttons stay hidden until a human fills them in (see Phase 2.1).
 Use the Google Cloud project that hosts AllAboard's Cloud Run service (or any project you own).
 
 1. **Note the project number** (Cloud Console → Dashboard). This is the Picker **App ID**.
-2. **Enable APIs:** *Google Drive API* and *Google Picker API*.
+2. **Enable APIs:** _Google Drive API_ and _Google Picker API_.
 3. **OAuth consent screen (Google Auth Platform → Branding / Audience / Data access):**
    - User type: **External**.
    - App name: `AllAboard`. Add a support email and the production domain as an authorized domain.
    - Scopes: add **only** `.../auth/drive.file` (plus the default `openid`, `email`, `profile`).
-   - Publishing status: **In production.** (In *Testing* mode only listed test users can sign in, and
+   - Publishing status: **In production.** (In _Testing_ mode only listed test users can sign in, and
      their grants expire after 7 days.) `drive.file` is a non-sensitive scope, so only light brand
      verification applies; until then users may see an "unverified app" screen.
 4. **Credentials → Create OAuth client ID → Web application.**
    - Authorized JavaScript origins: the published app origin(s) (Cloud Run URL and any custom domain),
      and `http://localhost:3000` for local dev. **No redirect URIs** are needed.
    - Copy the **Client ID**.
-5. **Credentials → Create API key.** Restrict it: *Application restrictions* → HTTP referrers (same
-   origins as step 4); *API restrictions* → Google Picker API. Copy the key. (It is public by design.)
+5. **Credentials → Create API key.** Restrict it: _Application restrictions_ → HTTP referrers (same
+   origins as step 4); _API restrictions_ → Google Picker API. Copy the key. (It is public by design.)
 6. Paste the three values into `src/lib/googleConfig.ts` (created in Phase 2.1) and redeploy.
 7. **School accounts:** a district Google Workspace may block third-party apps. Their admin can allow it
    in Admin console → Security → Access and data control → API controls → Manage third-party app access,
@@ -178,7 +178,10 @@ This must behave **exactly** like the current inline logic in `Canvas.tsx` `hand
 ### 1.4 New file `src/lib/pageRange.ts` (pure)
 
 ```ts
-export interface PageRange { first: number; last: number } // 1-based, inclusive
+export interface PageRange {
+  first: number;
+  last: number;
+} // 1-based, inclusive
 
 /** Clamp a requested range to [1, total] and to at most `max` pages, keeping `first` fixed when possible. */
 export function clampPageRange(first: number, last: number, total: number, max: number): PageRange {
@@ -233,8 +236,13 @@ Refactor `handleWorksheetFileChange` (around line 1902):
   if (isPdfFile(file)) {
     try {
       const total = await getPdfPageCount(file);
-      if (total > MAX_PDF_PAGES) { setPendingPdfRange({ file, totalPages: total }); return; }
-    } catch { /* fall through; importWorksheetFile reports the error */ }
+      if (total > MAX_PDF_PAGES) {
+        setPendingPdfRange({ file, totalPages: total });
+        return;
+      }
+    } catch {
+      /* fall through; importWorksheetFile reports the error */
+    }
   }
   await importWorksheetFile(file);
   ```
@@ -265,12 +273,16 @@ PDF locally → modal → chosen pages appear. Import .JSON and Save .JSON behav
 ```ts
 // Public, non-secret values from Phase 0. Hardcoded on purpose: AI Studio Publish rewrites env vars (CLAUDE.md rule 1).
 const DEFAULTS = {
-  clientId: '',  // OAuth 2.0 Web client ID
-  apiKey: '',    // Browser API key restricted to the Picker API
-  appId: '',     // Google Cloud project NUMBER
+  clientId: '', // OAuth 2.0 Web client ID
+  apiKey: '', // Browser API key restricted to the Picker API
+  appId: '', // Google Cloud project NUMBER
 };
 
-export interface GoogleConfig { clientId: string; apiKey: string; appId: string }
+export interface GoogleConfig {
+  clientId: string;
+  apiKey: string;
+  appId: string;
+}
 
 export function getGoogleConfig(): GoogleConfig {
   // Test hook (Playwright). All values are public, so this is harmless in production.
@@ -278,7 +290,9 @@ export function getGoogleConfig(): GoogleConfig {
   return { ...DEFAULTS, ...(override || {}) };
 }
 
-export function isGoogleSignInConfigured(): boolean { return Boolean(getGoogleConfig().clientId); }
+export function isGoogleSignInConfigured(): boolean {
+  return Boolean(getGoogleConfig().clientId);
+}
 export function isGoogleDriveConfigured(): boolean {
   const c = getGoogleConfig();
   return Boolean(c.clientId && c.apiKey && c.appId);
@@ -301,9 +315,13 @@ export const DRIVE_FILE_KEY_PREFIX = 'drawchat_drive_file_'; // + roomId → Dri
 
 export class GoogleError extends Error {
   code: string;
-  constructor(code: string, message: string) { super(message); this.code = code; }
+  constructor(code: string, message: string) {
+    super(message);
+    this.code = code;
+  }
 }
 ```
+
 (No parameter properties; keep the explicit field to match the repo's TS style.)
 
 **Pure helpers (export and unit test):**
@@ -314,15 +332,15 @@ export class GoogleError extends Error {
 - `importedFileName(doc: { name: string; mimeType: string }): string` → Slides gets `.pdf` appended.
 - `friendlyGoogleError(code: string): string` — map:
 
-  | code | message |
-  |---|---|
-  | `script_load_failed` | Couldn't reach Google. Your network may block it. Local upload still works. |
-  | `popup_failed_to_open` | Your browser blocked the Google sign-in window. Allow popups for this site, or open AllAboard in its own tab. |
-  | `popup_closed` | Google sign-in was cancelled. |
+  | code                                      | message                                                                                                                                                 |
+  | ----------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+  | `script_load_failed`                      | Couldn't reach Google. Your network may block it. Local upload still works.                                                                             |
+  | `popup_failed_to_open`                    | Your browser blocked the Google sign-in window. Allow popups for this site, or open AllAboard in its own tab.                                           |
+  | `popup_closed`                            | Google sign-in was cancelled.                                                                                                                           |
   | `access_denied` / `admin_policy_enforced` | Your Google account (or school) didn't allow AllAboard to use Drive. Download the file and use Upload instead, or ask your IT admin to allow AllAboard. |
-  | `exportSizeLimitExceeded` | This deck is too big for Google to convert (10 MB limit). In Slides, use File → Download → PDF, then Upload. |
-  | `not_found` | AllAboard can't open that file. Pick it again from Drive. |
-  | anything else | Google Drive request failed. Local upload still works. |
+  | `exportSizeLimitExceeded`                 | This deck is too big for Google to convert (10 MB limit). In Slides, use File → Download → PDF, then Upload.                                            |
+  | `not_found`                               | AllAboard can't open that file. Pick it again from Drive.                                                                                               |
+  | anything else                             | Google Drive request failed. Local upload still works.                                                                                                  |
 
 **Browser functions:**
 
@@ -399,7 +417,9 @@ only when `isGoogleDriveConfigured()`:
       const file = await downloadDriveFile(doc);
       await startWorksheetImport(file); // same path as local upload, including the page-range modal
     } catch (err: any) {
-      setWorksheetError(err instanceof GoogleError ? friendlyGoogleError(err.code) : (err?.message || 'Could not import from Drive.'));
+      setWorksheetError(
+        err instanceof GoogleError ? friendlyGoogleError(err.code) : err?.message || 'Could not import from Drive.'
+      );
     } finally {
       setDriveBusy(null);
     }
@@ -450,8 +470,8 @@ Only if the human still wants it after Phases 1–4 ship. Render only when `isGo
   `google.accounts.id.initialize({ client_id, callback: onCredential })` and
   `google.accounts.id.renderButton(googleButtonRef.current, { theme: 'filled_black', size: 'large', text: 'signin_with', shape: 'pill' })`.
   If the script fails to load, render nothing (no error; typing a name is the default path).
-  *(This is the one place a Google script loads without a click. If that's unacceptable, show a plain
-  "Use my Google name" button that loads the script on click instead.)*
+  _(This is the one place a Google script loads without a click. If that's unacceptable, show a plain
+  "Use my Google name" button that loads the script on click instead.)_
 - `onCredential({ credential })`: decode the JWT payload (base64url → JSON) with a pure helper
   `decodeJwtPayload` in `googleDrive.ts` (unit test it). Use `given_name || name`, trimmed, `slice(0, 28)`.
   Call `setUserName(...)` **only if the input is empty**; otherwise show
@@ -489,14 +509,14 @@ dependencies.
 
 ## Appendix A — Decisions (already made; do not revisit)
 
-| Decision | Why |
-|---|---|
-| Google Identity Services, not Firebase | Firebase adds a dependency and a project, can't refresh Google access tokens, and keeps a "signed in" user across reloads with no Drive token. GIS does both jobs directly. |
-| `drive.file` only | Non-sensitive; access limited to files the teacher picks or the app creates. `drive.metadata.readonly` is restricted and not needed by Picker. |
-| Drive scope requested on teacher click, not at Welcome | Students never see a Drive consent screen. |
-| Token in memory only | Short-lived secret; reload → one click (usually silent) gets a new one. |
-| Lazy script loading | School filters block Google domains; Chromebooks are slow; students who never click never contact Google. |
-| Config hardcoded, buttons hidden when empty | AI Studio Publish rewrites env vars; fail open. |
-| Resumable upload, update by stored fileId | Snapshots can exceed 5 MB; avoids duplicate files on every save. |
-| Page range capped at `MAX_PDF_PAGES` | Long-deck annotation belongs in OverBoard later. |
-| No server changes | Live multiplayer persistence (SQLite + `gs://allaboard-data`) stays as is. |
+| Decision                                               | Why                                                                                                                                                                         |
+| ------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Google Identity Services, not Firebase                 | Firebase adds a dependency and a project, can't refresh Google access tokens, and keeps a "signed in" user across reloads with no Drive token. GIS does both jobs directly. |
+| `drive.file` only                                      | Non-sensitive; access limited to files the teacher picks or the app creates. `drive.metadata.readonly` is restricted and not needed by Picker.                              |
+| Drive scope requested on teacher click, not at Welcome | Students never see a Drive consent screen.                                                                                                                                  |
+| Token in memory only                                   | Short-lived secret; reload → one click (usually silent) gets a new one.                                                                                                     |
+| Lazy script loading                                    | School filters block Google domains; Chromebooks are slow; students who never click never contact Google.                                                                   |
+| Config hardcoded, buttons hidden when empty            | AI Studio Publish rewrites env vars; fail open.                                                                                                                             |
+| Resumable upload, update by stored fileId              | Snapshots can exceed 5 MB; avoids duplicate files on every save.                                                                                                            |
+| Page range capped at `MAX_PDF_PAGES`                   | Long-deck annotation belongs in OverBoard later.                                                                                                                            |
+| No server changes                                      | Live multiplayer persistence (SQLite + `gs://allaboard-data`) stays as is.                                                                                                  |

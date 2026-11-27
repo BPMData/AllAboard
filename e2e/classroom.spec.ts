@@ -32,7 +32,9 @@ test.describe('lobby', () => {
     await expect(page.getByRole('button', { name: 'Lock Board' })).toHaveCount(0);
   });
 
-  test('typing a room code in the lobby changes neither the address, the tab title nor the connection', async ({ page }) => {
+  test('typing a room code in the lobby changes neither the address, the tab title nor the connection', async ({
+    page,
+  }) => {
     const room = uniqueRoom('typed');
     // A socket.io handshake (a new connection) is a polling request with no session id yet.
     let handshakes = 0;
@@ -71,7 +73,9 @@ test.describe('lobby', () => {
     await expect(page.getByText('Alex', { exact: true }).first()).toBeVisible();
   });
 
-  test('a browser reusing someone else’s user id is turned away, then joins as itself after a refresh', async ({ browser }) => {
+  test('a browser reusing someone else’s user id is turned away, then joins as itself after a refresh', async ({
+    browser,
+  }) => {
     const room = uniqueRoom('identity');
     const owner = await newUser(browser);
     await joinRoom(owner.page, room, 'Sam');
@@ -96,7 +100,9 @@ test.describe('lobby', () => {
     await impostor.context.close();
   });
 
-  test('room history records visited rooms, shows live/saved status, and lets users select or clear them', async ({ browser }) => {
+  test('room history records visited rooms, shows live/saved status, and lets users select or clear them', async ({
+    browser,
+  }) => {
     const roomA = uniqueRoom('hist-a');
     const roomB = uniqueRoom('hist-b');
     const user = await newUser(browser);
@@ -135,7 +141,9 @@ test.describe('lobby', () => {
     // Clear history empties the list
     await user.page.getByRole('button', { name: 'History' }).click();
     await user.page.getByRole('region', { name: 'Recent room history' }).getByRole('button', { name: 'Clear' }).click();
-    await expect(user.page.getByRole('region', { name: 'Recent room history' }).getByText('No rooms visited on this browser yet.')).toBeVisible();
+    await expect(
+      user.page.getByRole('region', { name: 'Recent room history' }).getByText('No rooms visited on this browser yet.')
+    ).toBeVisible();
 
     await user.context.close();
   });
@@ -150,11 +158,17 @@ test.describe('teacher and students', () => {
     let upgraded = false;
     let heartbeat: () => void;
     let simulatedPing = false;
-    await page.routeWebSocket(/\/socket\.io\//, client => {
+    await page.routeWebSocket(/\/socket\.io\//, (client) => {
       const server = client.connectToServer();
-      heartbeat = () => { simulatedPing = true; client.send('2'); };
-      client.onMessage(frame => {
-        if (frame === '3' && simulatedPing) { simulatedPing = false; return; }
+      heartbeat = () => {
+        simulatedPing = true;
+        client.send('2');
+      };
+      client.onMessage((frame) => {
+        if (frame === '3' && simulatedPing) {
+          simulatedPing = false;
+          return;
+        }
         if (frame === '5') upgraded = true; // Engine.IO finished upgrading from polling.
         if (typeof frame === 'string') {
           const restore = /^42(\d+)\["teacher:import-room",/.exec(frame);
@@ -162,7 +176,7 @@ test.describe('teacher and students', () => {
         }
         server.send(frame);
       });
-      server.onMessage(frame => {
+      server.onMessage((frame) => {
         if (firstAck && typeof frame === 'string' && frame.startsWith(firstAck)) {
           dropped = true;
           firstAck = '';
@@ -174,10 +188,14 @@ test.describe('teacher and students', () => {
     await joinRoom(page, uniqueRoom('restore-review'), 'Ms T', PIN);
     await expect.poll(() => upgraded).toBe(true);
     await page.locator('input[accept=".json,application/json"]').setInputFiles({
-      name: 'history.json', mimeType: 'application/json',
-      buffer: Buffer.from(JSON.stringify({ elements: [], messages: [
-        { id: 'saved', userId: 't', userName: 'Teacher', text: 'Restored once', timestamp: 42 },
-      ] })),
+      name: 'history.json',
+      mimeType: 'application/json',
+      buffer: Buffer.from(
+        JSON.stringify({
+          elements: [],
+          messages: [{ id: 'saved', userId: 't', userName: 'Teacher', text: 'Restored once', timestamp: 42 }],
+        })
+      ),
     });
     await page.getByRole('button', { name: /Merge into Current Room/ }).click();
     await page.getByRole('button', { name: 'Restore Room Snapshot' }).click();
@@ -228,7 +246,9 @@ test.describe('teacher and students', () => {
     await teacher.page.getByRole('button', { name: /^Class/ }).click();
     await expect(teacher.page.getByText('Alex', { exact: true }).first()).toBeVisible();
     // Listed in the "Ink by" picker, but not as a person in the Class list
-    await expect(teacher.page.getByLabel('Focus ink by student').locator('option', { hasText: 'Class Example' })).toHaveCount(1);
+    await expect(
+      teacher.page.getByLabel('Focus ink by student').locator('option', { hasText: 'Class Example' })
+    ).toHaveCount(1);
     await expect(teacher.page.locator(':not(option):text-is("Class Example")')).toHaveCount(0);
     await teacher.context.close();
     await student.context.close();
@@ -244,7 +264,12 @@ test.describe('teacher and students', () => {
     await joinRoom(student.page, room, 'Alex');
 
     const lassoBoard = async (page: Page) => {
-      const corners = [[1300, 230], [1300, 840], [600, 840], [600, 230]];
+      const corners = [
+        [1300, 230],
+        [1300, 840],
+        [600, 840],
+        [600, 230],
+      ];
       await page.keyboard.press('v');
       await page.mouse.move(600, 230);
       await page.mouse.down();
@@ -267,12 +292,17 @@ test.describe('teacher and students', () => {
     await expect(student.page.getByText('3 selected')).toBeVisible();
     await expect(student.page.getByTestId('selection-authors')).toHaveCount(0);
 
-    await expect.poll(async () => {
-      await lassoBoard(teacher.page);
-      return teacher.page.getByText('3 selected').count();
-      // One lasso drag alone takes ~5s on GitHub's runners, so the default 5s poll timed out
-      // before it ever checked. Leave room for a few tries.
-    }, { timeout: 20_000 }).toBe(1);
+    await expect
+      .poll(
+        async () => {
+          await lassoBoard(teacher.page);
+          return teacher.page.getByText('3 selected').count();
+          // One lasso drag alone takes ~5s on GitHub's runners, so the default 5s poll timed out
+          // before it ever checked. Leave room for a few tries.
+        },
+        { timeout: 20_000 }
+      )
+      .toBe(1);
     const authors = teacher.page.getByTestId('selection-authors');
     await expect(authors).toHaveText('By Alex');
     await expect(authors).toHaveAttribute('title', 'Alex (3 items)');
@@ -302,8 +332,11 @@ test.describe('teacher and students', () => {
     await drawStroke(priya.page, { x: 720, y: 560 }, { x: 980, y: 580 });
 
     const fadedLayers = (page: Page) =>
-      page.evaluate(() =>
-        Array.from(document.querySelectorAll('.konvajs-content canvas')).filter((c) => getComputedStyle(c).opacity === '0.12').length
+      page.evaluate(
+        () =>
+          Array.from(document.querySelectorAll('.konvajs-content canvas')).filter(
+            (c) => getComputedStyle(c).opacity === '0.12'
+          ).length
       );
     const focus = teacher.page.getByLabel('Focus ink by student');
     await expect(focus.locator('option')).toHaveText(['Everyone', 'Alex (1)', 'Priya (1)']);
@@ -405,7 +438,9 @@ test.describe('teacher and students', () => {
       await expect(radio).toBeVisible();
       await radio.click();
       await expect(statusTrigger).toContainText(label);
-      await expect(teacher.page.getByRole('button', { name: "Clear Alex's status" }).locator('..')).toContainText(label);
+      await expect(teacher.page.getByRole('button', { name: "Clear Alex's status" }).locator('..')).toContainText(
+        label
+      );
     }
     await teacher.page.getByRole('button', { name: "Clear Alex's status" }).click();
     await expect(statusTrigger).toContainText('None');
@@ -418,7 +453,9 @@ test.describe('teacher and students', () => {
     await student.context.close();
   });
 
-  test('student toolbar fits cleanly on 2 rows at Chromebook width with text popover and bubblegum pink eraser', async ({ browser }) => {
+  test('student toolbar fits cleanly on 2 rows at Chromebook width with text popover and bubblegum pink eraser', async ({
+    browser,
+  }) => {
     const context = await browser.newContext({ viewport: { width: 1366, height: 768 } });
     const page = await context.newPage();
     await joinRoom(page, uniqueRoom('compact2row'), 'Alex');
@@ -460,20 +497,25 @@ test.describe('teacher and students', () => {
     if (!teacherCanvas) throw new Error('Teacher canvas is missing');
     await drawStroke(teacher.page);
     await teacher.page.mouse.move(450, 250);
-    const hasLaser = () => student.page.evaluate(({ offsetX, offsetY }) => Array.from(document.querySelectorAll('.konvajs-content canvas')).some((canvas) => {
-      const el = canvas as HTMLCanvasElement;
-      const ctx = el.getContext('2d');
-      const bounds = el.getBoundingClientRect();
-      if (!ctx || !el.width || !el.height) return false;
-      const x = Math.round(offsetX * el.width / bounds.width);
-      const y = Math.round(offsetY * el.height / bounds.height);
-      if (x < 4 || y < 4 || x + 4 >= el.width || y + 4 >= el.height) return false;
-      const pixels = ctx.getImageData(x - 4, y - 4, 8, 8).data;
-      for (let i = 0; i < pixels.length; i += 4) {
-        if (pixels[i] > 200 && pixels[i + 1] < 100 && pixels[i + 2] < 100 && pixels[i + 3] > 30) return true;
-      }
-      return false;
-    }), { offsetX: 1000 - teacherCanvas.x, offsetY: 600 - teacherCanvas.y });
+    const hasLaser = () =>
+      student.page.evaluate(
+        ({ offsetX, offsetY }) =>
+          Array.from(document.querySelectorAll('.konvajs-content canvas')).some((canvas) => {
+            const el = canvas as HTMLCanvasElement;
+            const ctx = el.getContext('2d');
+            const bounds = el.getBoundingClientRect();
+            if (!ctx || !el.width || !el.height) return false;
+            const x = Math.round((offsetX * el.width) / bounds.width);
+            const y = Math.round((offsetY * el.height) / bounds.height);
+            if (x < 4 || y < 4 || x + 4 >= el.width || y + 4 >= el.height) return false;
+            const pixels = ctx.getImageData(x - 4, y - 4, 8, 8).data;
+            for (let i = 0; i < pixels.length; i += 4) {
+              if (pixels[i] > 200 && pixels[i + 1] < 100 && pixels[i + 2] < 100 && pixels[i + 3] > 30) return true;
+            }
+            return false;
+          }),
+        { offsetX: 1000 - teacherCanvas.x, offsetY: 600 - teacherCanvas.y }
+      );
     await expect.poll(hasLaser, { timeout: 1000 }).toBe(true);
     await expect.poll(hasLaser, { timeout: 3000 }).toBe(false);
     await expect(teacher.page.getByText('0 drawn')).toBeVisible();
@@ -490,7 +532,10 @@ test.describe('teacher and students', () => {
     await joinRoom(student.page, room, 'Alex');
     await expect(student.page.getByRole('button', { name: 'Hide Student Cursors' })).toHaveCount(0);
     await teacher.page.getByRole('button', { name: 'Hide Student Cursors' }).click();
-    await expect(teacher.page.getByRole('button', { name: 'Show Student Cursors' })).toHaveAttribute('aria-pressed', 'true');
+    await expect(teacher.page.getByRole('button', { name: 'Show Student Cursors' })).toHaveAttribute(
+      'aria-pressed',
+      'true'
+    );
     await teacher.page.reload();
     await expect(teacher.page.getByRole('button', { name: 'Show Student Cursors' })).toBeVisible();
     await teacher.page.getByRole('button', { name: 'Show Student Cursors' }).click();
@@ -544,7 +589,9 @@ test.describe('teacher and students', () => {
     await student.context.close();
   });
 
-  test('batched ink arrives point-for-point: the teacher’s copy of a stroke matches the student’s', async ({ browser }) => {
+  test('batched ink arrives point-for-point: the teacher’s copy of a stroke matches the student’s', async ({
+    browser,
+  }) => {
     const room = uniqueRoom('inkexact');
     const teacher = await newUser(browser);
     const student = await newUser(browser);
@@ -649,7 +696,9 @@ test.describe('teacher and students', () => {
     await imposter.context.close();
   });
 
-  test('teacher PIN inputs use masked text fields without password autofill and support show/hide', async ({ page }) => {
+  test('teacher PIN inputs use masked text fields without password autofill and support show/hide', async ({
+    page,
+  }) => {
     const room = uniqueRoom('pinmask');
     await page.goto(`/?room=${room}`);
     await page.getByLabel('Your Display Name').fill('Ms T');
@@ -708,9 +757,9 @@ test.describe('chat sidebar', () => {
     await page.mouse.up();
 
     await expect.poll(async () => Math.round((await sidebar.boundingBox())!.width)).toBe(460);
-    await expect.poll(async () => Math.round((await stage.boundingBox())!.width)).toBe(
-      Math.round(initialStageBox!.width - 140)
-    );
+    await expect
+      .poll(async () => Math.round((await stage.boundingBox())!.width))
+      .toBe(Math.round(initialStageBox!.width - 140));
 
     // Persists after reload
     await page.reload();
@@ -727,7 +776,11 @@ test.describe('chat sidebar', () => {
   });
 
   test('no teacher toolbar button is cut off on a Chromebook, an iPad or a phone', async ({ browser }) => {
-    for (const [w, h] of [[1366, 768], [820, 1180], [390, 844]]) {
+    for (const [w, h] of [
+      [1366, 768],
+      [820, 1180],
+      [390, 844],
+    ]) {
       const context = await browser.newContext({ viewport: { width: w, height: h } });
       const page = await context.newPage();
       await page.goto(`/?room=${uniqueRoom('fit')}`);
@@ -820,9 +873,9 @@ test.describe('chat sidebar', () => {
 
     const showChatBtn = student.page.getByRole('button', { name: 'Show chat sidebar' });
     await expect(showChatBtn).toBeVisible();
-    await expect.poll(async () => Math.round((await stage.boundingBox())!.width)).toBe(
-      Math.round(beforeStageWidth + 320)
-    );
+    await expect
+      .poll(async () => Math.round((await stage.boundingBox())!.width))
+      .toBe(Math.round(beforeStageWidth + 320));
 
     // Student can draw cleanly on the expanded canvas (including where the sidebar used to be)
     await drawStroke(student.page, { x: 120, y: 350 }, { x: 350, y: 500 });
@@ -846,7 +899,9 @@ test.describe('chat sidebar', () => {
 });
 
 test.describe('room exists confirmation modal', () => {
-  test('warns when switching to an active room from chat sidebar and lets user cancel, join anyway, or create a fresh room', async ({ browser }) => {
+  test('warns when switching to an active room from chat sidebar and lets user cancel, join anyway, or create a fresh room', async ({
+    browser,
+  }) => {
     const occupiedRoom = uniqueRoom('occupied');
     const teacherRoom = uniqueRoom('myclass');
     const otherTeacher = await newUser(browser);
@@ -901,7 +956,9 @@ test.describe('room exists confirmation modal', () => {
     await secondTeacher.context.close();
   });
 
-  test('warns in lobby only when user edits room code to an existing room, not on direct invite links', async ({ browser }) => {
+  test('warns in lobby only when user edits room code to an existing room, not on direct invite links', async ({
+    browser,
+  }) => {
     const existingRoom = uniqueRoom('lp');
     const host = await newUser(browser);
     const visitor = await newUser(browser);
@@ -936,7 +993,9 @@ test.describe('room exists confirmation modal', () => {
     await invitee.context.close();
   });
 
-  test('lobby New Room makes the typed room (or a random one) and goes in, but warns when it already exists', async ({ browser }) => {
+  test('lobby New Room makes the typed room (or a random one) and goes in, but warns when it already exists', async ({
+    browser,
+  }) => {
     const freshRoom = uniqueRoom('newroom');
     const maker = await newUser(browser);
     const randomMaker = await newUser(browser);

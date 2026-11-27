@@ -7,13 +7,35 @@ export const STATUS_OPTIONS = {
   done: { label: 'Done', className: 'bg-purple-100 text-purple-800 border-purple-300' },
 } as const;
 
-export function StudentStatusBadge({ status, name, onClear }: { status?: StudentStatus; name: string; onClear?: () => void }) {
+export function StudentStatusBadge({
+  status,
+  name,
+  onClear,
+}: {
+  status?: StudentStatus;
+  name: string;
+  onClear?: () => void;
+}) {
   if (!status || status === 'none') return null;
   const option = STATUS_OPTIONS[status];
   return (
-    <span className={`inline-flex items-center gap-1 rounded-[2px] border px-2 py-0.5 text-[11px] font-medium ${option.className}`}>
+    <span
+      className={`inline-flex items-center gap-1 rounded-[2px] border px-2 py-0.5 text-[11px] font-medium ${option.className}`}
+    >
       {option.label}
-      {onClear && <button type="button" aria-label={`Clear ${name}'s status`} onClick={(e) => { e.stopPropagation(); onClear(); }} className="font-bold cursor-pointer">×</button>}
+      {onClear && (
+        <button
+          type="button"
+          aria-label={`Clear ${name}'s status`}
+          onClick={(e) => {
+            e.stopPropagation();
+            onClear();
+          }}
+          className="font-bold cursor-pointer"
+        >
+          ×
+        </button>
+      )}
     </span>
   );
 }

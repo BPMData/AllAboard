@@ -7,7 +7,7 @@ import type { ClientToServerEvents, ServerToClientEvents } from '../src/lib/sock
 function checkSocketContract(
   server: ServerSocket<ClientToServerEvents, ServerToClientEvents>,
   client: ClientSocket<ServerToClientEvents, ClientToServerEvents>,
-  lessonRequest: LessonRequest,
+  lessonRequest: LessonRequest
 ) {
   client.emit('teacher:auth', { pin: '1234' }, (result) => {
     const ok: boolean = result.ok;

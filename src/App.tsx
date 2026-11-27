@@ -34,7 +34,7 @@ import {
   RoomBackground,
   RoomSettings,
   SubBoardData,
-  User
+  User,
 } from './types';
 
 export default function App() {
@@ -80,12 +80,7 @@ export default function App() {
       const savedName = localStorage.getItem(STORAGE_KEYS.USER_NAME);
       const savedJoined = localStorage.getItem(STORAGE_KEYS.IS_JOINED) === 'true';
       const sessionRoom = sessionStorage.getItem(STORAGE_KEYS.JOINED_ROOM_SESSION);
-      return Boolean(
-        savedName &&
-        savedName.trim() &&
-        savedJoined &&
-        sessionRoom === getInitialRoomId()
-      );
+      return Boolean(savedName && savedName.trim() && savedJoined && sessionRoom === getInitialRoomId());
     } catch {
       return false;
     }
@@ -253,11 +248,7 @@ export default function App() {
     }
   }, [liveRoomId]);
 
-  const {
-    socket,
-    emitDrawing,
-    enqueueOutgoingPoints
-  } = useRoomSocket({
+  const { socket, emitDrawing, enqueueOutgoingPoints } = useRoomSocket({
     userId,
     userKey,
     userColor,
@@ -287,7 +278,7 @@ export default function App() {
     setKickNotice,
     setIsJoined,
     setPendingPurgePrompt,
-    setRemoteCursors
+    setRemoteCursors,
   });
   const {
     handleAuthenticateTeacher,
@@ -329,7 +320,7 @@ export default function App() {
     handleSetStatus,
     handleClearStatus,
     handleTeacherClearAll,
-    handleTeacherTimerControl
+    handleTeacherTimerControl,
   } = useClassroomActions({
     socket,
     activeBoardId,
@@ -377,7 +368,7 @@ export default function App() {
     isPurgingContributions,
     pendingPurgePrompt,
     elements,
-    messages
+    messages,
   });
   const {
     handleElementStart,
@@ -391,7 +382,7 @@ export default function App() {
     handleCursorMove,
     handleUndo,
     handleClearMine,
-    handleClearUserDrawings
+    handleClearUserDrawings,
   } = useDrawingActions({
     socket,
     activeBoardId,
@@ -399,10 +390,8 @@ export default function App() {
     emitDrawing,
     userId,
     setElements,
-    enqueueOutgoingPoints
+    enqueueOutgoingPoints,
   });
-
-
 
   if (!isJoined) {
     return (
@@ -474,10 +463,7 @@ export default function App() {
           onWidthChange={setChatWidth}
           onResetWidth={() =>
             setChatWidth(
-              clampChatWidth(
-                DEFAULT_CHAT_WIDTH,
-                typeof window !== 'undefined' ? window.innerWidth : undefined
-              )
+              clampChatWidth(DEFAULT_CHAT_WIDTH, typeof window !== 'undefined' ? window.innerWidth : undefined)
             )
           }
           onHideChat={() => {
@@ -558,9 +544,7 @@ export default function App() {
       {pendingRoomPrompt && (
         <RoomExistsModal
           availability={pendingRoomPrompt.availability}
-          isJoiningAsTeacher={Boolean(
-            pendingRoomPrompt.teacherPin && pendingRoomPrompt.teacherPin.length >= 3
-          )}
+          isJoiningAsTeacher={Boolean(pendingRoomPrompt.teacherPin && pendingRoomPrompt.teacherPin.length >= 3)}
           isBusy={isCheckingRoom}
           onJoinAnyway={handleConfirmJoinAnyway}
           onCreateFreshRoom={handleConfirmCreateFreshRoom}

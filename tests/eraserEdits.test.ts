@@ -10,7 +10,18 @@ let n = 0;
 const makeId = () => `new${++n}`;
 
 const ink = (id: string, points: number[], extra: Partial<CanvasElement> = {}): CanvasElement =>
-  ({ id, boardId: 'main', userId: 'u1', userName: 'Ann', tool: 'solid', color: '#000', strokeWidth: 4, points, timestamp: 1, ...extra }) as CanvasElement;
+  ({
+    id,
+    boardId: 'main',
+    userId: 'u1',
+    userName: 'Ann',
+    tool: 'solid',
+    color: '#000',
+    strokeWidth: 4,
+    points,
+    timestamp: 1,
+    ...extra,
+  }) as CanvasElement;
 
 /** A horizontal line from x=0 to x=200 at y, sampled every 10. */
 const hline = (y: number) => Array.from({ length: 21 }, (_, i) => [i * 10, y]).flat();
@@ -41,7 +52,10 @@ describe('eraserEdits', () => {
   it('removes fully covered ink and leaves untouched ink alone', () => {
     const board = [ink('dot', [100, 0]), ink('far', hline(300)), eraser('E', 100)];
     const res = eraseWithStroke(board, board[2], makeId);
-    assert.deepEqual(res.edits.map((e) => [e.before[0].id, e.after.length]), [['dot', 0]]);
+    assert.deepEqual(
+      res.edits.map((e) => [e.before[0].id, e.after.length]),
+      [['dot', 0]]
+    );
   });
 
   it("only erases the eraser's own author's ink drawn before it", () => {
@@ -75,9 +89,17 @@ describe('eraserEdits', () => {
   it('keeps a trimmed eraser over a rectangle it only partly covers, and removes one it covers', () => {
     const big = ink('big', [], { tool: 'rect', x: 50, y: -20, width: 100, height: 40, points: undefined });
     const tiny = ink('tiny', [], { tool: 'rect', x: 98, y: -2, width: 4, height: 4, points: undefined });
-    const board = [big, tiny, ink('a', [300, 500, 400, 500]), eraser('E', 100, { points: [100, -100, 100, 100, 100, 600] })];
+    const board = [
+      big,
+      tiny,
+      ink('a', [300, 500, 400, 500]),
+      eraser('E', 100, { points: [100, -100, 100, 100, 100, 600] }),
+    ];
     const res = eraseWithStroke(board, board[3], makeId);
-    assert.deepEqual(res.edits.map((e) => e.before[0].id), ['tiny']);
+    assert.deepEqual(
+      res.edits.map((e) => e.before[0].id),
+      ['tiny']
+    );
     assert.ok(res.keptEraser.length >= 1, 'a piece of the eraser stays over the big rectangle');
     const kept = res.keptEraser.flatMap((e) => e.points!.filter((_, i) => i % 2 === 1));
     assert.ok(Math.max(...kept) < 100, 'only near the rectangle, not down at the far stroke');
@@ -95,8 +117,15 @@ describe('eraserEdits', () => {
     const res = eraseWithStroke(board, board[5], makeId);
     const { forward, backward } = eraseGroups(res, 'E');
     const erased = applyElementGroups(board, forward);
-    assert.equal(erased.find((el) => el.id === 'E'), undefined, 'the eraser stroke is gone');
-    assert.equal(erased.find((el) => el.id === 'dot'), undefined);
+    assert.equal(
+      erased.find((el) => el.id === 'E'),
+      undefined,
+      'the eraser stroke is gone'
+    );
+    assert.equal(
+      erased.find((el) => el.id === 'dot'),
+      undefined
+    );
     // Pieces stay where their stroke was: a's pieces before x, b's pieces after x and before c.
     const order = ids(erased);
     assert.ok(order.indexOf('x') > 1 && order.indexOf('c') === order.length - 1);
@@ -149,7 +178,10 @@ describe('elements-replace on the server', () => {
     ann.emit('elements-replace', { boardId: 'main', groups: backward });
     await delay(80);
     const { init: again } = await pool.join(srv, { roomId, userId: 'u4', name: 'Di' });
-    assert.deepEqual((again.elements as CanvasElement[]).map((el) => el.id), ['a', 'x', 'dot']);
+    assert.deepEqual(
+      (again.elements as CanvasElement[]).map((el) => el.id),
+      ['a', 'x', 'dot']
+    );
 
     // Ann can't remove Bo's ink this way.
     ann.emit('elements-replace', { boardId: 'main', groups: [{ ids: ['x'], elements: [] }] });

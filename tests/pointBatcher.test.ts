@@ -80,10 +80,7 @@ describe('createPointQueue', () => {
 
 describe('appendPointBatches', () => {
   it('appends to matching strokes in one pass and keeps identity when nothing matches', () => {
-    const list = [
-      { id: 'a', points: [0, 0] },
-      { id: 'n', text: 'note' } as { id: string; points?: number[] },
-    ];
+    const list = [{ id: 'a', points: [0, 0] }, { id: 'n', text: 'note' } as { id: string; points?: number[] }];
     const next = appendPointBatches(list, [
       { boardId: 'main', id: 'a', points: [1, 1] },
       { boardId: 'main', id: 'a', points: [2, 2] },

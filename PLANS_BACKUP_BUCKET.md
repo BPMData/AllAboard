@@ -55,21 +55,23 @@ survives. We add a durable copy in a Cloud Storage bucket and restore from it at
 - **R6.** Commit after each phase with a message like `feat(backup): phase N – <summary>`.
 
 **The plain-node check (part of every checkpoint):**
+
 ```bash
 node -e "import('./server.ts').then(() => console.log('OK: loads under plain node'))"
 ```
+
 It must print `OK: loads under plain node`. Production starts with `node server.ts` (Node's
 built-in type stripping), which rejects some TypeScript syntax that `tsx` and the test suite accept.
 
 ### 0.4 Files you will touch
 
-| File | Phase | What changes |
-|---|---|---|
-| `backupMirror.ts` (**new**, repo root) | 1 | The backup module |
-| `tests/backupMirror.test.ts` (**new**) | 1 | Unit tests |
-| `server.ts` | 2 | Backup wiring |
-| `tests/server.test.ts` | 2 | 3 new tests |
-| `README.md` | 3 | Storage section update |
+| File                                   | Phase | What changes           |
+| -------------------------------------- | ----- | ---------------------- |
+| `backupMirror.ts` (**new**, repo root) | 1     | The backup module      |
+| `tests/backupMirror.test.ts` (**new**) | 1     | Unit tests             |
+| `server.ts`                            | 2     | Backup wiring          |
+| `tests/server.test.ts`                 | 2     | 3 new tests            |
+| `README.md`                            | 3     | Storage section update |
 
 ### 0.5 Baseline
 
@@ -85,6 +87,7 @@ Expect **77 tests** passing, and run the plain-node check. If anything fails, st
 
 **Pre-validation:** This plan was applied verbatim to a scratch copy of `main` at `d815c59`
 before handoff:
+
 - `tsc --noEmit` is clean, all **87** tests pass (77 + 7 + 3), and the plain-node check passes.
 - An end-to-end run under plain `node server.ts`, with `BACKUP_DIR` set, also passed:
   1. Draw a stroke.
@@ -139,8 +142,18 @@ export function sniffMime(bytes: Uint8Array): string {
   if (b.length >= 3 && b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff) return 'image/jpeg';
   if (b.length >= 8 && b[0] === 0x89 && b[1] === 0x50 && b[2] === 0x4e && b[3] === 0x47) return 'image/png';
   if (b.length >= 6 && b[0] === 0x47 && b[1] === 0x49 && b[2] === 0x46) return 'image/gif';
-  if (b.length >= 12 && b[0] === 0x52 && b[1] === 0x49 && b[2] === 0x46 && b[3] === 0x46 &&
-      b[8] === 0x57 && b[9] === 0x45 && b[10] === 0x42 && b[11] === 0x50) return 'image/webp';
+  if (
+    b.length >= 12 &&
+    b[0] === 0x52 &&
+    b[1] === 0x49 &&
+    b[2] === 0x46 &&
+    b[3] === 0x46 &&
+    b[8] === 0x57 &&
+    b[9] === 0x45 &&
+    b[10] === 0x42 &&
+    b[11] === 0x50
+  )
+    return 'image/webp';
   const head = Buffer.from(b.subarray(0, 256)).toString('utf8').trimStart();
   if (head.startsWith('<svg') || (head.startsWith('<?xml') && head.includes('<svg'))) return 'image/svg+xml';
   return 'application/octet-stream';
@@ -339,7 +352,13 @@ describe('BackupMirror', () => {
     mirror.scheduleRoom('b c/d', () => ({ id: 'b c/d', lastActiveAt: 20 }));
     await mirror.flushNow();
     const rooms = mirror.loadAllRoomsSync().sort((x, y) => x.lastActiveAt - y.lastActiveAt);
-    assert.deepEqual(rooms.map((r) => [r.roomId, r.lastActiveAt]), [['a', 10], ['b c/d', 20]]);
+    assert.deepEqual(
+      rooms.map((r) => [r.roomId, r.lastActiveAt]),
+      [
+        ['a', 10],
+        ['b c/d', 20],
+      ]
+    );
   });
 
   it('deletes a room file', async () => {
@@ -362,7 +381,10 @@ describe('BackupMirror', () => {
     fs.writeFileSync(path.join(dir, 'rooms', 'broken.json.gz'), 'not gzip');
     mirror.scheduleRoom('ok', () => ({ id: 'ok', lastActiveAt: 1 }));
     await mirror.flushNow();
-    assert.deepEqual(mirror.loadAllRoomsSync().map((r) => r.roomId), ['ok']);
+    assert.deepEqual(
+      mirror.loadAllRoomsSync().map((r) => r.roomId),
+      ['ok']
+    );
   });
 
   it('sniffs common image types', () => {
@@ -376,6 +398,7 @@ describe('BackupMirror', () => {
 
 **Checkpoint 1:** `npm run lint && npm test` → 84 pass (77 + 7). Then run the plain-node check
 and also this command, which must print `OK`:
+
 ```bash
 node -e "import('./backupMirror.ts').then(() => console.log('OK'))"
 ```
@@ -419,7 +442,7 @@ function openBackupMirror(backupDir: string, store: RoomStore): BackupMirror | n
 ### 2.4 Create the mirror (directly below `const store = new RoomStore(…);`, ~line 114)
 
 ```ts
-  const backup = openBackupMirror(options.backupDir ?? process.env.BACKUP_DIR ?? '', store);
+const backup = openBackupMirror(options.backupDir ?? process.env.BACKUP_DIR ?? '', store);
 ```
 
 ### 2.5 Asset route: lazy restore (~line 131)
@@ -428,130 +451,143 @@ Replace the **whole** `app.get('/api/assets/:hash', …)` handler with this. The
 same as today; the changes are `async`, the backup fallback, and a 500 on unexpected errors.
 
 ```ts
-  app.get('/api/assets/:hash', async (req, res) => {
-    const hash = req.params.hash;
-    if (!isValidAssetHash(hash)) {
+app.get('/api/assets/:hash', async (req, res) => {
+  const hash = req.params.hash;
+  if (!isValidAssetHash(hash)) {
+    res.status(404).end();
+    return;
+  }
+  try {
+    let asset = store.getAsset(hash);
+    if (!asset && backup) {
+      // Cold start: the local store is empty but the backup bucket has the image.
+      const bytes = await backup.readAsset(hash);
+      if (bytes && store.putAsset(bytes, sniffMime(bytes)) === hash) asset = store.getAsset(hash);
+    }
+    if (!asset) {
       res.status(404).end();
       return;
     }
-    try {
-      let asset = store.getAsset(hash);
-      if (!asset && backup) {
-        // Cold start: the local store is empty but the backup bucket has the image.
-        const bytes = await backup.readAsset(hash);
-        if (bytes && store.putAsset(bytes, sniffMime(bytes)) === hash) asset = store.getAsset(hash);
-      }
-      if (!asset) {
-        res.status(404).end();
-        return;
-      }
-      res.setHeader('Content-Security-Policy', 'sandbox');
-      res.setHeader('X-Content-Type-Options', 'nosniff');
-      res.setHeader('Content-Type', asset.mime);
-      res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
-      res.end(Buffer.from(asset.bytes));
-    } catch (err) {
-      console.error(`Failed to serve asset ${hash}:`, err);
-      res.status(500).end();
-    }
-  });
+    res.setHeader('Content-Security-Policy', 'sandbox');
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('Content-Type', asset.mime);
+    res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+    res.end(Buffer.from(asset.bytes));
+  } catch (err) {
+    console.error(`Failed to serve asset ${hash}:`, err);
+    res.status(500).end();
+  }
+});
 ```
 
 ### 2.6 Restore + queue helpers (directly **above** `const dirtyRooms = new Set<string>();`, ~line 280)
 
 ```ts
-  /** Cold start: copy rooms from the backup into the local SQLite store. */
-  function restoreFromBackup() {
-    if (!backup) return;
-    try {
-      let restored = 0;
-      for (const { roomId, state, lastActiveAt } of backup.loadAllRoomsSync()) {
-        const room = hydrateRoom({ ...state, id: roomId, lastActiveAt });
-        if (!room) {
-          backup.deleteRoom(roomId); // expired
-          continue;
-        }
-        const local = store.loadRoom<SerializedRoom>(roomId);
-        if (local && local.lastActiveAt >= room.lastActiveAt) continue;
-        store.saveRoom(roomId, serializeRoom(room), room.lastActiveAt);
-        restored++;
+/** Cold start: copy rooms from the backup into the local SQLite store. */
+function restoreFromBackup() {
+  if (!backup) return;
+  try {
+    let restored = 0;
+    for (const { roomId, state, lastActiveAt } of backup.loadAllRoomsSync()) {
+      const room = hydrateRoom({ ...state, id: roomId, lastActiveAt });
+      if (!room) {
+        backup.deleteRoom(roomId); // expired
+        continue;
       }
-      console.log(`Restored ${restored} room(s) from backup.`);
-    } catch (err) {
-      console.error('Restoring from backup failed; starting with local state only:', err);
+      const local = store.loadRoom<SerializedRoom>(roomId);
+      if (local && local.lastActiveAt >= room.lastActiveAt) continue;
+      store.saveRoom(roomId, serializeRoom(room), room.lastActiveAt);
+      restored++;
     }
+    console.log(`Restored ${restored} room(s) from backup.`);
+  } catch (err) {
+    console.error('Restoring from backup failed; starting with local state only:', err);
   }
+}
 
-  /** Queue a room for the backup. Reads the latest state when the write happens; null deletes it. */
-  function backupRoom(roomId: string) {
-    backup?.scheduleRoom(roomId, () => {
-      const live = rooms.get(roomId);
-      if (live) return isRoomEmpty(live) ? null : serializeRoom(live);
-      return store.loadRoom<SerializedRoom>(roomId)?.state ?? null;
-    });
-  }
+/** Queue a room for the backup. Reads the latest state when the write happens; null deletes it. */
+function backupRoom(roomId: string) {
+  backup?.scheduleRoom(roomId, () => {
+    const live = rooms.get(roomId);
+    if (live) return isRoomEmpty(live) ? null : serializeRoom(live);
+    return store.loadRoom<SerializedRoom>(roomId)?.state ?? null;
+  });
+}
 ```
 
 ### 2.7 Queue rooms for backup in `flushRoomsToDisk`
 
 Inside the `for (const roomId of [...dirtyRooms])` loop:
+
 - After `store.deleteRoom(roomId);` (the `isRoomEmpty` branch), add `backupRoom(roomId);`.
 - After `store.saveRoom(roomId, serializeRoom(room), room.lastActiveAt);`, add `backupRoom(roomId);`.
 
 ### 2.8 Expired rooms leave the backup too (`runHousekeeping`, ~line 331)
 
 Replace:
+
 ```ts
-      store.deleteRoomsInactiveBefore(now - ROOM_TTL_MS);
+store.deleteRoomsInactiveBefore(now - ROOM_TTL_MS);
 ```
+
 with:
+
 ```ts
-      for (const roomId of store.deleteRoomsInactiveBefore(now - ROOM_TTL_MS)) backupRoom(roomId);
+for (const roomId of store.deleteRoomsInactiveBefore(now - ROOM_TTL_MS)) backupRoom(roomId);
 ```
 
 ### 2.9 Restore at boot (~line 338)
 
 Directly after `migrateLegacyJsonStore();`, add:
+
 ```ts
-  restoreFromBackup();
+restoreFromBackup();
 ```
 
 ### 2.10 `handleShutdown` (~line 1830)
 
 Cloud Run gives ~10 s after SIGTERM. Replace the final `io.close(…)` block:
+
 ```ts
-    io.close(() => {
-      httpServer.close(() => {
-        process.exit(0);
-      });
-    });
+io.close(() => {
+  httpServer.close(() => {
+    process.exit(0);
+  });
+});
 ```
+
 with:
+
 ```ts
-    // Cloud Run allows ~10 s after SIGTERM: push pending room backups before exiting.
-    void (backup ? backup.stop() : Promise.resolve()).finally(() => {
-      io.close(() => {
-        httpServer.close(() => {
-          process.exit(0);
-        });
-      });
+// Cloud Run allows ~10 s after SIGTERM: push pending room backups before exiting.
+void (backup ? backup.stop() : Promise.resolve()).finally(() => {
+  io.close(() => {
+    httpServer.close(() => {
+      process.exit(0);
     });
+  });
+});
 ```
+
 Keep the existing `flushRoomsToDisk();` call and the 8 s force-exit timer **above** it.
 
 ### 2.11 `close()` (~line 1853)
 
 Replace:
+
 ```ts
-    flushRoomsToDisk();
-    store.close();
+flushRoomsToDisk();
+store.close();
 ```
+
 with:
+
 ```ts
-    flushRoomsToDisk();
-    await backup?.stop();
-    store.close();
+flushRoomsToDisk();
+await backup?.stop();
+store.close();
 ```
+
 The order matters: `backup.stop()` may read from the store, so it must run before `store.close()`.
 
 ### 2.12 Return it
@@ -563,57 +599,85 @@ In the `return { … }` at the end of `startServer`, add `backup,` after `store,
 Add this block **directly above** `describe('storage: SQLite + worksheet assets', …)`:
 
 ```ts
-  describe('storage: backup bucket (BACKUP_DIR)', () => {
-    const PNG = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
+describe('storage: backup bucket (BACKUP_DIR)', () => {
+  const PNG =
+    'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
 
-    it('B1 – a cold start restores rooms and worksheets from the backup', async () => {
-      const backupDir = path.join(tmpDir, 'bucket');
-      await srv.close();
-      srv = await startServer({ port: 0, host: '127.0.0.1', dataDir: path.join(tmpDir, 'disk-1'), backupDir, skipVite: true });
-
-      const { socket: teacher } = await joinTracked({ roomId: 'cold', userId: 't', name: 'Teacher' });
-      await emitAck(teacher, 'teacher:auth', { pin: '1234' });
-      const bgSync = waitForEvent<any>(teacher, 'background-sync');
-      await emitAck(teacher, 'teacher:set-background', {
-        boardId: 'main',
-        background: { id: 'ws', fileName: 'w.png', pages: [{ dataUrl: PNG, width: 1, height: 1 }], x: 0, y: 0, scale: 1, layout: 'stack', opacity: 1 },
-      });
-      const url = (await bgSync).background.pages[0].dataUrl as string;
-      await srv.flushRoomsToDiskAsync();
-      await srv.backup!.flushNow();
-
-      // Simulate Cloud Run wiping the local disk: same bucket, brand-new data dir.
-      for (const s of openSockets.splice(0)) if (s.connected) s.disconnect();
-      await srv.close();
-      srv = await startServer({ port: 0, host: '127.0.0.1', dataDir: path.join(tmpDir, 'disk-2'), backupDir, skipVite: true });
-
-      const { init } = await joinTracked({ roomId: 'cold', userId: 's', name: 'Student' });
-      assert.equal(init.background.pages[0].dataUrl, url);
-      assert.equal(srv.store.countAssets(), 0); // not restored until requested
-      const res = await fetch(`http://127.0.0.1:${srv.port}${url}`);
-      assert.equal(res.status, 200);
-      assert.equal(res.headers.get('content-type'), 'image/png');
-      assert.equal(srv.store.countAssets(), 1);
+  it('B1 – a cold start restores rooms and worksheets from the backup', async () => {
+    const backupDir = path.join(tmpDir, 'bucket');
+    await srv.close();
+    srv = await startServer({
+      port: 0,
+      host: '127.0.0.1',
+      dataDir: path.join(tmpDir, 'disk-1'),
+      backupDir,
+      skipVite: true,
     });
 
-    it('B2 – an unusable DATA_DIR falls back instead of crashing', async () => {
-      const blocker = path.join(tmpDir, 'not-a-dir');
-      fs.writeFileSync(blocker, 'x');
-      await srv.close();
-      srv = await startServer({ port: 0, host: '127.0.0.1', dataDir: path.join(blocker, 'data'), skipVite: true });
-      const res = await fetch(`http://127.0.0.1:${srv.port}/healthz`);
-      assert.equal(res.status, 200);
+    const { socket: teacher } = await joinTracked({ roomId: 'cold', userId: 't', name: 'Teacher' });
+    await emitAck(teacher, 'teacher:auth', { pin: '1234' });
+    const bgSync = waitForEvent<any>(teacher, 'background-sync');
+    await emitAck(teacher, 'teacher:set-background', {
+      boardId: 'main',
+      background: {
+        id: 'ws',
+        fileName: 'w.png',
+        pages: [{ dataUrl: PNG, width: 1, height: 1 }],
+        x: 0,
+        y: 0,
+        scale: 1,
+        layout: 'stack',
+        opacity: 1,
+      },
+    });
+    const url = (await bgSync).background.pages[0].dataUrl as string;
+    await srv.flushRoomsToDiskAsync();
+    await srv.backup!.flushNow();
+
+    // Simulate Cloud Run wiping the local disk: same bucket, brand-new data dir.
+    for (const s of openSockets.splice(0)) if (s.connected) s.disconnect();
+    await srv.close();
+    srv = await startServer({
+      port: 0,
+      host: '127.0.0.1',
+      dataDir: path.join(tmpDir, 'disk-2'),
+      backupDir,
+      skipVite: true,
     });
 
-    it('B3 – an unusable BACKUP_DIR runs without backups instead of crashing', async () => {
-      const blocker = path.join(tmpDir, 'not-a-bucket');
-      fs.writeFileSync(blocker, 'x');
-      await srv.close();
-      srv = await startServer({ port: 0, host: '127.0.0.1', dataDir: tmpDir, backupDir: path.join(blocker, 'b'), skipVite: true });
-      assert.equal(srv.backup, null);
-      assert.equal((await fetch(`http://127.0.0.1:${srv.port}/healthz`)).status, 200);
-    });
+    const { init } = await joinTracked({ roomId: 'cold', userId: 's', name: 'Student' });
+    assert.equal(init.background.pages[0].dataUrl, url);
+    assert.equal(srv.store.countAssets(), 0); // not restored until requested
+    const res = await fetch(`http://127.0.0.1:${srv.port}${url}`);
+    assert.equal(res.status, 200);
+    assert.equal(res.headers.get('content-type'), 'image/png');
+    assert.equal(srv.store.countAssets(), 1);
   });
+
+  it('B2 – an unusable DATA_DIR falls back instead of crashing', async () => {
+    const blocker = path.join(tmpDir, 'not-a-dir');
+    fs.writeFileSync(blocker, 'x');
+    await srv.close();
+    srv = await startServer({ port: 0, host: '127.0.0.1', dataDir: path.join(blocker, 'data'), skipVite: true });
+    const res = await fetch(`http://127.0.0.1:${srv.port}/healthz`);
+    assert.equal(res.status, 200);
+  });
+
+  it('B3 – an unusable BACKUP_DIR runs without backups instead of crashing', async () => {
+    const blocker = path.join(tmpDir, 'not-a-bucket');
+    fs.writeFileSync(blocker, 'x');
+    await srv.close();
+    srv = await startServer({
+      port: 0,
+      host: '127.0.0.1',
+      dataDir: tmpDir,
+      backupDir: path.join(blocker, 'b'),
+      skipVite: true,
+    });
+    assert.equal(srv.backup, null);
+    assert.equal((await fetch(`http://127.0.0.1:${srv.port}/healthz`)).status, 200);
+  });
+});
 ```
 
 **Checkpoint 2:** `npm run lint && npm test` → **87 pass**, and the plain-node check passes. Then
@@ -667,16 +731,16 @@ only takes effect once this code is deployed. **Nothing here needs code or keys.
 
 ## Appendix A: Decisions (do not revisit)
 
-| Decision | Why |
-|---|---|
-| **Bucket as a backup folder, not as the database** | A Cloud Storage mount has no file locking and turns every small write into a whole-object upload. SQLite on it would corrupt or crawl. Whole-file JSON snapshots are exactly what object storage is good at. |
-| **Mounted volume, not the `@google-cloud/storage` SDK** | No dependency, no credentials code, and the same code works locally with any folder. Cloud Run authenticates the mount with the service's own service account. |
-| **Not Filestore/NFS** | It would let SQLite live on durable disk directly, but costs roughly $200+/month minimum. |
-| **Batch every 10 s, read state at write time** | A busy room costs ~6 small writes/minute (fractions of a cent per class). On a crash, at most ~10 s of strokes are lost. On a normal shutdown (SIGTERM), nothing is lost. |
-| **Restore rooms eagerly at boot, images lazily** | Room files are small, and keeping `findRoom()` synchronous avoids touching every socket handler. Images can be large, so they're fetched only when a browser asks. |
-| **Assets written before the room file** | A restored room can never reference an image that isn't in the bucket. |
-| **Max instances = 1 is required** | Two instances would both write the same room files. It's also required for Socket.IO rooms to work without an adapter. |
-| **Backup images are not garbage-collected** | They're immutable and deduplicated, and a heavy year is likely a few GB, i.e. cents per month. Add a cleanup job later only if the bucket bill ever matters. |
+| Decision                                                | Why                                                                                                                                                                                                          |
+| ------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **Bucket as a backup folder, not as the database**      | A Cloud Storage mount has no file locking and turns every small write into a whole-object upload. SQLite on it would corrupt or crawl. Whole-file JSON snapshots are exactly what object storage is good at. |
+| **Mounted volume, not the `@google-cloud/storage` SDK** | No dependency, no credentials code, and the same code works locally with any folder. Cloud Run authenticates the mount with the service's own service account.                                               |
+| **Not Filestore/NFS**                                   | It would let SQLite live on durable disk directly, but costs roughly $200+/month minimum.                                                                                                                    |
+| **Batch every 10 s, read state at write time**          | A busy room costs ~6 small writes/minute (fractions of a cent per class). On a crash, at most ~10 s of strokes are lost. On a normal shutdown (SIGTERM), nothing is lost.                                    |
+| **Restore rooms eagerly at boot, images lazily**        | Room files are small, and keeping `findRoom()` synchronous avoids touching every socket handler. Images can be large, so they're fetched only when a browser asks.                                           |
+| **Assets written before the room file**                 | A restored room can never reference an image that isn't in the bucket.                                                                                                                                       |
+| **Max instances = 1 is required**                       | Two instances would both write the same room files. It's also required for Socket.IO rooms to work without an adapter.                                                                                       |
+| **Backup images are not garbage-collected**             | They're immutable and deduplicated, and a heavy year is likely a few GB, i.e. cents per month. Add a cleanup job later only if the bucket bill ever matters.                                                 |
 
 ## Appendix B: Out of scope
 

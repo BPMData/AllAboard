@@ -25,11 +25,7 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '../lib/utils';
-import {
-  MIN_CHAT_WIDTH,
-  clampChatWidth,
-  getMaxChatWidth,
-} from '../lib/chatSidebar';
+import { MIN_CHAT_WIDTH, clampChatWidth, getMaxChatWidth } from '../lib/chatSidebar';
 import { normalizeRoomCode, sanitizeRoomCodeDraft } from '../lib/roomCode';
 import { isAnonymousAuthorId } from '../lib/anonymousInk';
 import RoomHistoryDropdown from './RoomHistoryDropdown';
@@ -71,8 +67,16 @@ interface ChatProps {
 }
 
 const USER_COLORS = [
-  '#dc2626', '#ea580c', '#d97706', '#059669', '#0891b2',
-  '#2563eb', '#4f46e5', '#7c3aed', '#c026d3', '#db2777'
+  '#dc2626',
+  '#ea580c',
+  '#d97706',
+  '#059669',
+  '#0891b2',
+  '#2563eb',
+  '#4f46e5',
+  '#7c3aed',
+  '#c026d3',
+  '#db2777',
 ];
 
 export function getUserColor(userId: string) {
@@ -368,15 +372,11 @@ export default function Chat({
                   setPinError(null);
                 }}
                 className={cn(
-                  "flex items-center gap-1.5 px-2.5 py-1 rounded-[2px] border text-xs font-medium transition-colors whitespace-nowrap shrink-0 cursor-pointer",
-                  showPinPrompt
-                    ? "oh-btn-dark text-white"
-                    : "oh-btn text-slate-700 hover:text-slate-900"
+                  'flex items-center gap-1.5 px-2.5 py-1 rounded-[2px] border text-xs font-medium transition-colors whitespace-nowrap shrink-0 cursor-pointer',
+                  showPinPrompt ? 'oh-btn-dark text-white' : 'oh-btn text-slate-700 hover:text-slate-900'
                 )}
                 title={
-                  hasTeacherPin
-                    ? "Enter room Teacher PIN to unlock moderation"
-                    : "Set a Teacher PIN for this room"
+                  hasTeacherPin ? 'Enter room Teacher PIN to unlock moderation' : 'Set a Teacher PIN for this room'
                 }
               >
                 <KeyRound size={12} />
@@ -483,7 +483,9 @@ export default function Chat({
                   <Copy size={11} />
                   <span>{copiedLink ? 'Copied!' : 'Copy Link'}</span>
                 </button>
-                <span className="text-slate-300" aria-hidden="true">·</span>
+                <span className="text-slate-300" aria-hidden="true">
+                  ·
+                </span>
                 <button
                   type="button"
                   onClick={() => {
@@ -498,7 +500,9 @@ export default function Chat({
                 </button>
                 {onLeaveRoom && (
                   <>
-                    <span className="text-slate-300" aria-hidden="true">·</span>
+                    <span className="text-slate-300" aria-hidden="true">
+                      ·
+                    </span>
                     <button
                       type="button"
                       onClick={onLeaveRoom}
@@ -512,7 +516,9 @@ export default function Chat({
                 )}
                 {onReportProblem && (
                   <>
-                    <span className="text-slate-300" aria-hidden="true">·</span>
+                    <span className="text-slate-300" aria-hidden="true">
+                      ·
+                    </span>
                     <button
                       type="button"
                       onClick={onReportProblem}
@@ -590,10 +596,10 @@ export default function Chat({
                 type="submit"
                 disabled={pinInput.trim().length < (hasTeacherPin ? 3 : MIN_TEACHER_PIN_LENGTH) || isSubmittingPin}
                 className={cn(
-                  "px-3 py-1.5 border text-xs font-semibold rounded-[2px] transition-colors whitespace-nowrap",
+                  'px-3 py-1.5 border text-xs font-semibold rounded-[2px] transition-colors whitespace-nowrap',
                   pinInput.trim().length < (hasTeacherPin ? 3 : MIN_TEACHER_PIN_LENGTH) || isSubmittingPin
-                    ? "bg-slate-800 border-[#243044] text-slate-500 cursor-not-allowed"
-                    : "oh-btn-primary text-white cursor-pointer"
+                    ? 'bg-slate-800 border-[#243044] text-slate-500 cursor-not-allowed'
+                    : 'oh-btn-primary text-white cursor-pointer'
                 )}
               >
                 {hasTeacherPin ? 'Unlock' : 'Set PIN'}
@@ -626,33 +632,29 @@ export default function Chat({
             type="button"
             onClick={() => setActiveTab('chat')}
             className={cn(
-              "flex items-center justify-center gap-1.5 py-1.5 px-3 text-xs rounded-[2px] border transition-colors whitespace-nowrap shrink-0 cursor-pointer",
+              'flex items-center justify-center gap-1.5 py-1.5 px-3 text-xs rounded-[2px] border transition-colors whitespace-nowrap shrink-0 cursor-pointer',
               activeTab === 'chat'
-                ? "oh-btn-active font-semibold text-brand-900"
-                : "border-transparent font-medium text-slate-600 hover:text-slate-900"
+                ? 'oh-btn-active font-semibold text-brand-900'
+                : 'border-transparent font-medium text-slate-600 hover:text-slate-900'
             )}
           >
             <MessageSquare size={14} />
             <span>Chat</span>
-            <span className="font-mono tabular-nums text-[11px] text-slate-500">
-              ({messages.length})
-            </span>
+            <span className="font-mono tabular-nums text-[11px] text-slate-500">({messages.length})</span>
           </button>
           <button
             type="button"
             onClick={() => setActiveTab('roster')}
             className={cn(
-              "flex items-center justify-center gap-1.5 py-1.5 px-3 text-xs rounded-[2px] border transition-colors whitespace-nowrap shrink-0 cursor-pointer",
+              'flex items-center justify-center gap-1.5 py-1.5 px-3 text-xs rounded-[2px] border transition-colors whitespace-nowrap shrink-0 cursor-pointer',
               activeTab === 'roster'
-                ? "oh-btn-active font-semibold text-brand-900"
-                : "border-transparent font-medium text-slate-600 hover:text-slate-900"
+                ? 'oh-btn-active font-semibold text-brand-900'
+                : 'border-transparent font-medium text-slate-600 hover:text-slate-900'
             )}
           >
             <Users size={14} />
             <span>Class</span>
-            <span className="font-mono tabular-nums text-[11px] text-slate-500">
-              ({users.length})
-            </span>
+            <span className="font-mono tabular-nums text-[11px] text-slate-500">({users.length})</span>
           </button>
         </div>
       </div>
@@ -660,10 +662,7 @@ export default function Chat({
       {/* Main Content Area: Chat Stream OR Live Roster */}
       {activeTab === 'chat' ? (
         <>
-          <div
-            ref={scrollRef}
-            className="flex-1 overflow-y-auto p-3.5 space-y-2.5 scroll-smooth"
-          >
+          <div ref={scrollRef} className="flex-1 overflow-y-auto p-3.5 space-y-2.5 scroll-smooth">
             {messages.length === 0 ? (
               <div className="h-full flex flex-col items-center justify-center text-center px-4 py-8 text-slate-400">
                 <MessageSquare size={24} className="mb-2 text-slate-300" />
@@ -699,15 +698,9 @@ export default function Chat({
                           {msg.userName}
                         </span>
                         {msg.isTeacher && (
-                          <span className="text-[11px] text-amber-700 font-medium shrink-0">
-                            · Teacher
-                          </span>
+                          <span className="text-[11px] text-amber-700 font-medium shrink-0">· Teacher</span>
                         )}
-                        {isMe && (
-                          <span className="text-[11px] text-slate-400 shrink-0">
-                            · You
-                          </span>
-                        )}
+                        {isMe && <span className="text-[11px] text-slate-400 shrink-0">· You</span>}
                         <span className="text-[11px] text-slate-400 font-mono tabular-nums ml-auto shrink-0">
                           {new Date(msg.timestamp).toLocaleTimeString([], {
                             hour: '2-digit',
@@ -728,10 +721,10 @@ export default function Chat({
                       </div>
                       <div
                         className={cn(
-                          "w-full px-3 py-2 rounded-[3px] text-sm leading-relaxed border break-words",
+                          'w-full px-3 py-2 rounded-[3px] text-sm leading-relaxed border break-words',
                           isMe
-                            ? "bg-brand-50/75 border-brand-200 text-slate-900"
-                            : "bg-white border-[#CBD5E1] text-slate-800"
+                            ? 'bg-brand-50/75 border-brand-200 text-slate-900'
+                            : 'bg-white border-[#CBD5E1] text-slate-800'
                         )}
                       >
                         {msg.text}
@@ -771,9 +764,22 @@ export default function Chat({
           </div>
 
           {isTeacher && (
-            <div className="flex flex-wrap items-center justify-between gap-1 text-xs text-slate-600" aria-label="Status summary">
-              <span>{users.filter((u) => !u.isTeacher && u.status === 'need-help').length} need help · {users.filter((u) => !u.isTeacher && u.status === 'got-it').length} got it · {users.filter((u) => !u.isTeacher && u.status === 'done').length} done</span>
-              <button type="button" onClick={() => onTeacherClearStatus()} className="text-brand-600 hover:underline cursor-pointer">Clear all statuses</button>
+            <div
+              className="flex flex-wrap items-center justify-between gap-1 text-xs text-slate-600"
+              aria-label="Status summary"
+            >
+              <span>
+                {users.filter((u) => !u.isTeacher && u.status === 'need-help').length} need help ·{' '}
+                {users.filter((u) => !u.isTeacher && u.status === 'got-it').length} got it ·{' '}
+                {users.filter((u) => !u.isTeacher && u.status === 'done').length} done
+              </span>
+              <button
+                type="button"
+                onClick={() => onTeacherClearStatus()}
+                className="text-brand-600 hover:underline cursor-pointer"
+              >
+                Clear all statuses
+              </button>
             </div>
           )}
 
@@ -830,9 +836,7 @@ export default function Chat({
                           className="w-2.5 h-2.5 rounded-[2px] shrink-0"
                           style={{ backgroundColor: participant.color }}
                         />
-                        <span className="font-medium text-sm text-slate-900 truncate">
-                          {participant.name}
-                        </span>
+                        <span className="font-medium text-sm text-slate-900 truncate">{participant.name}</span>
                         {participant.isNameLocked && (
                           <span
                             className="inline-flex items-center gap-0.5 px-1 py-0.5 rounded-[2px] bg-slate-100 border border-[#CBD5E1] text-[10px] text-slate-500 font-medium shrink-0"
@@ -843,7 +847,13 @@ export default function Chat({
                         )}
                       </div>
                     )}
-                    <StudentStatusBadge status={participant.status} name={participant.name} onClear={isTeacher && !participant.isTeacher ? () => onTeacherClearStatus(participant.userId) : undefined} />
+                    <StudentStatusBadge
+                      status={participant.status}
+                      name={participant.name}
+                      onClear={
+                        isTeacher && !participant.isTeacher ? () => onTeacherClearStatus(participant.userId) : undefined
+                      }
+                    />
                     <div className="flex items-center gap-1.5 text-[11px] text-slate-500 mt-0.5">
                       <span>{participant.isOnline ? 'Online' : 'Offline'}</span>
                       {participant.isTeacher && (
@@ -882,8 +892,9 @@ export default function Chat({
                       </button>
                     )}
 
-                    {(isTeacher || isMe) && count > 0 && (
-                      isConfirmingErase ? (
+                    {(isTeacher || isMe) &&
+                      count > 0 &&
+                      (isConfirmingErase ? (
                         <div className="flex items-center gap-1">
                           <button
                             type="button"
@@ -915,24 +926,21 @@ export default function Chat({
                         >
                           <Eraser size={14} />
                         </button>
-                      )
-                    )}
+                      ))}
 
                     {isTeacher && !isMe && (
                       <button
                         type="button"
                         onClick={() => {
-                          setConfirmRemoveUserId(
-                            isConfirmingRemove ? null : participant.userId
-                          );
+                          setConfirmRemoveUserId(isConfirmingRemove ? null : participant.userId);
                           setConfirmEraseUserId(null);
                           setRenamingUserId(null);
                         }}
                         className={cn(
-                          "p-1.5 rounded-[2px] transition-colors cursor-pointer",
+                          'p-1.5 rounded-[2px] transition-colors cursor-pointer',
                           isConfirmingRemove
-                            ? "text-red-600 bg-red-50"
-                            : "text-slate-400 hover:text-red-600 hover:bg-red-50"
+                            ? 'text-red-600 bg-red-50'
+                            : 'text-slate-400 hover:text-red-600 hover:bg-red-50'
                         )}
                         title={`Kick or Ban ${participant.name}`}
                       >
@@ -1000,9 +1008,7 @@ export default function Chat({
                   className="flex items-center justify-between gap-2 p-2 rounded-[3px] bg-red-50/60 border border-red-200/80 text-xs"
                 >
                   <div className="min-w-0">
-                    <span className="font-medium text-slate-900 truncate block">
-                      {banned.name}
-                    </span>
+                    <span className="font-medium text-slate-900 truncate block">{banned.name}</span>
                     <span className="text-[10px] text-red-600">Blocked from rejoining</span>
                   </div>
                   <button
@@ -1044,15 +1050,10 @@ export default function Chat({
         ) : (
           <div className="flex items-center justify-between gap-2">
             <div className="flex items-center gap-2 min-w-0">
-              <span
-                className="w-2.5 h-2.5 rounded-[2px] shrink-0"
-                style={{ backgroundColor: userColor }}
-              />
+              <span className="w-2.5 h-2.5 rounded-[2px] shrink-0" style={{ backgroundColor: userColor }} />
               <span className="font-medium text-slate-800 truncate">{userName}</span>
               <span className="text-slate-400">·</span>
-              <span className="font-mono tabular-nums text-slate-500">
-                {strokeCountsByUser[userId] || 0} drawn
-              </span>
+              <span className="font-mono tabular-nums text-slate-500">{strokeCountsByUser[userId] || 0} drawn</span>
             </div>
             {isNameLocked && !isTeacher ? (
               <span
@@ -1091,25 +1092,23 @@ export default function Chat({
         onKeyDown={handleResizeKeyDown}
         title="Drag to resize chat sidebar (double-click to reset)"
         className={cn(
-          "group absolute top-0 right-0 bottom-0 w-2 translate-x-1/2 z-30 cursor-col-resize flex items-center justify-center touch-none focus:outline-none",
-          isResizing && "z-40"
+          'group absolute top-0 right-0 bottom-0 w-2 translate-x-1/2 z-30 cursor-col-resize flex items-center justify-center touch-none focus:outline-none',
+          isResizing && 'z-40'
         )}
       >
         <div
           className={cn(
-            "w-0.5 h-full transition-colors",
-            isResizing
-              ? "bg-brand-600"
-              : "bg-transparent group-hover:bg-brand-400 group-focus-visible:bg-brand-500"
+            'w-0.5 h-full transition-colors',
+            isResizing ? 'bg-brand-600' : 'bg-transparent group-hover:bg-brand-400 group-focus-visible:bg-brand-500'
           )}
         />
         <div
           aria-hidden="true"
           className={cn(
-            "absolute top-1/2 -translate-y-1/2 w-1 h-8 rounded-full transition-all",
+            'absolute top-1/2 -translate-y-1/2 w-1 h-8 rounded-full transition-all',
             isResizing
-              ? "bg-brand-600 opacity-100 scale-y-110"
-              : "bg-slate-400/80 opacity-0 group-hover:opacity-100 group-focus-visible:opacity-100"
+              ? 'bg-brand-600 opacity-100 scale-y-110'
+              : 'bg-slate-400/80 opacity-0 group-hover:opacity-100 group-focus-visible:opacity-100'
           )}
         />
       </div>

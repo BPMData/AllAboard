@@ -114,14 +114,10 @@ export default function RoomHistoryDropdown({
 
   const triggerClasses = isDark
     ? `flex items-center gap-1 px-2 py-1 rounded-[2px] border font-medium whitespace-nowrap cursor-pointer disabled:opacity-50 transition-colors ${
-        isOpen
-          ? 'bg-brand-500/20 border-brand-500/60 text-brand-300'
-          : 'oh-btn-dark text-slate-200 hover:text-white'
+        isOpen ? 'bg-brand-500/20 border-brand-500/60 text-brand-300' : 'oh-btn-dark text-slate-200 hover:text-white'
       }`
     : `flex items-center gap-1 px-2 py-0.5 rounded-[2px] border text-[11px] font-medium whitespace-nowrap cursor-pointer disabled:opacity-50 transition-colors ${
-        isOpen
-          ? 'oh-btn-active text-brand-900'
-          : 'oh-btn text-slate-700 hover:text-slate-900'
+        isOpen ? 'oh-btn-active text-brand-900' : 'oh-btn text-slate-700 hover:text-slate-900'
       }`;
 
   const menuClasses = isDark
@@ -225,9 +221,7 @@ export default function RoomHistoryDropdown({
           <p className={`text-[11px] leading-snug ${mutedText}`}>{hintText}</p>
 
           {entries.length === 0 ? (
-            <div className={`py-3 px-2 text-center text-xs ${mutedText}`}>
-              No rooms visited on this browser yet.
-            </div>
+            <div className={`py-3 px-2 text-center text-xs ${mutedText}`}>No rooms visited on this browser yet.</div>
           ) : displayedEntries.length === 0 ? (
             <div className={`py-3 px-2 text-center text-xs ${mutedText}`}>
               No live rooms right now. Uncheck Live only to see saved or expired rooms.
@@ -250,10 +244,7 @@ export default function RoomHistoryDropdown({
                         st
                       )}`}
                     >
-                      <span
-                        className={`w-2 h-2 rounded-full shrink-0 ${DOT_CLASS[st]}`}
-                        aria-hidden="true"
-                      />
+                      <span className={`w-2 h-2 rounded-full shrink-0 ${DOT_CLASS[st]}`} aria-hidden="true" />
                       <span className="font-mono font-semibold truncate">{entry.code}</span>
                       {isCurrent && (
                         <span

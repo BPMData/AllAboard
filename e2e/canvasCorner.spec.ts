@@ -20,8 +20,13 @@ async function maxInkAlpha(page: Page, box: { x: number; y: number; w: number; h
   }, box);
 }
 
-for (const viewport of [{ width: 1366, height: 768 }, { width: 390, height: 844 }]) {
-  test(`a fresh board draws nothing at its top-left corner (${viewport.width}x${viewport.height})`, async ({ page }) => {
+for (const viewport of [
+  { width: 1366, height: 768 },
+  { width: 390, height: 844 },
+]) {
+  test(`a fresh board draws nothing at its top-left corner (${viewport.width}x${viewport.height})`, async ({
+    page,
+  }) => {
     await page.setViewportSize(viewport);
     await joinRoom(page, uniqueRoom('corner'), 'Corner Check');
     await expect(page.locator('.konvajs-content canvas').first()).toBeVisible();

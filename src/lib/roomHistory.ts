@@ -52,8 +52,7 @@ export function sanitizeRoomHistoryEntries(raw: unknown, fallbackNow = Date.now(
     const lastUsedAtRaw = (item as { lastUsedAt?: unknown }).lastUsedAt;
     const lastUsedAt =
       typeof lastUsedAtRaw === 'number' && Number.isFinite(lastUsedAtRaw) ? lastUsedAtRaw : fallbackNow;
-    const createdAt =
-      typeof createdAtRaw === 'number' && Number.isFinite(createdAtRaw) ? createdAtRaw : lastUsedAt;
+    const createdAt = typeof createdAtRaw === 'number' && Number.isFinite(createdAtRaw) ? createdAtRaw : lastUsedAt;
     const prev = byCode.get(code);
     if (!prev) {
       byCode.set(code, { code, createdAt, lastUsedAt });
@@ -65,9 +64,7 @@ export function sanitizeRoomHistoryEntries(raw: unknown, fallbackNow = Date.now(
       });
     }
   }
-  return [...byCode.values()]
-    .sort((a, b) => b.lastUsedAt - a.lastUsedAt)
-    .slice(0, MAX_ROOM_HISTORY);
+  return [...byCode.values()].sort((a, b) => b.lastUsedAt - a.lastUsedAt).slice(0, MAX_ROOM_HISTORY);
 }
 
 function saveRoomHistory(entries: RoomHistoryEntry[], storage?: Pick<Storage, 'setItem'> | null): void {
@@ -119,10 +116,7 @@ export function recordRoomHistory(
 }
 
 /** Remove a single room code from local history. */
-export function removeRoomHistoryEntry(
-  rawCode: string,
-  storage?: StorageWriter | null
-): RoomHistoryEntry[] {
+export function removeRoomHistoryEntry(rawCode: string, storage?: StorageWriter | null): RoomHistoryEntry[] {
   const target = storage === undefined ? getDefaultStorage() : storage;
   const current = loadRoomHistory(target);
   if (typeof rawCode !== 'string' || !rawCode.trim()) {

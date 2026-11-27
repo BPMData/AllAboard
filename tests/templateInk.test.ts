@@ -47,7 +47,14 @@ describe('template ink on round worksheets', () => {
     teacher.emit('teacher:set-background', { background: worksheet('main.png') });
     teacher.emit('element-start', stroke('t-a'));
     teacher.emit('element-start', stroke('t-b', { points: [10, 10, 20, 20] }));
-    teacher.emit('element-start', { ...stroke('t-stamp'), tool: 'stamp', stamp: 'username', points: undefined, x: 1, y: 1 });
+    teacher.emit('element-start', {
+      ...stroke('t-stamp'),
+      tool: 'stamp',
+      stamp: 'username',
+      points: undefined,
+      x: 1,
+      y: 1,
+    });
     s1.emit('element-start', stroke('kid'));
     await delay(80);
     return { teacher, s1 };
@@ -91,7 +98,12 @@ describe('template ink on round worksheets', () => {
 
   it("T2 – a student can't erase the template ink on their board", async () => {
     const { teacher, s1 } = await setupClass('ti-2');
-    const { sync } = await configure(teacher, { action: 'new-round', mode: 'individual', copyWorksheet: true, copyInk: true });
+    const { sync } = await configure(teacher, {
+      action: 'new-round',
+      mode: 'individual',
+      copyWorksheet: true,
+      copyInk: true,
+    });
     const [first, second] = sync.subBoards.r1_ind_s1.elements;
     await delay(50);
     s1.emit('element-remove', { id: first.id, boardId: 'r1_ind_s1' });
@@ -142,7 +154,13 @@ describe('template ink on round worksheets', () => {
 
   it('T4 – edit-prepared replaces or clears the ink with the worksheet; delete-prepared removes it', async () => {
     const { teacher } = await setupClass('ti-4');
-    await configure(teacher, { action: 'new-round', prepare: true, mode: 'individual', copyWorksheet: true, copyInk: true });
+    await configure(teacher, {
+      action: 'new-round',
+      prepare: true,
+      mode: 'individual',
+      copyWorksheet: true,
+      copyInk: true,
+    });
     const { sync: untouched } = await configure(teacher, { action: 'edit-prepared', roundId: 'r1', title: 'Exit' });
     assert.equal(untouched.roundTemplateInk.r1.length, 2, 'a title change keeps the ink');
     const { sync: cleared } = await configure(teacher, {
@@ -158,7 +176,13 @@ describe('template ink on round worksheets', () => {
 
   it('T5 – a lesson pack keeps the ink, and the loader becomes its author', async () => {
     const { teacher } = await setupClass('ti-5');
-    await configure(teacher, { action: 'new-round', prepare: true, mode: 'individual', copyWorksheet: true, copyInk: true });
+    await configure(teacher, {
+      action: 'new-round',
+      prepare: true,
+      mode: 'individual',
+      copyWorksheet: true,
+      copyInk: true,
+    });
     const exported = await emitAck<any>(teacher, 'teacher:export-lesson', { title: 'Ink' });
     assert.equal(exported.ok, true);
     const lesson = exported.lesson;
@@ -175,7 +199,12 @@ describe('template ink on round worksheets', () => {
       pin: '5678',
     });
     assert.equal(loaded.ok, true);
-    const { socket: t2, init } = await pool.join(srv, { roomId: 'ti-5-copy', userId: 't9', name: 'Mr K', teacherPin: '5678' });
+    const { socket: t2, init } = await pool.join(srv, {
+      roomId: 'ti-5-copy',
+      userId: 't9',
+      name: 'Mr K',
+      teacherPin: '5678',
+    });
     assert.equal(init.roundTemplateInk.r1.length, 2);
     assert.ok(init.roundTemplateInk.r1.every((el: any) => el.userId === 't9'));
     await pool.join(srv, { roomId: 'ti-5-copy', userId: 'kid', name: 'Kid' });

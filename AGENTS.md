@@ -16,7 +16,7 @@ storage, env vars, Cloud Run settings, or server startup code, read [`docs/DEPLO
    Cloud Storage JSON API (`backupMirror.ts`, `GcsBackend`). Never put SQLite on a bucket mount. Never "fix" a
    storage error with `/tmp`.
 5. **Max instances = 1.** Storage setup must **fail open**, never crash boot.
-6. **Never use a *sensitive* or *restricted* Google OAuth scope. No exceptions, no "just for one feature",
+6. **Never use a _sensitive_ or _restricted_ Google OAuth scope. No exceptions, no "just for one feature",
    not incrementally.** Those trigger Google's manual sensitive-scope review (restricted ones also need a paid
    security audit), a 100-user cap and an "unverified app" screen until it passes, and school admins block them.
    **Allowed (non-sensitive):** `https://www.googleapis.com/auth/drive.file` (what Drive uses), plus the basic

@@ -417,7 +417,8 @@ export function validateLesson(raw: unknown): { lesson: LessonPack | null; error
       if (!ws.ok) return { lesson: null, error: ws.error };
       const round: LessonRound = { key, title: cleanText(r.title, MAX_LABEL), mode, worksheet: ws.value };
       if (mode === 'groups') {
-        if (!Array.isArray(r.groups) || r.groups.length === 0) return { lesson: null, error: `${where} has no groups.` };
+        if (!Array.isArray(r.groups) || r.groups.length === 0)
+          return { lesson: null, error: `${where} has no groups.` };
         if (r.groups.length > LESSON_MAX_GROUPS) {
           return { lesson: null, error: `${where} has more than ${LESSON_MAX_GROUPS} groups.` };
         }
@@ -464,7 +465,13 @@ export function validateLesson(raw: unknown): { lesson: LessonPack | null; error
 
     const s = isObject(raw.settings) ? raw.settings : {};
     const settings: LessonSettings = {};
-    for (const k of ['oneNameStamp', 'hideStudentCursors', 'allowSelfSelect', 'autoIndividual', 'timerAutoLock'] as const) {
+    for (const k of [
+      'oneNameStamp',
+      'hideStudentCursors',
+      'allowSelfSelect',
+      'autoIndividual',
+      'timerAutoLock',
+    ] as const) {
       if (typeof s[k] === 'boolean') settings[k] = s[k] as boolean;
     }
     if (s.chatScope === 'board' || s.chatScope === 'unified') settings.chatScope = s.chatScope;

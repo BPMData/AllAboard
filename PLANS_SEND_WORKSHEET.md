@@ -2,7 +2,7 @@
 
 > **For the agent implementing this:** read `CLAUDE.md` and `docs/ARCHITECTURE.md` first. **Every merge to `main`
 > deploys to production**, so open a PR and do not merge it yourself. The teacher needs this live by **class tomorrow**,
-> so keep the scope to what's below. Bigger related ideas (prepared rounds, lesson packs, auto-forming *groups* from stamps) are out of scope.
+> so keep the scope to what's below. Bigger related ideas (prepared rounds, lesson packs, auto-forming _groups_ from stamps) are out of scope.
 
 ## Goal
 
@@ -24,7 +24,7 @@ e.g. four versions of a bingo card, A/B/C/D. Today the only ways are:
 4. Clicks **Send**. Each variant is sent **once** and the server applies it to its boards, so each image is stored once
    because assets are content-addressed.
 
-This is the first half of the **"Send this worksheet to…"** item under *Planned* in `TODO.md`.
+This is the first half of the **"Send this worksheet to…"** item under _Planned_ in `TODO.md`.
 
 ## Server (`server.ts`)
 
@@ -37,6 +37,7 @@ socket.on('teacher:set-background-multi', (payload, callback) => { ... });
 **Payload:** `{ boardIds: string[]; background: RoomBackground | null; roundTemplateFor?: string }`
 
 **Rules:**
+
 - Return `{ ok: false, error }` if there's no `meta` or room, or if the caller isn't `isTeacher`. Use the same messages
   as `teacher:set-background`.
 - `boardIds` must be an array. Dedupe it, cap it at **500**, and keep only ids where `room.subBoards.has(id)`. Also
@@ -70,7 +71,7 @@ Add the new event to the client → server list in `docs/ARCHITECTURE.md` §7 (T
 Move that object-building into an exported helper and use it in both places:
 
 ```ts
-export function buildWorksheetBackground(pages: BackgroundPage[], fileName: string): RoomBackground
+export function buildWorksheetBackground(pages: BackgroundPage[], fileName: string): RoomBackground;
 ```
 
 It returns `{ id: 'bg_' + random, fileName, pages, x: -w/2, y: -h/2, scale: 1, layout: pages.length >= 3 ? 'grid' :
@@ -86,8 +87,9 @@ const handleTeacherSendWorksheet = useCallback(
   (boardIds: string[], bg: RoomBackground | null, roundTemplateFor?: string) =>
     new Promise<{ ok: boolean; updated?: number; skipped?: string[]; error?: string }>((resolve) => {
       if (!socket) return resolve({ ok: false, error: 'Not connected to server.' });
-      socket.emit('teacher:set-background-multi', { boardIds, background: bg, roundTemplateFor },
-        (res: any) => resolve(res || { ok: false, error: 'No response from server.' }));
+      socket.emit('teacher:set-background-multi', { boardIds, background: bg, roundTemplateFor }, (res: any) =>
+        resolve(res || { ok: false, error: 'No response from server.' })
+      );
     }),
   [socket]
 );
@@ -117,8 +119,8 @@ none of these is the board the teacher is drawing on. Pass the callback down as
     predictable. Each row has an A/B/C/D dropdown that overrides its letter.
   - **Checkbox, checked by default:** "Late joiners get worksheet A". It sends `roundTemplateFor: viewingRound.id`
     with variant A only.
-  - **Warning** when any selected board "has work": *"N boards already have student work. Their ink stays, but the
-    worksheet underneath will change."* The send still goes ahead.
+  - **Warning** when any selected board "has work": _"N boards already have student work. Their ink stays, but the
+    worksheet underneath will change."_ The send still goes ahead.
   - **Send:** group the boards by letter, then `await onSendWorksheet(ids, variantBg, A ? roundId : undefined)` for each
     variant **one after another** (not `Promise.all`, to keep the 30 MB packets apart). Show "Sending B (2/4)…". Close
     the modal on success, and show any `error` or `skipped` count inline.
@@ -137,8 +139,11 @@ groups or prepared rounds. It runs entirely on the client: `LiveGridOverview` al
 export type Quadrant = 'tl' | 'tr' | 'bl' | 'br';
 export function quadrantForPoint(x: number, y: number, bg: RoomBackground): Quadrant | null;
 export function latestNameStamp(elements: CanvasElement[], userId: string): CanvasElement | null;
-export function quadrantsByUser(elements: CanvasElement[], bg: RoomBackground | null, userIds: string[])
-  : Record<string, Quadrant | null>;
+export function quadrantsByUser(
+  elements: CanvasElement[],
+  bg: RoomBackground | null,
+  userIds: string[]
+): Record<string, Quadrant | null>;
 ```
 
 - **Name stamp:** `el.type === 'stamp' && el.stamp === 'username' && el.userId === userId`. If a student stamped more
@@ -153,6 +158,7 @@ export function quadrantsByUser(elements: CanvasElement[], bg: RoomBackground | 
 
 **UI in `SendWorksheetModal`:** a third distribution radio, "By name-stamp corner on the main board". It's disabled,
 with a reason shown, when the main board has no worksheet or no name stamps. When it's selected:
+
 - Show a small 2×2 mapping grid of dropdowns: top-left → **A**, top-right → **B**, bottom-left → **C**,
   bottom-right → **D** by default. Add one more dropdown, **"No stamp →"**, defaulting to **A**.
 - The preview table gets a **Corner** column (`↖ ↗ ↙ ↘` or "none"), and the per-row override dropdown still works.
@@ -160,6 +166,7 @@ with a reason shown, when the main board has no worksheet or no name stamps. Whe
   that TODO asks for.
 
 **Tests: `tests/stampQuadrants.test.ts`** (node:test, picked up by `npm test`)
+
 1. One page at `x: -500, y: -400`, 1000×800, with stamps in each quarter, gives tl / tr / bl / br.
 2. A user with two stamps: the later `timestamp` wins.
 3. A user with no stamp, a stamp off the page, or a `null` background gives `null`.

@@ -26,12 +26,12 @@ export function applyElementGroups<T extends { id: string }>(list: T[], groups: 
     for (let i = 0; i < out.length; i++) {
       if (ids.has(out[i].id)) {
         if (at === -1) {
-      if (g.after === null) at = 0;
-      else {
-        const prev = typeof g.after === 'string' ? kept.findIndex((el) => el.id === g.after) : -1;
-        at = prev === -1 ? kept.length : prev + 1;
-      }
-    }
+          if (g.after === null) at = 0;
+          else {
+            const prev = typeof g.after === 'string' ? kept.findIndex((el) => el.id === g.after) : -1;
+            at = prev === -1 ? kept.length : prev + 1;
+          }
+        }
       } else kept.push(out[i]);
     }
     const present = new Set(kept.map((el) => el.id));
@@ -48,4 +48,3 @@ export function applyElementGroups<T extends { id: string }>(list: T[], groups: 
   }
   return out;
 }
-

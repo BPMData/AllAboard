@@ -8,11 +8,7 @@ import {
   getNoteBox,
   computeNotesGone,
 } from './inkCore';
-import {
-  STUDENT_STAMP_SYMBOLS,
-  getTeacherStampAppearance,
-  getTeacherStampDimensions,
-} from './stamps';
+import { STUDENT_STAMP_SYMBOLS, getTeacherStampAppearance, getTeacherStampDimensions } from './stamps';
 import { DEFAULT_PAGE_GAP, layoutPages } from './worksheetLayout';
 
 export interface BoardExportEntry {
@@ -80,12 +76,7 @@ export function computeBoardWorldBounds(
       }
     } else if (el.points && el.points.length >= 2) {
       for (let i = 0; i < el.points.length; i += 2) {
-        expand(
-          el.points[i] - pad,
-          el.points[i + 1] - pad,
-          el.points[i] + pad,
-          el.points[i + 1] + pad
-        );
+        expand(el.points[i] - pad, el.points[i + 1] - pad, el.points[i] + pad, el.points[i + 1] + pad);
       }
     }
   }
@@ -102,11 +93,7 @@ export function computeBoardWorldBounds(
   };
 }
 
-function drawElementOnContext(
-  ctx: CanvasRenderingContext2D,
-  el: CanvasElement,
-  goneNoteIds: Set<string>
-) {
+function drawElementOnContext(ctx: CanvasRenderingContext2D, el: CanvasElement, goneNoteIds: Set<string>) {
   ctx.save();
 
   if (el.tool === 'eraser') {
@@ -290,14 +277,7 @@ function drawElementOnContext(
   }
 
   if (el.tool === 'hollow') {
-    drawHollowElementOnCtx(
-      ctx,
-      pts,
-      el.strokeWidth,
-      el.hollowWeight || 2,
-      el.color,
-      el.hollowShape || 'circle'
-    );
+    drawHollowElementOnCtx(ctx, pts, el.strokeWidth, el.hollowWeight || 2, el.color, el.hollowShape || 'circle');
     ctx.restore();
     return;
   }
@@ -527,9 +507,7 @@ export function buildMultiPagePdfFromJpegs(
     pushStr(`${off} 00000 n \n`);
   }
 
-  pushStr(
-    `trailer\n<< /Size ${totalObjects + 1} /Root 1 0 R >>\nstartxref\n${xrefOffset}\n%%EOF\n`
-  );
+  pushStr(`trailer\n<< /Size ${totalObjects + 1} /Root 1 0 R >>\nstartxref\n${xrefOffset}\n%%EOF\n`);
 
   return new Blob(chunks, { type: 'application/pdf' });
 }

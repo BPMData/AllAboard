@@ -76,10 +76,7 @@ export class RoomStore {
 
     const SqliteDatabaseSync = loadSqliteDatabaseSync();
     if (SqliteDatabaseSync) {
-      const candidatePaths = [
-        dbFile,
-        path.join(os.tmpdir(), 'allaboard-data', path.basename(dbFile)),
-      ];
+      const candidatePaths = [dbFile, path.join(os.tmpdir(), 'allaboard-data', path.basename(dbFile))];
       for (const candidate of candidatePaths) {
         try {
           fs.mkdirSync(path.dirname(candidate), { recursive: true });
@@ -126,9 +123,7 @@ export class RoomStore {
             deleteRoomAssets: db.prepare('DELETE FROM room_assets WHERE room_id = ?'),
             insertRoomAsset: db.prepare('INSERT OR IGNORE INTO room_assets (room_id, hash) VALUES (?, ?)'),
             expiredRoomIds: db.prepare('SELECT id FROM rooms WHERE last_active < ?'),
-            putAsset: db.prepare(
-              'INSERT OR IGNORE INTO assets (hash, mime, bytes, created_at) VALUES (?, ?, ?, ?)'
-            ),
+            putAsset: db.prepare('INSERT OR IGNORE INTO assets (hash, mime, bytes, created_at) VALUES (?, ?, ?, ?)'),
             getAsset: db.prepare('SELECT mime, bytes FROM assets WHERE hash = ?'),
             gcAssets: db.prepare(
               `DELETE FROM assets

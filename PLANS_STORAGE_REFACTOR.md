@@ -44,14 +44,14 @@ gigabytes of base64 over the network. We fix both problems at once.
 Any base64 page that reaches the server becomes an asset URL **before it is stored or
 broadcast**. There are exactly these entry points, plus one safety net:
 
-| Entry point | Function | Phase |
-|---|---|---|
-| `teacher:set-background` | `internBackground(store, …)` on the incoming background | 3.8 |
-| `teacher:update-background` | `internBackground` on the merged background | 3.8 |
-| `cloneBackground()` (breakout templates + every sub-board copy) | now calls `internBackground` | 3.8 |
-| `teacher:import-room` | stores `snapshot.assets`, then `internRoomAssets(room)` before `room-restored` | 3.9 |
-| Legacy `rooms-store.json` migration | `internRoomAssets(room)` per room | 3.4 |
-| **Safety net:** every flush | `internRoomAssets(room)` before `store.saveRoom` | 3.6 |
+| Entry point                                                     | Function                                                                       | Phase |
+| --------------------------------------------------------------- | ------------------------------------------------------------------------------ | ----- |
+| `teacher:set-background`                                        | `internBackground(store, …)` on the incoming background                        | 3.8   |
+| `teacher:update-background`                                     | `internBackground` on the merged background                                    | 3.8   |
+| `cloneBackground()` (breakout templates + every sub-board copy) | now calls `internBackground`                                                   | 3.8   |
+| `teacher:import-room`                                           | stores `snapshot.assets`, then `internRoomAssets(room)` before `room-restored` | 3.9   |
+| Legacy `rooms-store.json` migration                             | `internRoomAssets(room)` per room                                              | 3.4   |
+| **Safety net:** every flush                                     | `internRoomAssets(room)` before `store.saveRoom`                               | 3.6   |
 
 ### 0.4 Hard rules for the implementer
 
@@ -65,17 +65,17 @@ broadcast**. There are exactly these entry points, plus one safety net:
 
 ### 0.5 Files you will touch
 
-| File | Phase | What changes |
-|---|---|---|
-| `roomStore.ts` (**new**, repo root next to `server.ts`) | 1 | SQLite store + asset helpers |
-| `tests/roomStore.test.ts` (**new**) | 1 | Unit tests for the store |
-| `server.ts` | 2–3 | Store wiring, asset route, lazy load (incl. lobby `check-room`), dirty-room flush, housekeeping, interning, legacy migration |
-| `tests/server.test.ts` | 4 | Update two file-path assertions, add storage tests |
-| `src/types.ts` | 5 | `RoomSnapshot` v2 (`assets` map), doc comment on `BackgroundPage.dataUrl` |
-| `src/components/Canvas.tsx` | 5 | Export embeds assets; import passes `assets` through |
-| `src/components/CanvasModals.tsx` | 5 | One optional field on `PendingSnapshotData` |
-| `src/App.tsx` | 5 | `handleTeacherImportRoom` forwards `assets` |
-| `package.json`, `README.md` | 6 | `engines.node`, short storage note |
+| File                                                    | Phase | What changes                                                                                                                 |
+| ------------------------------------------------------- | ----- | ---------------------------------------------------------------------------------------------------------------------------- |
+| `roomStore.ts` (**new**, repo root next to `server.ts`) | 1     | SQLite store + asset helpers                                                                                                 |
+| `tests/roomStore.test.ts` (**new**)                     | 1     | Unit tests for the store                                                                                                     |
+| `server.ts`                                             | 2–3   | Store wiring, asset route, lazy load (incl. lobby `check-room`), dirty-room flush, housekeeping, interning, legacy migration |
+| `tests/server.test.ts`                                  | 4     | Update two file-path assertions, add storage tests                                                                           |
+| `src/types.ts`                                          | 5     | `RoomSnapshot` v2 (`assets` map), doc comment on `BackgroundPage.dataUrl`                                                    |
+| `src/components/Canvas.tsx`                             | 5     | Export embeds assets; import passes `assets` through                                                                         |
+| `src/components/CanvasModals.tsx`                       | 5     | One optional field on `PendingSnapshotData`                                                                                  |
+| `src/App.tsx`                                           | 5     | `handleTeacherImportRoom` forwards `assets`                                                                                  |
+| `package.json`, `README.md`                             | 6     | `engines.node`, short storage note                                                                                           |
 
 ### 0.6 Baseline
 
@@ -196,9 +196,7 @@ export class RoomStore {
       deleteRoomAssets: this.db.prepare('DELETE FROM room_assets WHERE room_id = ?'),
       insertRoomAsset: this.db.prepare('INSERT OR IGNORE INTO room_assets (room_id, hash) VALUES (?, ?)'),
       expiredRoomIds: this.db.prepare('SELECT id FROM rooms WHERE last_active < ?'),
-      putAsset: this.db.prepare(
-        'INSERT OR IGNORE INTO assets (hash, mime, bytes, created_at) VALUES (?, ?, ?, ?)'
-      ),
+      putAsset: this.db.prepare('INSERT OR IGNORE INTO assets (hash, mime, bytes, created_at) VALUES (?, ?, ?, ?)'),
       getAsset: this.db.prepare('SELECT mime, bytes FROM assets WHERE hash = ?'),
       gcAssets: this.db.prepare(
         `DELETE FROM assets
@@ -326,7 +324,16 @@ const PNG_1PX =
   'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
 
 function bg(dataUrl: string) {
-  return { id: 'bg1', fileName: 'w.pdf', pages: [{ dataUrl, width: 1, height: 1 }], x: 0, y: 0, scale: 1, layout: 'stack', opacity: 1 };
+  return {
+    id: 'bg1',
+    fileName: 'w.pdf',
+    pages: [{ dataUrl, width: 1, height: 1 }],
+    x: 0,
+    y: 0,
+    scale: 1,
+    layout: 'stack',
+    opacity: 1,
+  };
 }
 
 describe('RoomStore', () => {
@@ -416,14 +423,18 @@ const HOUSEKEEPING_INTERVAL_MS = 5 * 60 * 1000;
 
 **Keep** this existing line for now. The old persistence functions still use it until
 Phase 3, and Phase 3.1 deletes it:
+
 ```ts
-  const storeFile = path.join(dataDir, 'rooms-store.json');
+const storeFile = path.join(dataDir, 'rooms-store.json');
 ```
+
 Directly below it, add:
+
 ```ts
-  const legacyStoreFile = path.join(dataDir, 'rooms-store.json');
-  const store = new RoomStore(path.join(dataDir, 'allaboard.db'));
+const legacyStoreFile = path.join(dataDir, 'rooms-store.json');
+const store = new RoomStore(path.join(dataDir, 'allaboard.db'));
 ```
+
 `internBackground` and `legacyStoreFile` are unused until Phase 3. That is fine:
 `tsconfig.json` does not enable `noUnusedLocals`.
 
@@ -433,17 +444,17 @@ It **must** be registered before the Vite middleware / `express.static` block ne
 bottom of `startServer`. Putting it next to `/healthz` guarantees that.
 
 ```ts
-  app.get('/api/assets/:hash', (req, res) => {
-    const hash = req.params.hash;
-    const asset = isValidAssetHash(hash) ? store.getAsset(hash) : null;
-    if (!asset) {
-      res.status(404).end();
-      return;
-    }
-    res.setHeader('Content-Type', asset.mime);
-    res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
-    res.end(Buffer.from(asset.bytes));
-  });
+app.get('/api/assets/:hash', (req, res) => {
+  const hash = req.params.hash;
+  const asset = isValidAssetHash(hash) ? store.getAsset(hash) : null;
+  if (!asset) {
+    res.status(404).end();
+    return;
+  }
+  res.setHeader('Content-Type', asset.mime);
+  res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+  res.end(Buffer.from(asset.bytes));
+});
 ```
 
 ### 2.5 Return the store (the `return { … }` at the end of `startServer`)
@@ -474,38 +485,38 @@ Put this where `loadRoomsFromDisk` was. The object it builds is **identical** to
 `loadRoomsFromDisk` built. Only the wrapper changed.
 
 ```ts
-  /** SerializedRoom → in-memory RoomState. Returns null if missing/expired. */
-  function hydrateRoom(item: SerializedRoom, now = Date.now()): RoomState | null {
-    if (!item || !item.id) return null;
-    const lastActive = item.lastActiveAt || now;
-    if (now - lastActive > ROOM_TTL_MS) return null;
+/** SerializedRoom → in-memory RoomState. Returns null if missing/expired. */
+function hydrateRoom(item: SerializedRoom, now = Date.now()): RoomState | null {
+  if (!item || !item.id) return null;
+  const lastActive = item.lastActiveAt || now;
+  if (now - lastActive > ROOM_TTL_MS) return null;
 
-    const subBoards = deserializeSubBoards(item.subBoards);
-    const breakoutConfig = normalizeBreakoutConfig(item.breakoutConfig);
-    migrateLegacyBreakout(subBoards, breakoutConfig);
-    return {
-      id: item.id,
-      messages: Array.isArray(item.messages) ? item.messages : [],
-      elements: Array.isArray(item.elements) ? item.elements : [],
-      background: item.background || null,
-      subBoards,
-      breakoutConfig,
-      roundTemplates: item.roundTemplates && typeof item.roundTemplates === 'object' ? item.roundTemplates : {},
-      timer: item.timer || {
-        isRunning: false,
-        durationMs: 5 * 60 * 1000,
-        remainingMs: 0,
-        endsAt: null,
-        autoLockOnExpire: false,
-      },
-      usersByUserId: new Map(),
-      lockedNames: item.lockedNames && typeof item.lockedNames === 'object' ? item.lockedNames : {},
-      bannedUsers: item.bannedUsers && typeof item.bannedUsers === 'object' ? item.bannedUsers : {},
-      isCanvasLocked: Boolean(item.isCanvasLocked),
-      teacherPin: item.teacherPin || null,
-      lastActiveAt: lastActive,
-    };
-  }
+  const subBoards = deserializeSubBoards(item.subBoards);
+  const breakoutConfig = normalizeBreakoutConfig(item.breakoutConfig);
+  migrateLegacyBreakout(subBoards, breakoutConfig);
+  return {
+    id: item.id,
+    messages: Array.isArray(item.messages) ? item.messages : [],
+    elements: Array.isArray(item.elements) ? item.elements : [],
+    background: item.background || null,
+    subBoards,
+    breakoutConfig,
+    roundTemplates: item.roundTemplates && typeof item.roundTemplates === 'object' ? item.roundTemplates : {},
+    timer: item.timer || {
+      isRunning: false,
+      durationMs: 5 * 60 * 1000,
+      remainingMs: 0,
+      endsAt: null,
+      autoLockOnExpire: false,
+    },
+    usersByUserId: new Map(),
+    lockedNames: item.lockedNames && typeof item.lockedNames === 'object' ? item.lockedNames : {},
+    bannedUsers: item.bannedUsers && typeof item.bannedUsers === 'object' ? item.bannedUsers : {},
+    isCanvasLocked: Boolean(item.isCanvasLocked),
+    teacherPin: item.teacherPin || null,
+    lastActiveAt: lastActive,
+  };
+}
 ```
 
 ### 3.3 Small helpers (directly below `hydrateRoom`)
@@ -514,79 +525,79 @@ Put this where `loadRoomsFromDisk` was. The object it builds is **identical** to
 of the old `if (room.elements.length > 0 || …)` condition. Keep both exactly equivalent.
 
 ```ts
-  function serializeRoom(room: RoomState): SerializedRoom {
-    return {
-      id: room.id,
-      messages: room.messages,
-      elements: room.elements,
-      background: room.background,
-      subBoards: serializeSubBoards(room.subBoards),
-      breakoutConfig: room.breakoutConfig,
-      roundTemplates: room.roundTemplates,
-      timer: room.timer,
-      lockedNames: room.lockedNames,
-      bannedUsers: room.bannedUsers,
-      isCanvasLocked: room.isCanvasLocked,
-      teacherPin: room.teacherPin,
-      lastActiveAt: room.lastActiveAt,
-    };
-  }
+function serializeRoom(room: RoomState): SerializedRoom {
+  return {
+    id: room.id,
+    messages: room.messages,
+    elements: room.elements,
+    background: room.background,
+    subBoards: serializeSubBoards(room.subBoards),
+    breakoutConfig: room.breakoutConfig,
+    roundTemplates: room.roundTemplates,
+    timer: room.timer,
+    lockedNames: room.lockedNames,
+    bannedUsers: room.bannedUsers,
+    isCanvasLocked: room.isCanvasLocked,
+    teacherPin: room.teacherPin,
+    lastActiveAt: room.lastActiveAt,
+  };
+}
 
-  function isRoomEmpty(room: RoomState): boolean {
-    return (
-      room.elements.length === 0 &&
-      room.messages.length === 0 &&
-      room.background === null &&
-      room.subBoards.size === 0 &&
-      room.teacherPin === null &&
-      Object.keys(room.lockedNames).length === 0 &&
-      Object.keys(room.bannedUsers).length === 0
-    );
-  }
+function isRoomEmpty(room: RoomState): boolean {
+  return (
+    room.elements.length === 0 &&
+    room.messages.length === 0 &&
+    room.background === null &&
+    room.subBoards.size === 0 &&
+    room.teacherPin === null &&
+    Object.keys(room.lockedNames).length === 0 &&
+    Object.keys(room.bannedUsers).length === 0
+  );
+}
 
-  function roomHasActiveSockets(room: RoomState): boolean {
-    for (const u of room.usersByUserId.values()) {
-      if (u.sockets.size > 0) return true;
-    }
-    return false;
+function roomHasActiveSockets(room: RoomState): boolean {
+  for (const u of room.usersByUserId.values()) {
+    if (u.sockets.size > 0) return true;
   }
+  return false;
+}
 
-  /** Safety net: converts any remaining base64 worksheet pages in a room to asset URLs. */
-  function internRoomAssets(room: RoomState) {
-    room.background = internBackground(store, room.background);
-    for (const sb of room.subBoards.values()) {
-      sb.background = internBackground(store, sb.background);
-    }
-    for (const key of Object.keys(room.roundTemplates)) {
-      room.roundTemplates[key] = internBackground(store, room.roundTemplates[key]);
-    }
+/** Safety net: converts any remaining base64 worksheet pages in a room to asset URLs. */
+function internRoomAssets(room: RoomState) {
+  room.background = internBackground(store, room.background);
+  for (const sb of room.subBoards.values()) {
+    sb.background = internBackground(store, sb.background);
   }
+  for (const key of Object.keys(room.roundTemplates)) {
+    room.roundTemplates[key] = internBackground(store, room.roundTemplates[key]);
+  }
+}
 ```
 
 ### 3.4 One-time legacy migration (below the helpers)
 
 ```ts
-  /** Imports an old rooms-store.json (if present) into SQLite, then renames it. */
-  function migrateLegacyJsonStore() {
-    if (!fs.existsSync(legacyStoreFile)) return;
-    try {
-      const parsed = JSON.parse(fs.readFileSync(legacyStoreFile, 'utf-8'));
-      let migrated = 0;
-      if (parsed && Array.isArray(parsed.rooms)) {
-        for (const item of parsed.rooms as SerializedRoom[]) {
-          const room = hydrateRoom(item);
-          if (!room) continue;
-          internRoomAssets(room);
-          store.saveRoom(room.id, serializeRoom(room), room.lastActiveAt);
-          migrated++;
-        }
+/** Imports an old rooms-store.json (if present) into SQLite, then renames it. */
+function migrateLegacyJsonStore() {
+  if (!fs.existsSync(legacyStoreFile)) return;
+  try {
+    const parsed = JSON.parse(fs.readFileSync(legacyStoreFile, 'utf-8'));
+    let migrated = 0;
+    if (parsed && Array.isArray(parsed.rooms)) {
+      for (const item of parsed.rooms as SerializedRoom[]) {
+        const room = hydrateRoom(item);
+        if (!room) continue;
+        internRoomAssets(room);
+        store.saveRoom(room.id, serializeRoom(room), room.lastActiveAt);
+        migrated++;
       }
-      fs.renameSync(legacyStoreFile, `${legacyStoreFile}.migrated-${Date.now()}`);
-      console.log(`Migrated ${migrated} room(s) from rooms-store.json into SQLite.`);
-    } catch (err) {
-      console.error('Failed to migrate rooms-store.json (left in place):', err);
     }
+    fs.renameSync(legacyStoreFile, `${legacyStoreFile}.migrated-${Date.now()}`);
+    console.log(`Migrated ${migrated} room(s) from rooms-store.json into SQLite.`);
+  } catch (err) {
+    console.error('Failed to migrate rooms-store.json (left in place):', err);
   }
+}
 ```
 
 ### 3.5 Lazy loading: `findRoom`, `getOrCreateRoom`, `getRoomAvailability`
@@ -594,40 +605,48 @@ of the old `if (room.elements.length > 0 || …)` condition. Keep both exactly e
 Add this helper directly **above** `getOrCreateRoom` (~line 337):
 
 ```ts
-  /** In-memory room, else hydrate it from SQLite (and cache it). Never creates a new room. */
-  function findRoom(roomId: string): RoomState | null {
-    const inMemory = rooms.get(roomId);
-    if (inMemory) return inMemory;
-    const stored = store.loadRoom<SerializedRoom>(roomId);
-    if (!stored) return null;
-    const restored = hydrateRoom({ ...stored.state, id: roomId, lastActiveAt: stored.lastActiveAt });
-    if (!restored) {
-      store.deleteRoom(roomId); // expired
-      return null;
-    }
-    rooms.set(roomId, restored);
-    return restored;
+/** In-memory room, else hydrate it from SQLite (and cache it). Never creates a new room. */
+function findRoom(roomId: string): RoomState | null {
+  const inMemory = rooms.get(roomId);
+  if (inMemory) return inMemory;
+  const stored = store.loadRoom<SerializedRoom>(roomId);
+  if (!stored) return null;
+  const restored = hydrateRoom({ ...stored.state, id: roomId, lastActiveAt: stored.lastActiveAt });
+  if (!restored) {
+    store.deleteRoom(roomId); // expired
+    return null;
   }
+  rooms.set(roomId, restored);
+  return restored;
+}
 ```
 
 In `getOrCreateRoom`, change the one line
+
 ```ts
-    let room = rooms.get(roomId);
+let room = rooms.get(roomId);
 ```
+
 to
+
 ```ts
-    let room = findRoom(roomId);
+let room = findRoom(roomId);
 ```
+
 Leave the rest (the `if (!room) { … new room … }` block) unchanged.
 
 In `getRoomAvailability` (~line 508, used by the lobby's `check-room` event), change
+
 ```ts
-    const room = rooms.get(normalizedId);
+const room = rooms.get(normalizedId);
 ```
+
 to
+
 ```ts
-    const room = findRoom(normalizedId);
+const room = findRoom(normalizedId);
 ```
+
 **This one matters.** Without it, a saved room that has been unloaded from RAM reports
 `exists: false` in the lobby, and the "room already exists" confirmation never shows.
 
@@ -637,67 +656,67 @@ Every other `rooms.get(meta.roomId)` in socket handlers stays as is. Those run o
 ### 3.6 Dirty-room flush (put these where the old flush functions were)
 
 ```ts
-  const dirtyRooms = new Set<string>();
-  let saveTimeout: NodeJS.Timeout | null = null;
+const dirtyRooms = new Set<string>();
+let saveTimeout: NodeJS.Timeout | null = null;
 
-  /** Writes ONLY rooms that changed since the last flush. Synchronous (node:sqlite is sync). */
-  function flushRoomsToDisk() {
-    if (saveTimeout) {
-      clearTimeout(saveTimeout);
-      saveTimeout = null;
-    }
-    for (const roomId of [...dirtyRooms]) {
-      dirtyRooms.delete(roomId);
-      const room = rooms.get(roomId);
-      if (!room) continue;
-      try {
-        if (isRoomEmpty(room)) {
-          store.deleteRoom(roomId);
-          continue;
-        }
-        internRoomAssets(room);
-        store.saveRoom(roomId, serializeRoom(room), room.lastActiveAt);
-      } catch (err) {
-        dirtyRooms.add(roomId); // retry on next flush
-        console.error(`Failed to save room "${roomId}":`, err);
-      }
-    }
+/** Writes ONLY rooms that changed since the last flush. Synchronous (node:sqlite is sync). */
+function flushRoomsToDisk() {
+  if (saveTimeout) {
+    clearTimeout(saveTimeout);
+    saveTimeout = null;
   }
-
-  /** Kept for the test suite / callers that await it. */
-  async function flushRoomsToDiskAsync(): Promise<void> {
-    flushRoomsToDisk();
-  }
-
-  function scheduleSaveToDisk(room: RoomState, immediate = false) {
-    dirtyRooms.add(room.id);
-    if (immediate) {
-      flushRoomsToDisk();
-      return;
-    }
-    if (saveTimeout) return;
-    saveTimeout = setTimeout(flushRoomsToDisk, 2000);
-  }
-
-  /** Every 5 min: flush, unload idle rooms from RAM, expire old rooms, GC unreferenced assets. */
-  function runHousekeeping() {
-    flushRoomsToDisk();
-    const now = Date.now();
-    for (const [roomId, room] of rooms) {
-      if (dirtyRooms.has(roomId) || roomHasActiveSockets(room)) continue;
-      if (now - room.lastActiveAt > IDLE_UNLOAD_MS) rooms.delete(roomId);
-    }
+  for (const roomId of [...dirtyRooms]) {
+    dirtyRooms.delete(roomId);
+    const room = rooms.get(roomId);
+    if (!room) continue;
     try {
-      store.deleteRoomsInactiveBefore(now - ROOM_TTL_MS);
-      store.gcAssets();
+      if (isRoomEmpty(room)) {
+        store.deleteRoom(roomId);
+        continue;
+      }
+      internRoomAssets(room);
+      store.saveRoom(roomId, serializeRoom(room), room.lastActiveAt);
     } catch (err) {
-      console.error('Housekeeping failed:', err);
+      dirtyRooms.add(roomId); // retry on next flush
+      console.error(`Failed to save room "${roomId}":`, err);
     }
   }
+}
 
-  migrateLegacyJsonStore();
-  const housekeepingInterval = setInterval(runHousekeeping, HOUSEKEEPING_INTERVAL_MS);
-  housekeepingInterval.unref();
+/** Kept for the test suite / callers that await it. */
+async function flushRoomsToDiskAsync(): Promise<void> {
+  flushRoomsToDisk();
+}
+
+function scheduleSaveToDisk(room: RoomState, immediate = false) {
+  dirtyRooms.add(room.id);
+  if (immediate) {
+    flushRoomsToDisk();
+    return;
+  }
+  if (saveTimeout) return;
+  saveTimeout = setTimeout(flushRoomsToDisk, 2000);
+}
+
+/** Every 5 min: flush, unload idle rooms from RAM, expire old rooms, GC unreferenced assets. */
+function runHousekeeping() {
+  flushRoomsToDisk();
+  const now = Date.now();
+  for (const [roomId, room] of rooms) {
+    if (dirtyRooms.has(roomId) || roomHasActiveSockets(room)) continue;
+    if (now - room.lastActiveAt > IDLE_UNLOAD_MS) rooms.delete(roomId);
+  }
+  try {
+    store.deleteRoomsInactiveBefore(now - ROOM_TTL_MS);
+    store.gcAssets();
+  } catch (err) {
+    console.error('Housekeeping failed:', err);
+  }
+}
+
+migrateLegacyJsonStore();
+const housekeepingInterval = setInterval(runHousekeeping, HOUSEKEEPING_INTERVAL_MS);
+housekeepingInterval.unref();
 ```
 
 ### 3.7 Update every `scheduleSaveToDisk` call site
@@ -708,45 +727,59 @@ There are about 30. Each handler already has a `room` variable in scope. Mechani
 - `scheduleSaveToDisk(true);` → `scheduleSaveToDisk(room, true);`
 
 Verify with:
+
 ```bash
 grep -nE "scheduleSaveToDisk\((true)?\)" server.ts
 ```
+
 It must print **nothing**. `npm run lint` will also flag any call you missed.
 
 ### 3.8 Interning at entry points
 
 **`cloneBackground` (~line 436).** Replace the body:
+
 ```ts
-  function cloneBackground(bg: any | null | undefined): any | null {
-    return bg ? internBackground(store, bg) : null; // internBackground returns a deep copy
-  }
+function cloneBackground(bg: any | null | undefined): any | null {
+  return bg ? internBackground(store, bg) : null; // internBackground returns a deep copy
+}
 ```
+
 `store` is created at the top of `startServer` (2.3), before any handler can call this.
 
 **`teacher:set-background` (~line 844).** Replace:
+
 ```ts
-      const bgData = payload && 'background' in payload ? payload.background : payload;
+const bgData = payload && 'background' in payload ? payload.background : payload;
 ```
+
 with:
+
 ```ts
-      const bgData = internBackground(store, payload && 'background' in payload ? payload.background : payload);
+const bgData = internBackground(store, payload && 'background' in payload ? payload.background : payload);
 ```
 
 **`teacher:update-background` (~line 863).** Replace the two merges:
+
 ```ts
-        room.background = { ...room.background, ...patch };
+room.background = { ...room.background, ...patch };
 ```
+
 →
+
 ```ts
-        room.background = internBackground(store, { ...room.background, ...patch });
+room.background = internBackground(store, { ...room.background, ...patch });
 ```
+
 and
+
 ```ts
-        sb.background = { ...sb.background, ...patch };
+sb.background = { ...sb.background, ...patch };
 ```
+
 →
+
 ```ts
-        sb.background = internBackground(store, { ...sb.background, ...patch });
+sb.background = internBackground(store, { ...sb.background, ...patch });
 ```
 
 ### 3.9 `teacher:import-room` (~line 889)
@@ -754,18 +787,18 @@ and
 1. Add `assets: importedAssets,` to the destructured payload (next to `mode,`).
 2. Directly after the teacher-permission check (the `if (!callerRecord?.isTeacher) {…}` block), add:
    ```ts
-        // v2 snapshots carry each worksheet image once, keyed by its /api/assets/<hash> URL.
-        // The hash is derived from the bytes, so re-storing them recreates the same URL.
-        if (importedAssets && typeof importedAssets === 'object') {
-          for (const dataUrl of Object.values(importedAssets)) {
-            if (typeof dataUrl === 'string') store.internDataUrl(dataUrl);
-          }
-        }
+   // v2 snapshots carry each worksheet image once, keyed by its /api/assets/<hash> URL.
+   // The hash is derived from the bytes, so re-storing them recreates the same URL.
+   if (importedAssets && typeof importedAssets === 'object') {
+     for (const dataUrl of Object.values(importedAssets)) {
+       if (typeof dataUrl === 'string') store.internDataUrl(dataUrl);
+     }
+   }
    ```
 3. Directly after the existing `migrateLegacyBreakout(room.subBoards, room.breakoutConfig);`
    line (just before `room.lastActiveAt = Date.now();`), add:
    ```ts
-        internRoomAssets(room); // v1 snapshots still contain inline base64 pages
+   internRoomAssets(room); // v1 snapshots still contain inline base64 pages
    ```
 
 ### 3.10 Shutdown and `close()`
@@ -773,17 +806,18 @@ and
 **`handleShutdown`.** Keep the existing `flushRoomsToDisk();` call. No other change.
 
 **`close()`.**
+
 - Replace `clearInterval(hourlyFlushInterval);` with `clearInterval(housekeepingInterval);`.
 - Replace the final block:
   ```ts
-    if (activeSavePromise) {
-      await activeSavePromise;
-    }
+  if (activeSavePromise) {
+    await activeSavePromise;
+  }
   ```
   with:
   ```ts
-    flushRoomsToDisk();
-    store.close();
+  flushRoomsToDisk();
+  store.close();
   ```
 
 ### 3.11 Leave `maxHttpBufferSize` alone
@@ -808,7 +842,7 @@ in Phase 4.1 to fail and **everything else to pass**. If anything else fails, st
 - **T6 (legacy migration, ~line 746)** should pass unchanged. It writes `rooms-store.json`
   and the restart migrates it. Add one assertion at the end of T6:
   ```ts
-      assert.equal(fs.existsSync(path.join(tmpDir, 'rooms-store.json')), false);
+  assert.equal(fs.existsSync(path.join(tmpDir, 'rooms-store.json')), false);
   ```
 
 ### 4.2 New `describe('storage: SQLite + worksheet assets', …)` block
@@ -820,8 +854,14 @@ Put a 1×1 PNG constant at the top of the block:
 const PNG_1PX =
   'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
 const worksheet = () => ({
-  id: 'ws1', fileName: 'w.png', pages: [{ dataUrl: PNG_1PX, width: 1, height: 1 }],
-  x: 0, y: 0, scale: 1, layout: 'stack', opacity: 1,
+  id: 'ws1',
+  fileName: 'w.png',
+  pages: [{ dataUrl: PNG_1PX, width: 1, height: 1 }],
+  x: 0,
+  y: 0,
+  scale: 1,
+  layout: 'stack',
+  opacity: 1,
 });
 ```
 
@@ -844,7 +884,10 @@ Write these tests:
   ```ts
   const saved: string[] = [];
   const orig = srv.store.saveRoom.bind(srv.store);
-  srv.store.saveRoom = (id: string, state: unknown, t: number) => { saved.push(id); orig(id, state, t); };
+  srv.store.saveRoom = (id: string, state: unknown, t: number) => {
+    saved.push(id);
+    orig(id, state, t);
+  };
   ```
   Draw once more in `iso-a` only (wait for the peer's `element-start`), flush again, and assert
   `deepEqual(saved, ['iso-a'])`.
@@ -860,7 +903,7 @@ Write these tests:
 - **S7 – the lobby sees a saved room that is not in memory.** Teacher joins `lobby-room` and
   runs `emitAck(teacher, 'teacher:auth', { pin: '4242' })` (the PIN is set by `teacher:auth`,
   **not** by `join-room`). Then `await srv.flushRoomsToDiskAsync()`, disconnect, `await srv.close()`,
-  and restart on the same `tmpDir`. A probe socket joins a *different* room and emits `check-room`
+  and restart on the same `tmpDir`. A probe socket joins a _different_ room and emits `check-room`
   `{ roomId: 'lobby-room' }`. Assert `exists === true` and `hasTeacherPin === true`.
 
 **Checkpoint 4:** `npm run lint && npm test` → all pass (70 + 7 = 77).
@@ -876,11 +919,14 @@ snapshots embed each image **once** in a top-level `assets` map.
 ### 5.1 `src/types.ts`
 
 On `BackgroundPage`, add a doc comment above `dataUrl`:
+
 ```ts
-  /** Either a base64 `data:` URL (fresh upload / old snapshot) or a server asset URL `/api/assets/<sha256>`. */
-  dataUrl: string;
+/** Either a base64 `data:` URL (fresh upload / old snapshot) or a server asset URL `/api/assets/<sha256>`. */
+dataUrl: string;
 ```
+
 On `RoomSnapshot`, change `version: 1;` to `version: 1 | 2;` and add:
+
 ```ts
   /** v2+: worksheet images, keyed by their `/api/assets/<hash>` URL, value = base64 data URL. */
   assets?: Record<string, string>;
@@ -889,6 +935,7 @@ On `RoomSnapshot`, change `version: 1;` to `version: 1 | 2;` and add:
 ### 5.2 `src/components/Canvas.tsx`: export (`handleExportJSON`, ~line 1958)
 
 Add this module-level helper above the `Canvas` component (next to the other top-level helpers):
+
 ```ts
 function blobToDataUrl(blob: Blob): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -899,40 +946,42 @@ function blobToDataUrl(blob: Blob): Promise<string> {
   });
 }
 ```
-Make `handleExportJSON` `async`. Before building `snapshot`, collect and embed the assets:
-```ts
-    const assetUrls = new Set<string>();
-    const collect = (bg?: RoomBackground | null) => {
-      for (const p of bg?.pages || []) {
-        if (typeof p.dataUrl === 'string' && p.dataUrl.startsWith('/api/assets/')) assetUrls.add(p.dataUrl);
-      }
-    };
-    collect(fullMainBackground);
-    for (const sb of Object.values(subBoards || {})) collect(sb?.background);
 
-    const assets: Record<string, string> = {};
-    for (const url of assetUrls) {
-      try {
-        assets[url] = await blobToDataUrl(await (await fetch(url)).blob());
-      } catch (err) {
-        console.error('Could not embed worksheet asset in export:', url, err);
-      }
-    }
+Make `handleExportJSON` `async`. Before building `snapshot`, collect and embed the assets:
+
+```ts
+const assetUrls = new Set<string>();
+const collect = (bg?: RoomBackground | null) => {
+  for (const p of bg?.pages || []) {
+    if (typeof p.dataUrl === 'string' && p.dataUrl.startsWith('/api/assets/')) assetUrls.add(p.dataUrl);
+  }
+};
+collect(fullMainBackground);
+for (const sb of Object.values(subBoards || {})) collect(sb?.background);
+
+const assets: Record<string, string> = {};
+for (const url of assetUrls) {
+  try {
+    assets[url] = await blobToDataUrl(await(await fetch(url)).blob());
+  } catch (err) {
+    console.error('Could not embed worksheet asset in export:', url, err);
+  }
+}
 ```
+
 In the `snapshot` object, set `version: 2,` and add `assets,`. Leave the rest of the function
 unchanged. `onClick={handleExportJSON}` (~line 3839) needs no change.
 
 ### 5.3 `src/components/Canvas.tsx`: import passes `assets` through
 
 Add `assets?: Record<string, string>;` to each of these:
+
 1. The `onTeacherImportRoom` prop's `snapshot` type (~line 160).
 2. The `pendingSnapshot` `useState<{…}>` type (~line 878).
 
-Then:
-3. In the file reader's success `setPendingSnapshot({…})` (~line 2024), add
-   `assets: parsed.assets && typeof parsed.assets === 'object' ? parsed.assets : undefined,`.
-4. In `handleConfirmImport`'s `onTeacherImportRoom({…})` call (~line 2055), add
-   `assets: pendingSnapshot.assets,`.
+Then: 3. In the file reader's success `setPendingSnapshot({…})` (~line 2024), add
+`assets: parsed.assets && typeof parsed.assets === 'object' ? parsed.assets : undefined,`. 4. In `handleConfirmImport`'s `onTeacherImportRoom({…})` call (~line 2055), add
+`assets: pendingSnapshot.assets,`.
 
 ### 5.4 `src/components/CanvasModals.tsx`
 
@@ -945,6 +994,7 @@ Add `assets?: Record<string, string>;` to the `snapshot` parameter type, and add
 
 **Checkpoint 5:** `npm run lint && npm test` → all pass. `npm run test:e2e` → passes. Then do
 a manual smoke test with `npm run dev`:
+
 1. Upload a PDF worksheet. In DevTools → Network, the page images load from `/api/assets/…`.
 2. Launch an individual breakout with "copy worksheet". The `breakout-sync` frame in
    Network → WS is a few KB, not megabytes.
@@ -981,18 +1031,18 @@ a manual smoke test with `npm run dev`:
 
 ## Appendix A: Decisions (do not revisit)
 
-| Decision | Why |
-|---|---|
-| **SQLite over one-JSON-file-per-room** | Same isolation per room, plus atomic transactions (no tmp-file + rename dance), indexed TTL cleanup, one file to back up, and a natural home for the asset table. |
-| **`node:sqlite`, not `better-sqlite3`** | Built into Node 22, so there's no native compile step and nothing extra to install on the host. |
+| Decision                                                     | Why                                                                                                                                                                                                                                                                                                   |
+| ------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **SQLite over one-JSON-file-per-room**                       | Same isolation per room, plus atomic transactions (no tmp-file + rename dance), indexed TTL cleanup, one file to back up, and a natural home for the asset table.                                                                                                                                     |
+| **`node:sqlite`, not `better-sqlite3`**                      | Built into Node 22, so there's no native compile step and nothing extra to install on the host.                                                                                                                                                                                                       |
 | **One row per room (JSON snapshot), not one row per stroke** | `element-append-points` fires constantly. Per-stroke rows mean a DB write per point batch and re-implementing undo/clear/batch ops in SQL. The real cost was the blobs and the all-rooms flush, not stroke serialization. Without blobs, a room is ~50–300 KB and stringifies in about a millisecond. |
-| **Assets in SQLite (BLOB), not loose files** | One file, transactional with the `room_assets` refs, trivial GC query. A few MB per blob is well within SQLite's comfort zone. |
-| **Content addressing (sha256)** | The same worksheet copied to 30 boards, or uploaded twice, is stored once. The URL never changes for given bytes, so `immutable` caching is safe, and re-importing an export recreates identical URLs with no rewriting. |
-| **Keep the field name `dataUrl`** | Zero rendering changes. `<img src>`, Konva and `batchPdfExport`'s `loadImage` accept a same-origin URL exactly like a data URL. |
-| **`/api/assets/`, not `/assets/`** | `/assets/` collides with Vite's built chunk directory. |
-| **Room-asset refs derived by regex over the room JSON** | The JSON is already being stringified for the save. Scanning it catches every reference (backgrounds, round templates, future image elements) without a hand-maintained walker. |
-| **1-hour GC grace period** | An asset is stored the moment it arrives, but its room row is written up to 2 s later (or never, if the room is empty). The grace period stops GC racing a fresh upload. |
-| **Sync flush** | `node:sqlite` is synchronous, and with blobs gone each room write is sub-millisecond, so async bookkeeping (`isSavingAsync`, `saveQueuedAsync`, …) is pure complexity. |
+| **Assets in SQLite (BLOB), not loose files**                 | One file, transactional with the `room_assets` refs, trivial GC query. A few MB per blob is well within SQLite's comfort zone.                                                                                                                                                                        |
+| **Content addressing (sha256)**                              | The same worksheet copied to 30 boards, or uploaded twice, is stored once. The URL never changes for given bytes, so `immutable` caching is safe, and re-importing an export recreates identical URLs with no rewriting.                                                                              |
+| **Keep the field name `dataUrl`**                            | Zero rendering changes. `<img src>`, Konva and `batchPdfExport`'s `loadImage` accept a same-origin URL exactly like a data URL.                                                                                                                                                                       |
+| **`/api/assets/`, not `/assets/`**                           | `/assets/` collides with Vite's built chunk directory.                                                                                                                                                                                                                                                |
+| **Room-asset refs derived by regex over the room JSON**      | The JSON is already being stringified for the save. Scanning it catches every reference (backgrounds, round templates, future image elements) without a hand-maintained walker.                                                                                                                       |
+| **1-hour GC grace period**                                   | An asset is stored the moment it arrives, but its room row is written up to 2 s later (or never, if the room is empty). The grace period stops GC racing a fresh upload.                                                                                                                              |
+| **Sync flush**                                               | `node:sqlite` is synchronous, and with blobs gone each room write is sub-millisecond, so async bookkeeping (`isSavingAsync`, `saveQueuedAsync`, …) is pure complexity.                                                                                                                                |
 
 ## Appendix B: Explicitly out of scope (later, if ever)
 

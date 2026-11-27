@@ -39,12 +39,12 @@ Measured in a 4-core dev container, not on Cloud Run or a VM. Treat CPU as relat
 shipped; "ink 500 ms" is the current setting (`POINT_FLUSH_MS`: other people's strokes arrive twice a second, your own
 always draws instantly).
 
-| Scenario | CPU, ink 50 ms | CPU, ink 500 ms | Msgs to each student/s (50 → 500 ms) | Server outbound |
-|---|---|---|---|---|
-| 30 students, one main board, pen down 15% | ~8–10% | ~5% | 84 → 24 | ~1.2 MB/s (~10 Mbps) |
-| 30 students, one main board, pen down 40% | ~10% | ~7% | 196 → 41 | ~1.3 MB/s |
-| 90 students, one main board, pen down 40% | ~37–45% | ~15% | 615 → 108 | ~12 MB/s (~100 Mbps) |
-| 200 students, individual breakouts | ~15% | ~15% | ~0 | ~0.4 MB/s |
+| Scenario                                  | CPU, ink 50 ms | CPU, ink 500 ms | Msgs to each student/s (50 → 500 ms) | Server outbound      |
+| ----------------------------------------- | -------------- | --------------- | ------------------------------------ | -------------------- |
+| 30 students, one main board, pen down 15% | ~8–10%         | ~5%             | 84 → 24                              | ~1.2 MB/s (~10 Mbps) |
+| 30 students, one main board, pen down 40% | ~10%           | ~7%             | 196 → 41                             | ~1.3 MB/s            |
+| 90 students, one main board, pen down 40% | ~37–45%        | ~15%            | 615 → 108                            | ~12 MB/s (~100 Mbps) |
+| 200 students, individual breakouts        | ~15%           | ~15%            | ~0                                   | ~0.4 MB/s            |
 
 Flush-rate sweep (90 students, pen down 40%): 50 ms → 45% CPU, 333 ms → 18%, 500 ms → 15%, 1000 ms → 14%. Past 500 ms
 the remaining cost is cursors and the per-stroke `element-start`. Cursors were then cut from 10/s to 4/s
@@ -52,6 +52,7 @@ the remaining cost is cursors and the per-stroke `element-start`. Cursors were t
 The capacity table below wasn't raised for this; treat it as conservative.
 
 Takeaways:
+
 - **Each app is one Node process, so it uses at most one core**, whatever the machine has. AllAboard can't be spread
   across cores or instances because its room state is in memory. More cores only help to run several apps side by
   side, unless rooms are split across processes (§3.2).
@@ -66,12 +67,12 @@ to feel bad" ≈ 60% of a core, when event-loop lag climbs (ink trailing behind,
 sustains about one core in total, shared with OverHeard and the OS. `e2-standard-2` lets AllAboard have a full core to
 itself. Memory and network bandwidth aren't the limit on either machine.
 
-| Usage (classes of 30), ink 500 ms | `e2-medium` (shared with OverHeard) | `e2-standard-2` |
-|---|---|---|
-| Everyone drawing on their class's main board | ~4–5 classes | ~5–6 classes |
-| Typical mix (main board + breakouts) | ~6 classes | ~8 classes |
-| All in individual or group breakouts | ~300 students | ~400 students |
-| One giant shared board (single room) | ~100+ students | ~120+ students |
+| Usage (classes of 30), ink 500 ms            | `e2-medium` (shared with OverHeard) | `e2-standard-2` |
+| -------------------------------------------- | ----------------------------------- | --------------- |
+| Everyone drawing on their class's main board | ~4–5 classes                        | ~5–6 classes    |
+| Typical mix (main board + breakouts)         | ~6 classes                          | ~8 classes      |
+| All in individual or group breakouts         | ~300 students                       | ~400 students   |
+| One giant shared board (single room)         | ~100+ students                      | ~120+ students  |
 
 - On a giant shared board, **students' Chromebooks are the more likely limit** (each one draws everyone's ink). At
   500 ms they get ~108 messages/s at 90 students instead of ~615.
@@ -87,17 +88,17 @@ Wi-Fi), so absolute delays are better than a classroom's; the before/after compa
 separate socket outside the rooms asking a trivial question twice a second: when it slows down, the server is busy.
 No step had a failed or dropped connection.
 
-| Step | Before #50 (ink 20/s, cursors 10/s): new stroke delay typical / slowest 5% / worst; probe slowest 5% | After #50 (ink 2/s, cursors 4/s) |
-|---|---|---|
-| 1 class of 30 | 39 / 71 / 91 ms; probe fine | 40 / 62 / 77 ms; probe 41 ms |
-| 1 board with 60 | 84–92 / 830–930 / 2,860 ms; probe 0.8–1.6 s (**overloaded**) | 41 / 138 / 174 ms; probe 42 ms |
-| 2 classes at once | 40 / 65–122 / 219 ms; rare 0.3 s probe blips | 39 / 55–59 / 88 ms; probe 43 ms |
-| 3 classes at once | 45–59 / 285–477 / 1,341 ms; probe ~0.5 s (**straining**) | 39 / 63–84 / 110 ms; probe ≤ 48 ms |
-| 5 classes at once | not run | 40 / 63–76 / 106 ms; probe ≤ 50 ms |
-| 5 classes, pen down 40% | not run | 40 / 64–81 / 262 ms; probe ≤ 57 ms |
-| 10 classes (300 students) | not run | 39–43 / 58–115 / 204 ms; probe ≤ 65 ms |
-| 15 classes (450 students) | not run | 41–56 / 67–136 / 209 ms; probe 79–251 ms (first strain) |
-| 20 classes (600 students) | not run | 42–101 / 70–288 / 698 ms; probe 135–234 ms (clear strain, still usable) |
+| Step                      | Before #50 (ink 20/s, cursors 10/s): new stroke delay typical / slowest 5% / worst; probe slowest 5% | After #50 (ink 2/s, cursors 4/s)                                        |
+| ------------------------- | ---------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------- |
+| 1 class of 30             | 39 / 71 / 91 ms; probe fine                                                                          | 40 / 62 / 77 ms; probe 41 ms                                            |
+| 1 board with 60           | 84–92 / 830–930 / 2,860 ms; probe 0.8–1.6 s (**overloaded**)                                         | 41 / 138 / 174 ms; probe 42 ms                                          |
+| 2 classes at once         | 40 / 65–122 / 219 ms; rare 0.3 s probe blips                                                         | 39 / 55–59 / 88 ms; probe 43 ms                                         |
+| 3 classes at once         | 45–59 / 285–477 / 1,341 ms; probe ~0.5 s (**straining**)                                             | 39 / 63–84 / 110 ms; probe ≤ 48 ms                                      |
+| 5 classes at once         | not run                                                                                              | 40 / 63–76 / 106 ms; probe ≤ 50 ms                                      |
+| 5 classes, pen down 40%   | not run                                                                                              | 40 / 64–81 / 262 ms; probe ≤ 57 ms                                      |
+| 10 classes (300 students) | not run                                                                                              | 39–43 / 58–115 / 204 ms; probe ≤ 65 ms                                  |
+| 15 classes (450 students) | not run                                                                                              | 41–56 / 67–136 / 209 ms; probe 79–251 ms (first strain)                 |
+| 20 classes (600 students) | not run                                                                                              | 42–101 / 70–288 / 698 ms; probe 135–234 ms (clear strain, still usable) |
 
 Takeaway: on today's Cloud Run (1 instance), the comfortable limit went from **~2 classes to ~10–15 classes at once**.
 Strain starts around 15 and is clear by 20, which is far beyond one teacher or a department. The §3.1 estimates were
@@ -115,13 +116,13 @@ too conservative after #50, and too optimistic before it.
 
 ## 4. Options considered
 
-| | Option | Good | Bad | Rough cost |
-|---|---|---|---|---|
-| **A** | **Stay on Cloud Run as is (after #48)** | Nothing to do. Google handles restarts, TLS, OS. | Cold starts; disk wiped (the bucket backup covers it); deploys cut live sockets. | Current bill |
-| **B** | **Cloud Run + `--min-instances 1`** | One flag. No cold starts. | Pays for an always-on instance; disk still wiped. | **Unverified**, check the calculator |
-| **C** | **Compute Engine VM** (sketch in §5) | A normal Linux box: disk persists, no cold starts, no request caps. Same project, bucket and billing. AllAboard's bucket backup should work unchanged. | You own OS updates, firewall, TLS (Caddy), restarts (systemd), monitoring. | `e2-medium` ≈ $24/mo (§6) |
-| **D** | **VPS elsewhere** (Hetzner Ashburn, DigitalOcean NYC, Vultr NJ) | Often cheaper, with large bandwidth allowances included. | Same ops work as C, plus: `GcsBackend` gets its token from Google's metadata server, which a non-Google VM doesn't have, so the bucket backup needs new login code (or switch to `DirBackend` + an off-box sync). | Check current prices |
-| **E** | **Home laptop** (e.g. Cloudflare Tunnel) | Free, fun experiment. | Rejected for live classes: home upload bandwidth (~10 Mbps per busy class), possible CGNAT, sleep/updates, one residential line as the single point of failure. | $0 |
+|       | Option                                                          | Good                                                                                                                                                   | Bad                                                                                                                                                                                                               | Rough cost                           |
+| ----- | --------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------ |
+| **A** | **Stay on Cloud Run as is (after #48)**                         | Nothing to do. Google handles restarts, TLS, OS.                                                                                                       | Cold starts; disk wiped (the bucket backup covers it); deploys cut live sockets.                                                                                                                                  | Current bill                         |
+| **B** | **Cloud Run + `--min-instances 1`**                             | One flag. No cold starts.                                                                                                                              | Pays for an always-on instance; disk still wiped.                                                                                                                                                                 | **Unverified**, check the calculator |
+| **C** | **Compute Engine VM** (sketch in §5)                            | A normal Linux box: disk persists, no cold starts, no request caps. Same project, bucket and billing. AllAboard's bucket backup should work unchanged. | You own OS updates, firewall, TLS (Caddy), restarts (systemd), monitoring.                                                                                                                                        | `e2-medium` ≈ $24/mo (§6)            |
+| **D** | **VPS elsewhere** (Hetzner Ashburn, DigitalOcean NYC, Vultr NJ) | Often cheaper, with large bandwidth allowances included.                                                                                               | Same ops work as C, plus: `GcsBackend` gets its token from Google's metadata server, which a non-Google VM doesn't have, so the bucket backup needs new login code (or switch to `DirBackend` + an off-box sync). | Check current prices                 |
+| **E** | **Home laptop** (e.g. Cloudflare Tunnel)                        | Free, fun experiment.                                                                                                                                  | Rejected for live classes: home upload bandwidth (~10 Mbps per busy class), possible CGNAT, sleep/updates, one residential line as the single point of failure.                                                   | $0                                   |
 
 Leaning that day: **C** if moving at all, because it's the least change from today (same project, same bucket, same
 deploy secret) and the least "cloud-like" option. **A or B** remain perfectly reasonable if #48 turns out to be enough.
@@ -245,10 +246,10 @@ seconds, as a Cloud Run deploy does today; clients reconnect on their own.
 
 There's no `e2-large`. After `e2-medium`, the next step up is `e2-standard-2`.
 
-| Machine | vCPU / RAM | On demand | ≈ per month (730 h) | 1-yr commit | 3-yr commit |
-|---|---|---|---|---|---|
-| `e2-medium` | 2 shared vCPU / 4 GB | $0.0335/h | **≈ $24.46** | ≈ $15.41/mo | ≈ $11.01/mo |
-| `e2-standard-2` | 2 vCPU / 8 GB | $0.0670/h | **≈ $48.92** | ≈ $30.82/mo | ≈ $22.01/mo |
+| Machine         | vCPU / RAM           | On demand | ≈ per month (730 h) | 1-yr commit | 3-yr commit |
+| --------------- | -------------------- | --------- | ------------------- | ----------- | ----------- |
+| `e2-medium`     | 2 shared vCPU / 4 GB | $0.0335/h | **≈ $24.46**        | ≈ $15.41/mo | ≈ $11.01/mo |
+| `e2-standard-2` | 2 vCPU / 8 GB        | $0.0670/h | **≈ $48.92**        | ≈ $30.82/mo | ≈ $22.01/mo |
 
 - `e2-medium` is a **shared-core** type: 2 vCPUs that together sustain about one core, with bursts. Given one core
   per app and the load numbers in §3, it's likely enough for both apps. `e2-standard-2` gives 2 full vCPUs and 8 GB.
@@ -278,6 +279,7 @@ Sources: [economize.cloud e2-medium](https://www.economize.cloud/resources/gcp/p
 ## 8. Deferred: if teaching in China later
 
 Not relevant while in the US. Notes for later, unverified:
+
 - Host in Hong Kong or Singapore (no ICP licence needed). The **route** matters more than the region: look for
   CN2 GIA / CMI routing, because cheap international links from the mainland can be congested and lossy in the evening.
 - Anything the **browser** loads from Google (Drive import, Google fonts or scripts) is blocked in the mainland

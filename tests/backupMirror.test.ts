@@ -75,7 +75,13 @@ for (const { name, make } of backends) {
       mirror.scheduleRoom('b c/d', () => ({ id: 'b c/d', lastActiveAt: 20 }));
       await mirror.flushNow();
       const rooms = (await mirror.loadAllRooms()).sort((x, y) => x.lastActiveAt - y.lastActiveAt);
-      assert.deepEqual(rooms.map((r) => [r.roomId, r.lastActiveAt]), [['a', 10], ['b c/d', 20]]);
+      assert.deepEqual(
+        rooms.map((r) => [r.roomId, r.lastActiveAt]),
+        [
+          ['a', 10],
+          ['b c/d', 20],
+        ]
+      );
     });
 
     it('deletes a room', async () => {
@@ -98,7 +104,10 @@ for (const { name, make } of backends) {
       await backend.write('rooms/broken.json.gz', new TextEncoder().encode('not gzip'), 'application/gzip');
       mirror.scheduleRoom('ok', () => ({ id: 'ok', lastActiveAt: 1 }));
       await mirror.flushNow();
-      assert.deepEqual((await mirror.loadAllRooms()).map((r) => r.roomId), ['ok']);
+      assert.deepEqual(
+        (await mirror.loadAllRooms()).map((r) => r.roomId),
+        ['ok']
+      );
     });
   });
 }
@@ -127,13 +136,21 @@ describe('GcsBackend specifics', () => {
   });
 
   it('probe throws on 403 so the server can run without backups', async () => {
-    const gcs = new GcsBackend('allaboard-data', { fetchImpl: fake.fetch, apiBase: 'https://gcs.test', getToken: async () => 'tok-1' });
+    const gcs = new GcsBackend('allaboard-data', {
+      fetchImpl: fake.fetch,
+      apiBase: 'https://gcs.test',
+      getToken: async () => 'tok-1',
+    });
     fake.failWith = 403;
     await assert.rejects(gcs.probe(), /HTTP 403/);
   });
 
   it('a failed write is retried on the next flush', async () => {
-    const gcs = new GcsBackend('allaboard-data', { fetchImpl: fake.fetch, apiBase: 'https://gcs.test', getToken: async () => 'tok-1' });
+    const gcs = new GcsBackend('allaboard-data', {
+      fetchImpl: fake.fetch,
+      apiBase: 'https://gcs.test',
+      getToken: async () => 'tok-1',
+    });
     const mirror = new BackupMirror(gcs, () => null, 60_000);
     fake.failWith = 503;
     mirror.scheduleRoom('r1', () => ({ id: 'r1', lastActiveAt: 1 }));

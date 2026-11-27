@@ -1,23 +1,66 @@
 /** Compile-time description of the Socket.IO wire protocol. Runtime validation remains on the server. */
 import type {
-  BreakoutAction, BreakoutConfig, BreakoutMode, CanvasElement, ChatMessage, ClassWorkData, ClassroomTimerState, ConfigureBreakoutPayload,
-  ImportRestoreMode, RemoteCursor, RoomAvailability, RoomBackground, RoomSettings,
-  SpotlightPayload, StudentStatus, SubBoardData, TimerControlPayload, User,
+  BreakoutAction,
+  BreakoutConfig,
+  BreakoutMode,
+  CanvasElement,
+  ChatMessage,
+  ClassWorkData,
+  ClassroomTimerState,
+  ConfigureBreakoutPayload,
+  ImportRestoreMode,
+  RemoteCursor,
+  RoomAvailability,
+  RoomBackground,
+  RoomSettings,
+  SpotlightPayload,
+  StudentStatus,
+  SubBoardData,
+  TimerControlPayload,
+  User,
 } from '../types.ts';
 import type { BoardDigest } from './boardDigest.ts';
 import type { ElementGroup } from './elementGroups.ts';
 import type { LessonPack } from './lessonPack.ts';
 import type { RoundVariants } from './roundVariants.ts';
 
-export interface BasicAck { ok: boolean; error?: string }
-export interface AuthAck extends BasicAck { mode?: 'claimed' | 'verified'; pin?: string }
-export interface BreakoutAck extends BasicAck { roundId?: string; action?: BreakoutAction; activeRoundId?: string; mode?: BreakoutMode }
-export interface MultiBgAck extends BasicAck { updated?: number; skipped?: string[] }
-export interface ImportRoomAck extends BasicAck { connectionError?: boolean; elementsCount?: number; messagesCount?: number }
-export interface LessonExportAck extends BasicAck { lesson?: LessonPack; inkCounts?: { teacher: number; all: number } }
-export interface LessonHasAssetsAck extends BasicAck { missing?: string[] }
-export interface LessonUploadAssetAck extends BasicAck { url?: string }
-export interface LessonLoadAck extends BasicAck { roomId?: string; rounds?: number }
+export interface BasicAck {
+  ok: boolean;
+  error?: string;
+}
+export interface AuthAck extends BasicAck {
+  mode?: 'claimed' | 'verified';
+  pin?: string;
+}
+export interface BreakoutAck extends BasicAck {
+  roundId?: string;
+  action?: BreakoutAction;
+  activeRoundId?: string;
+  mode?: BreakoutMode;
+}
+export interface MultiBgAck extends BasicAck {
+  updated?: number;
+  skipped?: string[];
+}
+export interface ImportRoomAck extends BasicAck {
+  connectionError?: boolean;
+  elementsCount?: number;
+  messagesCount?: number;
+}
+export interface LessonExportAck extends BasicAck {
+  lesson?: LessonPack;
+  inkCounts?: { teacher: number; all: number };
+}
+export interface LessonHasAssetsAck extends BasicAck {
+  missing?: string[];
+}
+export interface LessonUploadAssetAck extends BasicAck {
+  url?: string;
+}
+export interface LessonLoadAck extends BasicAck {
+  roomId?: string;
+  rounds?: number;
+}
 
 type Ack<T> = (response: T) => void;
 type ElementPatch = Partial<CanvasElement> & { id: string };
@@ -30,7 +73,14 @@ type LaserPulse = { boardId: string; x: number; y: number; strokeId: string };
 
 export interface ClientToServerEvents {
   'check-room': (payload: { roomId?: string } | undefined, callback?: Ack<RoomAvailability>) => void;
-  'join-room': (payload: { roomId?: string; userId: string; userKey?: string; name: string; color: string; teacherPin?: string }) => void;
+  'join-room': (payload: {
+    roomId?: string;
+    userId: string;
+    userKey?: string;
+    name: string;
+    color: string;
+    teacherPin?: string;
+  }) => void;
   'teacher:auth': (payload: { pin: string }, callback?: Ack<AuthAck>) => void;
   'user:set-status': (payload: { status?: StudentStatus } | undefined) => void;
   'teacher:clear-status': (payload: { targetUserId?: string } | undefined) => void;
@@ -39,21 +89,47 @@ export interface ClientToServerEvents {
   'teacher:spotlight-board': (payload: SpotlightPayload, callback?: Ack<BasicAck>) => void;
   'teacher:view-board': (payload: { boardId?: string } | undefined) => void;
   'breakout:join-board': (payload: { targetBoardId: string; targetUserId?: string }) => void;
-  'teacher:set-background': (payload: { boardId?: string; background: RoomBackground | null }, callback?: Ack<BasicAck>) => void;
-  'teacher:set-background-multi': (payload: { boardIds: string[]; background: RoomBackground | null; roundTemplateFor?: string }, callback?: Ack<MultiBgAck>) => void;
-  'teacher:set-round-variants': (payload: { roundId: string; variants: RoundVariants | null }, callback?: Ack<BasicAck>) => void;
+  'teacher:set-background': (
+    payload: { boardId?: string; background: RoomBackground | null },
+    callback?: Ack<BasicAck>
+  ) => void;
+  'teacher:set-background-multi': (
+    payload: { boardIds: string[]; background: RoomBackground | null; roundTemplateFor?: string },
+    callback?: Ack<MultiBgAck>
+  ) => void;
+  'teacher:set-round-variants': (
+    payload: { roundId: string; variants: RoundVariants | null },
+    callback?: Ack<BasicAck>
+  ) => void;
   'teacher:update-background': (payload: { boardId?: string; patch: Partial<RoomBackground> }) => void;
   'teacher:import-room': (payload: ClassWorkData & { mode: ImportRestoreMode }, callback?: Ack<ImportRoomAck>) => void;
   'teacher:export-lesson': (payload: Record<string, unknown>, callback?: Ack<LessonExportAck>) => void;
   'teacher:has-assets': (payload: { urls: string[] }, callback?: Ack<LessonHasAssetsAck>) => void;
   'teacher:upload-asset': (payload: { url?: string; dataUrl: string }, callback?: Ack<LessonUploadAssetAck>) => void;
-  'teacher:load-lesson': (payload: { lesson: Omit<LessonPack, 'assets'> & { assets?: LessonPack['assets'] }; target: 'new' | 'current'; newRoomId?: string; pin?: string }, callback?: Ack<LessonLoadAck>) => void;
+  'teacher:load-lesson': (
+    payload: {
+      lesson: Omit<LessonPack, 'assets'> & { assets?: LessonPack['assets'] };
+      target: 'new' | 'current';
+      newRoomId?: string;
+      pin?: string;
+    },
+    callback?: Ack<LessonLoadAck>
+  ) => void;
   'update-profile': (payload: { userId?: string; name?: string; color?: string }) => void;
-  'teacher:rename-user': (payload: { targetUserId: string; newName: string }, callback?: Ack<BasicAck & { newName?: string }>) => void;
+  'teacher:rename-user': (
+    payload: { targetUserId: string; newName: string },
+    callback?: Ack<BasicAck & { newName?: string }>
+  ) => void;
   'teacher:delete-message': (payload: { messageId: string; boardId?: string }, callback?: Ack<BasicAck>) => void;
-  'teacher:kick-user': (payload: { targetUserId: string; mode?: 'kick' | 'ban'; targetName?: string }, callback?: Ack<BasicAck>) => void;
+  'teacher:kick-user': (
+    payload: { targetUserId: string; mode?: 'kick' | 'ban'; targetName?: string },
+    callback?: Ack<BasicAck>
+  ) => void;
   'teacher:unban-user': (payload: { targetUserId: string }, callback?: Ack<BasicAck>) => void;
-  'teacher:purge-user-contributions': (payload: { targetUserId?: string }, callback?: Ack<BasicAck & { removedElements?: number; removedMessages?: number }>) => void;
+  'teacher:purge-user-contributions': (
+    payload: { targetUserId?: string },
+    callback?: Ack<BasicAck & { removedElements?: number; removedMessages?: number }>
+  ) => void;
   'chat-message': (payload: Partial<ChatMessage> & { text: string }) => void;
   'element-start': (element: CanvasElement) => void;
   'element-append-points': (payload: { id: string; boardId?: string; newPoints: number[] }) => void;
@@ -65,12 +141,15 @@ export interface ClientToServerEvents {
   'element-remove': (payload: { id: string; boardId?: string }) => void;
   'laser-pulse': (payload: LaserPulse) => void;
   'cursor-move': (cursor: Cursor) => void;
-  'undo': (payload: string | { userId?: string; boardId?: string } | undefined) => void;
+  undo: (payload: string | { userId?: string; boardId?: string } | undefined) => void;
   'clear-user-drawings': (payload: string | { targetUserId?: string; boardId?: string } | undefined) => void;
   'teacher:set-hide-cursors': (hide: boolean) => void;
   'teacher:set-one-name-stamp': (enabled: boolean) => void;
   'teacher:set-lock': (isLocked: boolean) => void;
-  'teacher:timer-control': (payload: TimerControlPayload, callback?: Ack<BasicAck & { timer?: ClassroomTimerState }>) => void;
+  'teacher:timer-control': (
+    payload: TimerControlPayload,
+    callback?: Ack<BasicAck & { timer?: ClassroomTimerState }>
+  ) => void;
   'teacher:clear-all': (payload: { boardId?: string } | undefined) => void;
 }
 
@@ -88,9 +167,14 @@ interface RoomContents {
 }
 
 export interface ServerToClientEvents {
-  'init': (payload: RoomContents & TeacherTemplates & { users: User[]; isTeacher: boolean; assignedName?: string; isNameLocked: boolean }) => void;
+  init: (
+    payload: RoomContents &
+      TeacherTemplates & { users: User[]; isTeacher: boolean; assignedName?: string; isNameLocked: boolean }
+  ) => void;
   'state-sync': (payload: BoardElements & { messages?: ChatMessage[] }) => void;
-  'breakout-sync': (payload: TeacherTemplates & { breakoutConfig: BreakoutConfig; subBoards: Record<string, SubBoardData> }) => void;
+  'breakout-sync': (
+    payload: TeacherTemplates & { breakoutConfig: BreakoutConfig; subBoards: Record<string, SubBoardData> }
+  ) => void;
   'round-templates-sync': (payload: TeacherTemplates) => void;
   'background-sync': (payload: { boardId: string; background: RoomBackground | null }) => void;
   'board-replaced': (payload: { boardId: string }) => void;

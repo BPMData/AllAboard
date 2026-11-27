@@ -43,7 +43,11 @@ describe('prepared breakout rounds', () => {
   }
 
   const groups = (n: number, assigned: string[][] = []) =>
-    Array.from({ length: n }, (_, i) => ({ id: `draft-${i}`, title: `Team ${i + 1}`, assignedUserIds: assigned[i] ?? [] }));
+    Array.from({ length: n }, (_, i) => ({
+      id: `draft-${i}`,
+      title: `Team ${i + 1}`,
+      assignedUserIds: assigned[i] ?? [],
+    }));
 
   it('P1 – a prepared individual round moves nobody and makes no boards', async () => {
     const { teacher, s1 } = await setupClass('pr-1');
@@ -145,7 +149,11 @@ describe('prepared breakout rounds', () => {
     assert.notEqual(sync.subBoards.r1_grp_1.background, sync.subBoards.r1_grp_2.background);
 
     await configure(teacher, { action: 'resume', roundId: 'r1', groups: groups(2, [['s1'], ['s2']]) });
-    const refused = await emitAck<any>(teacher, 'teacher:configure-breakout', { action: 'edit-prepared', roundId: 'r1', title: 'x' });
+    const refused = await emitAck<any>(teacher, 'teacher:configure-breakout', {
+      action: 'edit-prepared',
+      roundId: 'r1',
+      title: 'x',
+    });
     assert.equal(refused.ok, false);
     const updateOnPrepared = await emitAck<any>(teacher, 'teacher:configure-breakout', {
       action: 'edit-prepared',
@@ -182,15 +190,33 @@ describe('prepared breakout rounds', () => {
     const { teacher } = await setupClass('pr-7');
     await configure(teacher, { action: 'new-round', mode: 'individual' }); // r1, launched
     await configure(teacher, { action: 'return-to-main' });
-    await configure(teacher, { action: 'new-round', prepare: true, mode: 'groups', groups: groups(2), customBackground: worksheet() });
+    await configure(teacher, {
+      action: 'new-round',
+      prepare: true,
+      mode: 'groups',
+      groups: groups(2),
+      customBackground: worksheet(),
+    });
     const { res, sync } = await configure(teacher, { action: 'delete-prepared', roundId: 'r2' });
     assert.equal(res.ok, true);
-    assert.deepEqual(sync.breakoutConfig.rounds.map((r: any) => r.id), ['r1']);
-    assert.equal(Object.keys(sync.subBoards).some((id) => id.startsWith('r2')), false);
+    assert.deepEqual(
+      sync.breakoutConfig.rounds.map((r: any) => r.id),
+      ['r1']
+    );
+    assert.equal(
+      Object.keys(sync.subBoards).some((id) => id.startsWith('r2')),
+      false
+    );
     assert.equal(sync.roundTemplates.r2, undefined);
-    const refused = await emitAck<any>(teacher, 'teacher:configure-breakout', { action: 'delete-prepared', roundId: 'r1' });
+    const refused = await emitAck<any>(teacher, 'teacher:configure-breakout', {
+      action: 'delete-prepared',
+      roundId: 'r1',
+    });
     assert.equal(refused.ok, false);
-    const updateRefused = await emitAck<any>(teacher, 'teacher:configure-breakout', { action: 'update-current', roundId: 'r1' });
+    const updateRefused = await emitAck<any>(teacher, 'teacher:configure-breakout', {
+      action: 'update-current',
+      roundId: 'r1',
+    });
     assert.equal(updateRefused.ok, true, 'launched rounds still edit as before');
   });
 
@@ -210,7 +236,12 @@ describe('prepared breakout rounds', () => {
 
   it('P9 – a teacher joining gets roundTemplates in init; a student does not', async () => {
     const { teacher } = await setupClass('pr-9');
-    await configure(teacher, { action: 'new-round', prepare: true, mode: 'individual', customBackground: worksheet('a.png') });
+    await configure(teacher, {
+      action: 'new-round',
+      prepare: true,
+      mode: 'individual',
+      customBackground: worksheet('a.png'),
+    });
     const { init: t } = await pool.join(srv, { roomId: 'pr-9', userId: 't2', name: 'Co', teacherPin: '1234' });
     assert.equal(t.isTeacher, true);
     assert.equal(t.roundTemplates.r1.fileName, 'a.png');
@@ -220,7 +251,12 @@ describe('prepared breakout rounds', () => {
 
   it('P10 – a room save round trip keeps a prepared round worksheet', async () => {
     const { teacher, s1 } = await setupClass('pr-10');
-    await configure(teacher, { action: 'new-round', prepare: true, mode: 'individual', customBackground: worksheet('keep.png') });
+    await configure(teacher, {
+      action: 'new-round',
+      prepare: true,
+      mode: 'individual',
+      customBackground: worksheet('keep.png'),
+    });
     const state = await configure(teacher, { action: 'return-to-main' });
     const snapshot = {
       mode: 'replace',
@@ -247,7 +283,13 @@ describe('prepared breakout rounds', () => {
 
   it('P11 – prepared rounds survive a flush and a restart', async () => {
     const { teacher } = await setupClass('pr-11');
-    await configure(teacher, { action: 'new-round', prepare: true, mode: 'groups', groups: groups(2), customBackground: worksheet('g.png') });
+    await configure(teacher, {
+      action: 'new-round',
+      prepare: true,
+      mode: 'groups',
+      groups: groups(2),
+      customBackground: worksheet('g.png'),
+    });
     await srv.flushRoomsToDiskAsync();
     pool.closeAll();
     await srv.close();

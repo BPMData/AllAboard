@@ -37,7 +37,14 @@ const emitAck = <T = any>(socket: Socket, event: string, payload?: any): Promise
   new Promise((resolve) => socket.emit(event, payload, (res: T) => resolve(res)));
 const delay = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 const stroke = (id: string, userId: string, points = [0, 0, 1, 1], boardId = 'main') => ({
-  id, boardId, userId, userName: userId, tool: 'solid', color: '#000', strokeWidth: 3, points,
+  id,
+  boardId,
+  userId,
+  userName: userId,
+  tool: 'solid',
+  color: '#000',
+  strokeWidth: 3,
+  points,
 });
 
 describe('socketGuards (unit)', () => {
@@ -92,7 +99,11 @@ describe('server guards (integration)', () => {
   const sockets: Socket[] = [];
 
   async function join(roomId: string, userId: string, extra: Record<string, unknown> = {}, port = srv.port) {
-    const socket = ioClient(`http://127.0.0.1:${port}`, { transports: ['websocket'], forceNew: true, reconnection: false });
+    const socket = ioClient(`http://127.0.0.1:${port}`, {
+      transports: ['websocket'],
+      forceNew: true,
+      reconnection: false,
+    });
     sockets.push(socket);
     await waitForEvent(socket, 'connect');
     const init = waitForEvent<any>(socket, 'init');
@@ -181,7 +192,19 @@ describe('server guards (integration)', () => {
     });
 
     it('migrates a legacy plain-text PIN (even a 3-character one) on load', async () => {
-      srv.store.saveRoom('legacy', { id: 'legacy', elements: [], messages: [], background: null, isCanvasLocked: false, teacherPin: '777', lastActiveAt: Date.now() }, Date.now());
+      srv.store.saveRoom(
+        'legacy',
+        {
+          id: 'legacy',
+          elements: [],
+          messages: [],
+          background: null,
+          isCanvasLocked: false,
+          teacherPin: '777',
+          lastActiveAt: Date.now(),
+        },
+        Date.now()
+      );
       const { socket: t } = await join('legacy', 't1');
       assert.equal((await emitAck<any>(t, 'teacher:auth', { pin: '777' })).mode, 'verified');
       await srv.flushRoomsToDiskAsync();
@@ -193,7 +216,15 @@ describe('server guards (integration)', () => {
     it('rewrites a legacy plain-text PIN in the backup bucket at boot, not just in SQLite', async () => {
       const backupDir = fs.mkdtempSync(path.join(os.tmpdir(), 'allaboard-guards-backup-'));
       fs.mkdirSync(path.join(backupDir, 'rooms'), { recursive: true });
-      const legacy = { id: 'old-room', elements: [], messages: [], background: null, isCanvasLocked: false, teacherPin: '777', lastActiveAt: Date.now() };
+      const legacy = {
+        id: 'old-room',
+        elements: [],
+        messages: [],
+        background: null,
+        isCanvasLocked: false,
+        teacherPin: '777',
+        lastActiveAt: Date.now(),
+      };
       fs.writeFileSync(path.join(backupDir, 'rooms', 'old-room.json.gz'), gzipSync(JSON.stringify(legacy)));
       const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'allaboard-guards-data-'));
       const booted = await startServer({ port: 0, host: '127.0.0.1', dataDir, skipVite: true, backupDir });
@@ -227,7 +258,11 @@ describe('server guards (integration)', () => {
       const { init } = await join('guess', 'kid-join', { teacherPin: '4829' });
       assert.equal(init.isTeacher, false, 'join-room PIN checks are blocked too');
       const { socket: other } = await join('other-room', 'x');
-      assert.equal((await emitAck<any>(other, 'teacher:auth', { pin: '5555' })).mode, 'claimed', 'other rooms unaffected');
+      assert.equal(
+        (await emitAck<any>(other, 'teacher:auth', { pin: '5555' })).mode,
+        'claimed',
+        'other rooms unaffected'
+      );
     });
   });
 
@@ -238,7 +273,12 @@ describe('server guards (integration)', () => {
       const { socket: s1 } = await join(roomId, 's1');
       const { socket: s2 } = await join(roomId, 's2');
       const synced = waitForEvent<any>(s2, 'breakout-sync');
-      await emitAck(teacher, 'teacher:configure-breakout', { mode: 'individual', allowSelfSelect: false, chatScope: 'board', copyWorksheet: false });
+      await emitAck(teacher, 'teacher:configure-breakout', {
+        mode: 'individual',
+        allowSelfSelect: false,
+        chatScope: 'board',
+        copyWorksheet: false,
+      });
       await synced;
       await delay(100);
       return { teacher, s1, s2 };
@@ -252,7 +292,10 @@ describe('server guards (integration)', () => {
       s1.emit('chat-message', { text: 'private to my board', boardId: 'r1_ind_s1' });
       s1.emit('chat-message', { text: 'sneaking into s2', boardId: 'r1_ind_s2' });
       await delay(200);
-      assert.deepEqual(heard.t.map((m) => m.text), ['private to my board']);
+      assert.deepEqual(
+        heard.t.map((m) => m.text),
+        ['private to my board']
+      );
       assert.deepEqual(heard.s2, [], 's2 hears nothing from another board');
 
       const { init } = await join('chat-scope', 's1'); // s1 rejoining sees its own board's chat

@@ -46,13 +46,13 @@ export interface CanvasElement {
   color: string;
   strokeWidth: number;
   hollowShape?: HollowShapeKind; // Shape tip for hollow tool: circle, square, triangle, diamond, star
-  hollowWeight?: number;         // Border line weight for hollow tool (1..25)
+  hollowWeight?: number; // Border line weight for hollow tool (1..25)
   points?: number[]; // Used for freehand strokes (solid, hollow, spray, highlighter, eraser) and line
-  x?: number;        // Used for rect, circle, text, stamp
-  y?: number;        // Used for rect, circle, text, stamp
-  width?: number;    // Used for rect, circle, text bounding box
-  height?: number;   // Used for rect, circle, text bounding box
-  text?: string;     // Used for text elements
+  x?: number; // Used for rect, circle, text, stamp
+  y?: number; // Used for rect, circle, text, stamp
+  width?: number; // Used for rect, circle, text bounding box
+  height?: number; // Used for rect, circle, text bounding box
+  text?: string; // Used for text elements
   fontSize?: number; // Used for text elements (OverBoard note font size)
   isCover?: boolean; // Used for opaque Highlighter Cover bars (OverBoard answer-hiding cover mode)
   hlStrength?: number; // Used for Highlighter strength % (10..100)
@@ -115,9 +115,9 @@ export type BreakoutMode = 'main' | 'individual' | 'groups';
 export type SubBoardKind = 'individual' | 'group';
 
 export interface BreakoutRoundMeta {
-  id: string;                       // 'r1', 'r2', ...
-  number: number;                   // 1, 2, ...
-  title: string;                    // 'Round 2 · Groups · Frayer Model'
+  id: string; // 'r1', 'r2', ...
+  number: number; // 1, 2, ...
+  title: string; // 'Round 2 · Groups · Frayer Model'
   mode: 'individual' | 'groups';
   createdAt: number;
   /** True until the teacher launches it. A prepared round moves nobody. Absent on every launched round. */
@@ -146,28 +146,28 @@ export interface BreakoutGroupDraft {
 /** Payload of the `teacher:configure-breakout` socket event. Every field is optional. */
 export interface ConfigureBreakoutPayload {
   action?: BreakoutAction;
-  mode?: BreakoutMode;                       // used by 'new-round' (and legacy callers)
-  roundId?: string;                          // used by 'resume' / 'update-current' (defaults to active round)
-  targetRoundId?: string;                    // alias for roundId
+  mode?: BreakoutMode; // used by 'new-round' (and legacy callers)
+  roundId?: string; // used by 'resume' / 'update-current' (defaults to active round)
+  targetRoundId?: string; // alias for roundId
   allowSelfSelect?: boolean;
   chatScope?: 'unified' | 'board';
-  copyWorksheet?: boolean;                   // 'new-round' / 'set-auto-individual'
-  copyInk?: boolean;                         // 'new-round' / 'edit-prepared', with copyWorksheet: also copy the teacher's Main ink
-  customBackground?: RoomBackground | null;  // 'new-round' / 'set-auto-individual'
-  groups?: BreakoutGroupDraft[];             // 'new-round': ids ignored. 'resume'/'update-current': ids must be real board ids
-  templateLabel?: string;                    // 'new-round' / 'set-auto-individual', used in the round title
-  autoIndividual?: boolean;                  // used by 'set-auto-individual'
+  copyWorksheet?: boolean; // 'new-round' / 'set-auto-individual'
+  copyInk?: boolean; // 'new-round' / 'edit-prepared', with copyWorksheet: also copy the teacher's Main ink
+  customBackground?: RoomBackground | null; // 'new-round' / 'set-auto-individual'
+  groups?: BreakoutGroupDraft[]; // 'new-round': ids ignored. 'resume'/'update-current': ids must be real board ids
+  templateLabel?: string; // 'new-round' / 'set-auto-individual', used in the round title
+  autoIndividual?: boolean; // used by 'set-auto-individual'
   autoIndividualBackground?: RoomBackground | null; // used by 'set-auto-individual'
-  prepare?: boolean;                         // 'new-round': create the round without moving anyone
-  title?: string;                            // 'new-round' / 'edit-prepared': teacher's own round name, <= 40 chars
+  prepare?: boolean; // 'new-round': create the round without moving anyone
+  title?: string; // 'new-round' / 'edit-prepared': teacher's own round name, <= 40 chars
   /** 'new-round' / 'edit-prepared', individual rounds: worksheets B–D and who gets which. null clears them. */
   variants?: RoundVariants | null;
 }
 
 export interface SubBoardData {
   id: string;
-  roundId?: string;        // 'r1', 'r2', ... (always set by the server after migration)
-  kind?: SubBoardKind;     // 'individual' | 'group' (always set by the server after migration)
+  roundId?: string; // 'r1', 'r2', ... (always set by the server after migration)
+  kind?: SubBoardKind; // 'individual' | 'group' (always set by the server after migration)
   title: string;
   assignedUserIds: string[];
   elements: CanvasElement[];
@@ -276,5 +276,7 @@ export interface PendingSnapshotData extends ClassWorkData {
   exportedBy?: string;
 }
 
-export type RestoreClassWork = (data: ClassWorkData, mode: ImportRestoreMode) =>
-  Promise<{ ok: boolean; error?: string; connectionError?: boolean }>;
+export type RestoreClassWork = (
+  data: ClassWorkData,
+  mode: ImportRestoreMode
+) => Promise<{ ok: boolean; error?: string; connectionError?: boolean }>;
