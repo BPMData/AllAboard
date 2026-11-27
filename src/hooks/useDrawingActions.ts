@@ -49,7 +49,7 @@ export function useDrawingActions({
         emitDrawing(socket, 'element-start', withBoard);
       }
     },
-    [socket, activeBoardId]
+    [socket, activeBoardId, emitDrawing, setElements, setSubBoards]
   );
 
   const handleElementAppendPoints = useCallback(
@@ -79,7 +79,7 @@ export function useDrawingActions({
         enqueueOutgoingPoints(activeBoardId, id, newPoints);
       }
     },
-    [socket, activeBoardId]
+    [socket, activeBoardId, setElements, enqueueOutgoingPoints, setSubBoards]
   );
 
   const updateActiveBoardElements = useCallback(
@@ -97,7 +97,7 @@ export function useDrawingActions({
         });
       }
     },
-    [activeBoardId]
+    [activeBoardId, setElements, setSubBoards]
   );
 
   const handleElementUpdate = useCallback(
@@ -120,7 +120,7 @@ export function useDrawingActions({
         });
       }
     },
-    [socket, activeBoardId, updateActiveBoardElements]
+    [socket, activeBoardId, updateActiveBoardElements, emitDrawing]
   );
 
   const handleElementsBatchUpdate = useCallback(
@@ -150,7 +150,7 @@ export function useDrawingActions({
         emitDrawing(socket, 'elements-batch-update', { boardId: activeBoardId, updates, bringToFront });
       }
     },
-    [socket, activeBoardId, updateActiveBoardElements]
+    [socket, activeBoardId, updateActiveBoardElements, emitDrawing]
   );
 
   const handleElementsBatchAdd = useCallback(
@@ -190,7 +190,7 @@ export function useDrawingActions({
         emitDrawing(socket, 'elements-batch-add', { boardId: destBoardId, elements: normalized });
       }
     },
-    [socket, activeBoardId, updateActiveBoardElements]
+    [socket, activeBoardId, updateActiveBoardElements, setElements, emitDrawing, setSubBoards]
   );
 
   const handleElementsBatchRemove = useCallback(
@@ -202,7 +202,7 @@ export function useDrawingActions({
         emitDrawing(socket, 'elements-batch-remove', { boardId: activeBoardId, ids });
       }
     },
-    [socket, activeBoardId, updateActiveBoardElements]
+    [socket, activeBoardId, updateActiveBoardElements, emitDrawing]
   );
 
   /** Edits that keep stacking order (eraser split/remove and its undo). See src/lib/elementGroups.ts. */
@@ -242,7 +242,7 @@ export function useDrawingActions({
         emitDrawing(socket, 'element-remove', { id, boardId: activeBoardId });
       }
     },
-    [socket, activeBoardId]
+    [socket, activeBoardId, emitDrawing, setElements, setSubBoards]
   );
 
   const handleCursorMove = useCallback(
@@ -258,13 +258,13 @@ export function useDrawingActions({
     if (socket) {
       emitDrawing(socket, 'undo', { userId, boardId: activeBoardId });
     }
-  }, [socket, userId, activeBoardId]);
+  }, [socket, userId, activeBoardId, emitDrawing]);
 
   const handleClearMine = useCallback(() => {
     if (socket) {
       emitDrawing(socket, 'clear-user-drawings', { targetUserId: userId, boardId: activeBoardId });
     }
-  }, [socket, userId, activeBoardId]);
+  }, [socket, userId, activeBoardId, emitDrawing]);
 
   const handleClearUserDrawings = useCallback(
     (targetUserId: string) => {
@@ -272,7 +272,7 @@ export function useDrawingActions({
         emitDrawing(socket, 'clear-user-drawings', { targetUserId, boardId: activeBoardId });
       }
     },
-    [socket, activeBoardId]
+    [socket, activeBoardId, emitDrawing]
   );
   /** Handed to `Canvas` whole (`CanvasDrawingActions`). */
   const drawingActions = {

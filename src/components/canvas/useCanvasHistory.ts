@@ -43,7 +43,7 @@ export function useCanvasHistory({
     return () => {
       laserSocket.off('board-replaced', resetHistory);
     };
-  }, [laserSocket, activeBoardId]);
+  }, [laserSocket, activeBoardId, setEditingNote, setSelectedIds]);
 
   const getBoardHistory = useCallback((boardId: string) => {
     if (!historyByBoardRef.current[boardId]) {
@@ -136,6 +136,7 @@ export function useCanvasHistory({
     onElementsBatchAdd,
     onElementsBatchUpdate,
     buildElementUpdatePatch,
+    setSelectedIds,
   ]);
 
   const performRedo = useCallback(() => {
@@ -172,6 +173,7 @@ export function useCanvasHistory({
     onElementsBatchRemove,
     onElementsBatchUpdate,
     buildElementUpdatePatch,
+    setSelectedIds,
   ]);
   return { recordUndo, canLocalUndo, canRedo, performUndo, performRedo };
 }

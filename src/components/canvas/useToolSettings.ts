@@ -135,7 +135,19 @@ export function useToolSettings({
         onElementsBatchUpdate(updates, false);
       }
     },
-    [tool, setTool, isCoverMode, editingNote, selectedElements, canDraw, hlStrength, recordUndo, onElementsBatchUpdate]
+    [
+      tool,
+      setTool,
+      isCoverMode,
+      editingNote,
+      selectedElements,
+      canDraw,
+      hlStrength,
+      recordUndo,
+      onElementsBatchUpdate,
+      noteTextareaRef,
+      setEditingNote,
+    ]
   );
 
   // Brush / highlight / eraser / hollow stroke width (each persisted independently)
@@ -162,7 +174,7 @@ export function useToolSettings({
         requestAnimationFrame(() => noteTextareaRef.current?.focus());
       }
     },
-    [tool, editingNote]
+    [tool, editingNote, noteTextareaRef]
   );
 
   // Dedicated Line Weight setter for the Hollow Shape Brush (1..25)
@@ -196,7 +208,7 @@ export function useToolSettings({
         onElementsBatchUpdate(updates, false);
       }
     },
-    [editingNote, selectedTextElements, canDraw, recordUndo, onElementsBatchUpdate]
+    [editingNote, selectedTextElements, canDraw, recordUndo, onElementsBatchUpdate, noteTextareaRef, setEditingNote]
   );
 
   const activeSwatches = useMemo(() => getPaletteColors(paletteMode), [paletteMode]);

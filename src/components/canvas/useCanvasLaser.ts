@@ -31,7 +31,7 @@ export function useCanvasLaser({ laserSocket, activeBoardId, isTeacher, userId, 
     return () => {
       laserSocket.off('laser-pulse', receive);
     };
-  }, [laserSocket, activeBoardId, addLaserPoint]);
+  }, [laserSocket, activeBoardId, addLaserPoint, activePointerIdRef]);
   useEffect(() => {
     if (!laserPoints.length) return;
     let frame = 0;
