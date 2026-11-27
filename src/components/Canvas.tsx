@@ -10,9 +10,7 @@ import {
   GridMode,
   RoomBackground,
   RemoteCursor,
-  ImportRestoreMode,
-  PendingSnapshotData,
-  RoomSnapshot,
+  type RestoreClassWork,
   BreakoutConfig,
   BreakoutGroupDraft,
   BreakoutRoundMeta,
@@ -57,27 +55,9 @@ import {
   isTeacherStampKind,
 } from '../lib/stamps';
 import { DEFAULT_PAGE_GAP, layoutPages } from '../lib/worksheetLayout';
-import { backgroundAssetUrls, embedAssets, parseSnapshotText, snapshotFileName } from '../lib/roomSnapshot';
+import { useClassWorkFiles } from './useClassWorkFiles';
 import { isGoogleDriveConfigured } from '../lib/googleConfig';
-import {
-  GoogleError,
-  createDriveFolder,
-  downloadDriveFile,
-  formatDownloadProgress,
-  friendlyGoogleError,
-  getAccessToken,
-  getDriveAccount,
-  getLastDriveFolder,
-  getRoomDriveSave,
-  isWorksheetMime,
-  pickDriveFile,
-  pickDriveFolder,
-  saveJsonToDrive,
-  switchGoogleAccount,
-  type DriveAccount,
-  type DriveFolder,
-  type DriveSaveRecord,
-} from '../lib/googleDrive';
+import { GoogleError, downloadDriveFile, formatDownloadProgress, friendlyGoogleError, isWorksheetMime, pickDriveFile } from '../lib/googleDrive';
 import { exportAllBoardsToPdf } from '../lib/batchPdfExport';
 import {
   LiveGridOverview,
@@ -184,7 +164,7 @@ import { CURSOR_EMIT_MS } from '../lib/drawThrottle';
 import { isPhoneViewport } from '../lib/compactLayout';
 import { STATUS_OPTIONS } from './StudentStatusBadge';
 import { LoadLessonModal, SaveLessonModal, type LessonRequest } from './LessonPackModals';
-import { variantBackgrounds, type RoundVariants } from '../lib/roundVariants';
+import type { RoundVariants } from '../lib/roundVariants';
 import { eraseGroups, eraseWithStroke } from '../lib/eraserEdits';
 import type { ElementGroup } from '../lib/elementGroups';
 
@@ -253,20 +233,7 @@ interface CanvasProps {
     roundTemplateFor?: string
   ) => Promise<{ ok: boolean; updated?: number; skipped?: string[]; error?: string }>;
   onTeacherUpdateBackground: (patch: Partial<RoomBackground>) => void;
-  onTeacherImportRoom: (
-    snapshot: {
-      elements: CanvasElement[];
-      messages: ChatMessage[];
-      background?: RoomBackground | null;
-      subBoards?: Record<string, SubBoardData>;
-      breakoutConfig?: BreakoutConfig;
-      assets?: Record<string, string>;
-      roundTemplates?: Record<string, RoomBackground | null>;
-      roundTemplateInk?: Record<string, CanvasElement[]>;
-      roundVariants?: Record<string, RoundVariants>;
-    },
-    mode: ImportRestoreMode
-  ) => Promise<{ ok: boolean; error?: string }>;
+  onTeacherImportRoom: RestoreClassWork;
   /** Lesson packs: the four teacher-only socket events. */
   onTeacherLessonRequest?: LessonRequest;
   onOpenLoadedLessonRoom?: (roomId: string, pin: string) => void;
@@ -1147,31 +1114,8 @@ export default function Canvas({
     }
   };
 
-  // JSON Import Modal States (Teacher Only)
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const [pendingSnapshot, setPendingSnapshot] = useState<PendingSnapshotData | null>(null);
   const [lessonModal, setLessonModal] = useState<'save' | 'load' | null>(null);
-  const [importMode, setImportMode] = useState<ImportRestoreMode>('replace');
-  const [importError, setImportError] = useState<string | null>(null);
-  const [isImporting, setIsImporting] = useState(false);
-  const [driveSaveDialog, setDriveSaveDialog] = useState<{
-    defaultFileName: string;
-    folder: DriveFolder;
-    lastSave: DriveSaveRecord | null;
-  } | null>(null);
-  const [driveSaveBusy, setDriveSaveBusy] = useState<'saving' | 'choosing-folder' | 'creating-folder' | null>(null);
-  const [driveSaveError, setDriveSaveError] = useState<string | null>(null);
-  const [driveAccount, setDriveAccount] = useState<DriveAccount | null>(null);
-  const [driveOpening, setDriveOpening] = useState(false);
-  const [driveNotice, setDriveNotice] = useState<{ text: string; isError?: boolean } | null>(null);
-  const [driveOpenError, setDriveOpenError] = useState<string | null>(null);
-  const driveNoticeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  useEffect(() => {
-    return () => {
-      if (driveNoticeTimerRef.current) clearTimeout(driveNoticeTimerRef.current);
-    };
-  }, []);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const stageRef = useRef<any>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -2117,6 +2061,16 @@ export default function Canvas({
     [dimensions.width, dimensions.height, resetView, allGoneNoteIds]
   );
 
+  const classWork = useClassWorkFiles({
+    roomId, exportedBy: userName, elements: fullMainElements, messages: fullMainMessages,
+    background: fullMainBackground, subBoards, breakoutConfig, roundTemplates, roundTemplateInk, roundVariants,
+  }, onTeacherImportRoom, (restored) => {
+    const restoredBackground = restored.background || background;
+    if (restored.elements.length || restoredBackground) {
+      setTimeout(() => fitElementsAndBackgroundInView(restored.elements, restoredBackground), 80);
+    }
+  });
+
   const fitAllContent = () => {
     fitElementsAndBackgroundInView(elements, background);
   };
@@ -2386,7 +2340,7 @@ export default function Canvas({
     driveAbortRef.current = controller;
     try {
       const doc = await pickDriveFile('worksheet'); // calls getAccessToken first, inside the click
-      void refreshDriveAccount();
+      void classWork.refreshDriveAccount();
       if (!doc || controller.signal.aborted) return;
       if (!isWorksheetMime(doc.mimeType)) {
         throw new GoogleError('unsupported_worksheet_type', friendlyGoogleError('unsupported_worksheet_type'));
@@ -2447,236 +2401,6 @@ export default function Canvas({
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
-  };
-
-  const buildSnapshotJson = async (): Promise<{ json: string; fileName: string }> => {
-    const { assets } = await embedAssets(
-      backgroundAssetUrls([
-        fullMainBackground,
-        ...Object.values(subBoards || {}).map((sb) => sb?.background),
-        breakoutConfig.autoIndividualBackground,
-        ...Object.values(roundTemplates),
-        ...Object.values(roundVariants).flatMap((v) => variantBackgrounds(v)),
-      ])
-    );
-    const snapshot: RoomSnapshot = {
-      version: 2,
-      assets,
-      roomId,
-      exportedAt: Date.now(),
-      exportedBy: userName,
-      elements: fullMainElements,
-      messages: fullMainMessages,
-      background: fullMainBackground,
-      subBoards,
-      breakoutConfig,
-      ...(Object.keys(roundTemplates).length > 0 ? { roundTemplates } : {}),
-      ...(Object.keys(roundTemplateInk).length > 0 ? { roundTemplateInk } : {}),
-      ...(Object.keys(roundVariants).length > 0 ? { roundVariants } : {}),
-    };
-
-    return {
-      json: JSON.stringify(snapshot, null, 2),
-      fileName: snapshotFileName(roomId),
-    };
-  };
-
-  // Export complete Room Snapshot (.json) including main board + all breakout/individual subBoards
-  const handleExportJSON = async () => {
-    const { json, fileName } = await buildSnapshotJson();
-    const blob = new Blob([json], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-
-    const link = document.createElement('a');
-    link.download = fileName;
-    link.href = url;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
-  };
-
-  const showDriveNotice = (text: string, isError = false) => {
-    setDriveNotice({ text, isError });
-    if (driveNoticeTimerRef.current) clearTimeout(driveNoticeTimerRef.current);
-    driveNoticeTimerRef.current = setTimeout(() => {
-      setDriveNotice(null);
-      driveNoticeTimerRef.current = null;
-    }, 6000);
-  };
-
-  const driveErrorText = (err: any, fallback: string) =>
-    err instanceof GoogleError ? friendlyGoogleError(err.code) : err?.message || fallback;
-
-  const refreshDriveAccount = async () => {
-    const account = await getDriveAccount();
-    setDriveAccount(account);
-    return account;
-  };
-
-  const handleSwitchDriveAccount = async () => {
-    setDriveOpenError(null);
-    setDriveSaveError(null);
-    try {
-      await switchGoogleAccount(); // calls requestToken('select_account') directly inside click
-      const account = await refreshDriveAccount();
-      const nextLastSave = getRoomDriveSave(roomId, account?.email);
-      setDriveSaveDialog((d) =>
-        d
-          ? {
-              ...d,
-              folder: nextLastSave?.folder ?? getLastDriveFolder(account?.email),
-              lastSave: nextLastSave,
-            }
-          : d
-      );
-    } catch (err: any) {
-      const message = driveErrorText(err, 'Could not switch Google account.');
-      if (driveSaveDialog) {
-        setDriveSaveError(message);
-      } else {
-        setDriveOpenError(message);
-      }
-    }
-  };
-
-  /** Opens the Save Room dialog in the folder this room (or any room) was last saved to. */
-  const handleSaveToDrive = () => {
-    setDriveNotice(null);
-    if (driveNoticeTimerRef.current) {
-      clearTimeout(driveNoticeTimerRef.current);
-      driveNoticeTimerRef.current = null;
-    }
-    const lastSave = getRoomDriveSave(roomId, driveAccount?.email);
-    setDriveSaveError(null);
-    setDriveSaveBusy(null);
-    setDriveSaveDialog({
-      defaultFileName: snapshotFileName(roomId),
-      folder: lastSave?.folder ?? getLastDriveFolder(driveAccount?.email),
-      lastSave,
-    });
-  };
-
-  const handleDriveChangeFolder = async () => {
-    if (!driveSaveDialog) return;
-    setDriveSaveError(null);
-    setDriveSaveBusy('choosing-folder');
-    try {
-      const folder = await pickDriveFolder(driveSaveDialog.folder); // signs in first, inside the click
-      void refreshDriveAccount();
-      if (folder) setDriveSaveDialog((d) => (d ? { ...d, folder } : d));
-    } catch (err: any) {
-      setDriveSaveError(driveErrorText(err, 'Could not open Google Drive.'));
-    } finally {
-      setDriveSaveBusy(null);
-    }
-  };
-
-  const handleDriveCreateFolder = async (folderName: string): Promise<boolean> => {
-    if (!driveSaveDialog) return false;
-    setDriveSaveError(null);
-    setDriveSaveBusy('creating-folder');
-    try {
-      const created = await createDriveFolder(folderName, driveSaveDialog.folder);
-      void refreshDriveAccount();
-      setDriveSaveDialog((d) => (d ? { ...d, folder: created } : d));
-      return true;
-    } catch (err: any) {
-      setDriveSaveError(driveErrorText(err, 'Could not create Google Drive folder.'));
-      return false;
-    } finally {
-      setDriveSaveBusy(null);
-    }
-  };
-
-  const handleDriveSaveConfirm = async (fileName: string) => {
-    if (!driveSaveDialog) return;
-    const { folder } = driveSaveDialog;
-    setDriveSaveError(null);
-    setDriveSaveBusy('saving');
-    try {
-      await getAccessToken(); // call first inside click handler so popup is not blocked
-      const { json } = await buildSnapshotJson();
-      const saved = await saveJsonToDrive(roomId, fileName, folder, json);
-      void refreshDriveAccount();
-      setDriveSaveDialog(null);
-      showDriveNotice(`Saved ${saved.fileName} to ${saved.folder.name}`);
-    } catch (err: any) {
-      setDriveSaveError(driveErrorText(err, 'Could not save to Google Drive.'));
-    } finally {
-      setDriveSaveBusy(null);
-    }
-  };
-
-  const handleOpenFromDrive = async () => {
-    setDriveOpenError(null);
-    setDriveOpening(true);
-    try {
-      const doc = await pickDriveFile('snapshot');
-      void refreshDriveAccount();
-      if (!doc) return;
-      const file = await downloadDriveFile(doc);
-      openSnapshotText(doc.name, await file.text());
-    } catch (err: any) {
-      setDriveOpenError(
-        err instanceof GoogleError
-          ? friendlyGoogleError(err.code)
-          : err?.message || 'Could not open snapshot from Drive.'
-      );
-    } finally {
-      setDriveOpening(false);
-    }
-  };
-
-  const openSnapshotText = (fileName: string, text: string) => {
-    const { pending, error } = parseSnapshotText(fileName, text, roomId);
-    setImportError(error);
-    setPendingSnapshot(pending);
-    if (!error) setImportMode('replace');
-  };
-
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    setImportError(null);
-    const reader = new FileReader();
-    reader.onload = () => {
-      openSnapshotText(file.name, String(reader.result || ''));
-    };
-    reader.readAsText(file);
-    e.target.value = '';
-  };
-
-  const handleConfirmImport = async () => {
-    if (!pendingSnapshot || importError || isImporting) return;
-    setIsImporting(true);
-    const res = await onTeacherImportRoom(
-      {
-        elements: pendingSnapshot.elements,
-        messages: pendingSnapshot.messages,
-        background: pendingSnapshot.background,
-        subBoards: pendingSnapshot.subBoards,
-        breakoutConfig: pendingSnapshot.breakoutConfig,
-        assets: pendingSnapshot.assets,
-        roundTemplates: pendingSnapshot.roundTemplates,
-        roundTemplateInk: pendingSnapshot.roundTemplateInk,
-        roundVariants: pendingSnapshot.roundVariants,
-      },
-      importMode
-    );
-    setIsImporting(false);
-    if (res.ok) {
-      const importedEls = pendingSnapshot.elements;
-      const importedBg = pendingSnapshot.background || background;
-      setPendingSnapshot(null);
-      setImportError(null);
-      if (importedEls.length > 0 || importedBg) {
-        setTimeout(() => fitElementsAndBackgroundInView(importedEls, importedBg), 80);
-      }
-    } else {
-      setImportError(res.error || 'Failed to restore room snapshot.');
-    }
   };
 
   // Get local container coordinates from a native PointerEvent or MouseEvent
@@ -3794,7 +3518,7 @@ export default function Canvas({
         ref={fileInputRef}
         type="file"
         accept=".json,application/json"
-        onChange={handleFileChange}
+        onChange={classWork.handleFileChange}
         className="hidden"
       />
       <input
@@ -4398,7 +4122,7 @@ export default function Canvas({
 
           <button
             type="button"
-            onClick={handleExportJSON}
+            onClick={classWork.handleExportJSON}
             className="flex items-center gap-1.5 px-2 py-1 text-xs font-medium oh-btn border text-slate-700 rounded-[2px] transition-colors whitespace-nowrap shrink-0 cursor-pointer"
             title="Save everything in this room as a .json file: every student's board, the worksheets and the chat log. Open it later with Open class work."
           >
@@ -5436,42 +5160,42 @@ export default function Canvas({
               <>
                 <button
                   type="button"
-                  disabled={driveOpening}
-                  onClick={handleOpenFromDrive}
+                  disabled={classWork.driveOpening}
+                  onClick={classWork.handleOpenFromDrive}
                   className="flex items-center gap-1.5 px-3 py-1 rounded-[2px] border oh-btn text-xs font-medium text-slate-800 transition-colors whitespace-nowrap shrink-0 cursor-pointer disabled:opacity-50"
                   title="Open a room you saved to Google Drive"
                 >
                   <HardDrive size={13} className="text-emerald-600" />
-                  <span>{driveOpening ? 'Opening...' : 'Open Room from Drive'}</span>
+                  <span>{classWork.driveOpening ? 'Opening...' : 'Open Room from Drive'}</span>
                 </button>
                 <button
                   type="button"
-                  onClick={handleSaveToDrive}
+                  onClick={classWork.handleSaveToDrive}
                   className="flex items-center gap-1.5 px-3 py-1 rounded-[2px] border oh-btn text-xs font-medium text-slate-800 transition-colors whitespace-nowrap shrink-0 cursor-pointer"
                   title="Save this room (drawings, chat, worksheets and breakout boards) to your Google Drive"
                 >
                   <HardDrive size={13} className="text-emerald-600" />
                   <span>Save Room to Drive</span>
                 </button>
-                {driveOpenError && (
-                  <span className="text-xs text-red-600 font-medium">{driveOpenError}</span>
+                {classWork.driveOpenError && (
+                  <span className="text-xs text-red-600 font-medium">{classWork.driveOpenError}</span>
                 )}
-                {driveNotice && (
+                {classWork.driveNotice && (
                   <span
                     className={cn(
                       'text-xs whitespace-nowrap',
-                      driveNotice.isError ? 'text-red-600 font-medium' : 'text-slate-500'
+                      classWork.driveNotice.isError ? 'text-red-600 font-medium' : 'text-slate-500'
                     )}
                   >
-                    {driveNotice.text}
+                    {classWork.driveNotice.text}
                   </span>
                 )}
-                {driveAccount && (
+                {classWork.driveAccount && (
                   <span className="text-xs text-slate-500 whitespace-nowrap" data-testid="drive-account-chip">
-                    Drive: {driveAccount.email} ·{' '}
+                    Drive: {classWork.driveAccount.email} ·{' '}
                     <button
                       type="button"
-                      onClick={() => void handleSwitchDriveAccount()}
+                      onClick={() => void classWork.handleSwitchDriveAccount()}
                       className="text-indigo-600 hover:text-indigo-700 hover:underline font-medium cursor-pointer"
                     >
                       Switch
@@ -5772,23 +5496,7 @@ export default function Canvas({
       )}
 
       {/* Teacher Save Room to Drive Modal */}
-      {driveSaveDialog && (
-        <DriveSaveModal
-          defaultFileName={driveSaveDialog.defaultFileName}
-          folder={driveSaveDialog.folder}
-          lastSave={driveSaveDialog.lastSave}
-          accountEmail={driveAccount?.email}
-          busy={driveSaveBusy}
-          error={driveSaveError}
-          onChangeFolder={() => void handleDriveChangeFolder()}
-          onCreateFolder={(name) => handleDriveCreateFolder(name)}
-          onSwitchAccount={() => void handleSwitchDriveAccount()}
-          onSave={(name) => void handleDriveSaveConfirm(name)}
-          onCancel={() => {
-            if (!driveSaveBusy) setDriveSaveDialog(null);
-          }}
-        />
-      )}
+      {classWork.saveDialog && <DriveSaveModal {...classWork.saveDialog} />}
 
       {/* Teacher JSON Snapshot Restore Modal */}
       {isTeacher && lessonModal === 'save' && onTeacherLessonRequest && (
@@ -5813,7 +5521,7 @@ export default function Canvas({
           generateUnusedRoomCode={generateUnusedRoomCode ?? (async () => '')}
           getSavedTeacherPin={getSavedTeacherPin ?? (() => '')}
           onOpenNewRoom={(newRoomId, pin) => onOpenLoadedLessonRoom?.(newRoomId, pin)}
-          onSaveRoomFirst={() => void handleExportJSON()}
+          onSaveRoomFirst={() => void classWork.handleExportJSON()}
           onLoadedHere={(lesson) => {
             setTeacherViewingRoundId(null);
             setTimeout(() => fitElementsAndBackgroundInView([], lesson.main.background), 120);
@@ -5821,21 +5529,7 @@ export default function Canvas({
           onClose={() => setLessonModal(null)}
         />
       )}
-      {pendingSnapshot && (
-        <RestoreSnapshotModal
-          roomId={roomId}
-          pendingSnapshot={pendingSnapshot}
-          importError={importError}
-          importMode={importMode}
-          setImportMode={setImportMode}
-          isImporting={isImporting}
-          onConfirmImport={handleConfirmImport}
-          onCancel={() => {
-            setPendingSnapshot(null);
-            setImportError(null);
-          }}
-        />
-      )}
+      {classWork.restoreDialog && <RestoreSnapshotModal {...classWork.restoreDialog} />}
 
       {/* Infinite Canvas Viewport (Hidden when Teacher is in Live Grid Overview) */}
       <div

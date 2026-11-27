@@ -709,7 +709,7 @@ export async function startServer(options: StartServerOptions = {}) {
     return `${roomId}\u0000teachers`;
   }
 
-  /** Who hears a live delta on `boardId`. Call noteChange too, so teachers elsewhere get it in the next digest. */
+  /** Viewers of this board. Ephemeral events also use this channel. */
   function boardAudience(roomId: string, boardId: string | undefined): string {
     return boardChannel(roomId, boardId || 'main');
   }
@@ -722,10 +722,12 @@ export async function startServer(options: StartServerOptions = {}) {
   /** roomId → boardId → changes since the last digest. */
   const pendingDigests = new Map<string, Map<string, BoardChanges>>();
 
+  type DrawingChange = { upsert?: string[]; removed?: string[]; full?: boolean };
+
   function noteChange(
     room: RoomState,
     boardId: string | undefined,
-    change: { upsert?: string[]; removed?: string[]; full?: boolean }
+    change: DrawingChange
   ) {
     const bId = boardId || 'main';
     let boards = pendingDigests.get(room.id);
@@ -2802,6 +2804,21 @@ export async function startServer(options: StartServerOptions = {}) {
       return sb ? sb.elements : null;
     }
 
+    /** Publish an accepted edit to its viewers, the teacher overview, and the room store. */
+    function publishDrawingEdit(
+      room: RoomState,
+      change: DrawingChange,
+      event: string,
+      payload: { boardId: string; [key: string]: unknown },
+      options: { includeSender?: boolean; immediateSave?: boolean } = {}
+    ) {
+      room.lastActiveAt = Date.now();
+      scheduleSaveToDisk(room, options.immediateSave);
+      noteChange(room, payload.boardId, change);
+      const audience = options.includeSender ? io : socket;
+      audience.to(boardAudience(room.id, payload.boardId)).emit(event, payload);
+    }
+
     socket.on('element-start', (element) => {
       const meta = socketMeta.get(socket.id);
       if (!meta || !element || !element.id || !elementFieldsOk(element)) return;
@@ -2843,10 +2860,7 @@ export async function startServer(options: StartServerOptions = {}) {
         if (targetElements.length >= MAX_BOARD_ELEMENTS) return boardFull(boardId, targetElements);
         targetElements.push(authoredElement);
       }
-      room.lastActiveAt = Date.now();
-      scheduleSaveToDisk(room);
-      noteChange(room, boardId, { upsert: [authoredElement.id] });
-      socket.to(boardAudience(room.id, boardId)).emit('element-start', authoredElement);
+      publishDrawingEdit(room, { upsert: [authoredElement.id] }, 'element-start', authoredElement);
     });
 
     socket.on('element-append-points', ({ id, boardId = 'main', newPoints }) => {
@@ -2865,10 +2879,7 @@ export async function startServer(options: StartServerOptions = {}) {
       if (el && (el.userId === meta.userId || senderRecord?.isTeacher) && Array.isArray(el.points)) {
         if (el.points.length + newPoints.length > MAX_STROKE_NUMBERS) return; // stroke is long enough; drop the rest
         appendAll(el.points, newPoints);
-        room.lastActiveAt = Date.now();
-        scheduleSaveToDisk(room);
-        noteChange(room, boardId, { upsert: [id] });
-        socket.to(boardAudience(room.id, boardId)).emit('element-append-points', { id, boardId, newPoints });
+        publishDrawingEdit(room, { upsert: [id] }, 'element-append-points', { id, boardId, newPoints });
       }
     });
 
@@ -2903,10 +2914,7 @@ export async function startServer(options: StartServerOptions = {}) {
         } else {
           targetElements[idx] = updated;
         }
-        room.lastActiveAt = Date.now();
-        scheduleSaveToDisk(room);
-        noteChange(room, boardId, bringToFront ? { full: true } : { upsert: [patch.id] });
-        socket.to(boardAudience(room.id, boardId)).emit('element-update', {
+        publishDrawingEdit(room, bringToFront ? { full: true } : { upsert: [patch.id] }, 'element-update', {
           ...cleanPatch,
           boardId,
           bringToFront: Boolean(bringToFront),
@@ -2965,10 +2973,7 @@ export async function startServer(options: StartServerOptions = {}) {
       }
 
       if (appliedUpdates.length > 0) {
-        room.lastActiveAt = Date.now();
-        scheduleSaveToDisk(room);
-        noteChange(room, boardId, bringToFront ? { full: true } : { upsert: appliedUpdates.map((u) => u.id) });
-        socket.to(boardAudience(room.id, boardId)).emit('elements-batch-updated', {
+        publishDrawingEdit(room, bringToFront ? { full: true } : { upsert: appliedUpdates.map((u) => u.id) }, 'elements-batch-updated', {
           boardId,
           updates: appliedUpdates,
           bringToFront: Boolean(bringToFront),
@@ -3051,10 +3056,7 @@ export async function startServer(options: StartServerOptions = {}) {
       }
 
       if (added.length > 0) {
-        room.lastActiveAt = Date.now();
-        scheduleSaveToDisk(room);
-        noteChange(room, boardId, { upsert: added.map((e) => e.id) });
-        socket.to(boardAudience(room.id, boardId)).emit('elements-batch-added', { boardId, elements: added });
+        publishDrawingEdit(room, { upsert: added.map((e) => e.id) }, 'elements-batch-added', { boardId, elements: added });
       }
       if (rejectedFull) {
         boardFull(boardId, targetElements);
@@ -3086,10 +3088,7 @@ export async function startServer(options: StartServerOptions = {}) {
       }
 
       if (removedIds.length > 0) {
-        room.lastActiveAt = Date.now();
-        scheduleSaveToDisk(room);
-        noteChange(room, boardId, { removed: removedIds });
-        socket.to(boardAudience(room.id, boardId)).emit('elements-batch-removed', { boardId, ids: removedIds });
+        publishDrawingEdit(room, { removed: removedIds }, 'elements-batch-removed', { boardId, ids: removedIds });
       }
     });
 
@@ -3145,11 +3144,11 @@ export async function startServer(options: StartServerOptions = {}) {
       }
       targetElements.splice(0, targetElements.length, ...next);
 
-      room.lastActiveAt = Date.now();
-      scheduleSaveToDisk(room);
-      noteChange(room, boardId, { full: true });
-      if (droppedNameStamp) io.to(boardAudience(room.id, boardId)).emit('state-sync', { boardId, elements: targetElements });
-      else socket.to(boardAudience(room.id, boardId)).emit('elements-replaced', { boardId, groups: clean });
+      if (droppedNameStamp) {
+        publishDrawingEdit(room, { full: true }, 'state-sync', { boardId, elements: targetElements }, { includeSender: true });
+      } else {
+        publishDrawingEdit(room, { full: true }, 'elements-replaced', { boardId, groups: clean });
+      }
     });
 
     socket.on('element-remove', ({ id, boardId = 'main' }) => {
@@ -3169,10 +3168,7 @@ export async function startServer(options: StartServerOptions = {}) {
         const el = targetElements[idx];
         if (el.userId === meta.userId || senderRecord?.isTeacher) {
           targetElements.splice(idx, 1);
-          room.lastActiveAt = Date.now();
-          scheduleSaveToDisk(room);
-          noteChange(room, boardId, { removed: [id] });
-          socket.to(boardAudience(room.id, boardId)).emit('element-removed', { id, boardId });
+          publishDrawingEdit(room, { removed: [id] }, 'element-removed', { id, boardId });
         }
       }
     });
@@ -3228,14 +3224,24 @@ export async function startServer(options: StartServerOptions = {}) {
       for (let i = targetElements.length - 1; i >= 0; i--) {
         if (targetElements[i].userId === userId) {
           const removed = targetElements.splice(i, 1)[0];
-          room.lastActiveAt = Date.now();
-          scheduleSaveToDisk(room);
-          noteChange(room, boardId, { removed: [removed.id] });
-          io.to(boardAudience(room.id, boardId)).emit('element-removed', { id: removed.id, boardId });
+          publishDrawingEdit(room, { removed: [removed.id] }, 'element-removed', { id: removed.id, boardId }, { includeSender: true });
           break;
         }
       }
     });
+
+    function clearBoardInk(room: RoomState, boardId: string, userId?: string) {
+      const board = boardId === 'main' ? room : room.subBoards.get(boardId);
+      if (board) {
+        board.elements = userId ? board.elements.filter((el) => el.userId !== userId) : [];
+        publishDrawingEdit(room, { full: true }, 'state-sync', { boardId, elements: board.elements },
+          { includeSender: true, immediateSave: true });
+      } else {
+        // A stale board selection still counts as room activity, as it did before.
+        room.lastActiveAt = Date.now();
+        scheduleSaveToDisk(room, true);
+      }
+    }
 
     socket.on('clear-user-drawings', (payload) => {
       const meta = socketMeta.get(socket.id);
@@ -3255,21 +3261,7 @@ export async function startServer(options: StartServerOptions = {}) {
         return;
       }
 
-      if (boardId === 'main') {
-        room.elements = room.elements.filter((el) => el.userId !== targetUserId);
-        noteChange(room, 'main', { full: true });
-        io.to(boardAudience(room.id, 'main')).emit('state-sync', { boardId: 'main', elements: room.elements });
-      } else {
-        const sb = room.subBoards.get(boardId);
-        if (sb) {
-          sb.elements = sb.elements.filter((el) => el.userId !== targetUserId);
-          noteChange(room, boardId, { full: true });
-          io.to(boardAudience(room.id, boardId)).emit('state-sync', { boardId, elements: sb.elements });
-        }
-      }
-
-      room.lastActiveAt = Date.now();
-      scheduleSaveToDisk(room, true);
+      clearBoardInk(room, boardId, targetUserId);
     });
 
     socket.on('teacher:set-hide-cursors', (hide: boolean) => {
@@ -3400,21 +3392,7 @@ export async function startServer(options: StartServerOptions = {}) {
       if (!callerRecord?.isTeacher) return;
 
       const boardId = payload?.boardId || 'main';
-      if (boardId === 'main') {
-        room.elements = [];
-        noteChange(room, 'main', { full: true });
-        io.to(boardAudience(room.id, 'main')).emit('state-sync', { boardId: 'main', elements: room.elements });
-      } else {
-        const sb = room.subBoards.get(boardId);
-        if (sb) {
-          sb.elements = [];
-          noteChange(room, boardId, { full: true });
-          io.to(boardAudience(room.id, boardId)).emit('state-sync', { boardId, elements: sb.elements });
-        }
-      }
-
-      room.lastActiveAt = Date.now();
-      scheduleSaveToDisk(room, true);
+      clearBoardInk(room, boardId);
     });
 
     socket.on('disconnect', () => {

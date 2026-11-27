@@ -1,4 +1,5 @@
-import type { CanvasElement, ChatMessage, PendingSnapshotData, RoomBackground } from '../types';
+import type { CanvasElement, ChatMessage, PendingSnapshotData, RoomBackground, RoomSnapshot } from '../types';
+import { variantBackgrounds } from './roundVariants.ts';
 import { looksLikeLesson } from './lessonPack.ts';
 
 export function snapshotFileName(roomId: string, date: Date = new Date()): string {
@@ -107,4 +108,30 @@ export async function embedAssets(
     }
   }
   return { assets, failed };
+}
+
+export type SnapshotSource = Omit<RoomSnapshot, 'version' | 'exportedAt' | 'assets'>;
+
+/** Build the portable class-work file from the viewer's main board and breakout state. */
+export async function buildSnapshotJson(source: SnapshotSource, fetcher?: (url: string) => Promise<Response>) {
+  const { roundTemplates = {}, roundTemplateInk = {}, roundVariants = {}, ...room } = source;
+  const urls = backgroundAssetUrls([
+    room.background,
+    ...Object.values(room.subBoards ?? {}).map((board) => board?.background),
+    room.breakoutConfig?.autoIndividualBackground,
+    ...Object.values(roundTemplates),
+    ...Object.values(roundVariants).flatMap(variantBackgrounds),
+  ]);
+  const { assets } = await embedAssets(urls, fetcher);
+  const now = new Date();
+  const snapshot: RoomSnapshot = {
+    version: 2,
+    exportedAt: now.getTime(),
+    assets,
+    ...room,
+    ...(Object.keys(roundTemplates).length > 0 && { roundTemplates }),
+    ...(Object.keys(roundTemplateInk).length > 0 && { roundTemplateInk }),
+    ...(Object.keys(roundVariants).length > 0 && { roundVariants }),
+  };
+  return { json: JSON.stringify(snapshot, null, 2), fileName: snapshotFileName(room.roomId, now) };
 }
