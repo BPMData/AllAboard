@@ -87,10 +87,11 @@ Google sign-in, so it doesn't touch the OAuth scope rule in CLAUDE.md.
 
 To turn reports off again, remove `ALLABOARD_TOKEN` from the relay's script properties.
 
-## Not built
+## Emails to the reporter
 
-- No acknowledgement email to the reporter and no follow-up when a fix ships. The dialog doesn't promise either.
-  Reply-To on the private email lets the developer answer by hand.
+- No thank-you email: the dialog shows "The developer has your report." once the relay has it. If the contact is an
+  email address, the shared relay sends one "here's what we changed" email when the issue is **closed as completed**,
+  and nothing else (an issue closed as not planned or as a duplicate sends nothing). Nobody answers reports by hand.
 
 ## Tests
 

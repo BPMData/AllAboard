@@ -327,7 +327,9 @@ export default function ProblemReportModal({
                 report.
               </p>
               <label className="block space-y-1">
-                <span className="text-xs font-medium text-slate-700">How can we reach you? (optional)</span>
+                <span className="text-xs font-medium text-slate-700">
+                  Your email, to hear when it’s fixed (optional)
+                </span>
                 <input
                   type="text"
                   value={report.contact}
