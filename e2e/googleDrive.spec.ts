@@ -233,7 +233,9 @@ test.describe('Google Drive integration (stubbed Google)', () => {
     await joinRoom(page, uniqueRoom('gd-pdf'), 'Ms T', '4829');
     await page.getByRole('button', { name: 'Slides / PDF from Drive', exact: true }).click();
 
-    await expect(page.getByTitle('Remove background worksheet from this board')).toBeVisible();
+    // One click here downloads the PDF, starts pdf.js twice (page count, then render), encodes each page as a JPEG and
+    // uploads the result to the room. That usually takes 2–4 s, so on a busy machine it ran past the 5 s default.
+    await expect(page.getByTitle('Remove background worksheet from this board')).toBeVisible({ timeout: 15_000 });
     await expect(page.getByRole('button', { name: 'Row', exact: true })).toHaveAttribute('aria-pressed', 'true');
     expect(requestedUrls).toContain('https://www.googleapis.com/drive/v3/files/pdf-1?alt=media');
 
