@@ -10,16 +10,27 @@ export function registerHttpRoutes(
     store,
     backup,
     options,
+    writerState,
     getRoomAvailability,
   }: {
     store: RoomStore;
     backup: BackupMirror | null;
     options: StartServerOptions;
+    writerState: () => string;
     getRoomAvailability: (roomId?: string) => unknown;
   }
 ) {
   app.get('/healthz', (_req, res) => {
     res.status(200).json({ status: 'ok' });
+  });
+
+  app.get('/api/release', (_req, res) => {
+    res.setHeader('Cache-Control', 'no-store');
+    res.json({
+      revision: process.env.K_REVISION ?? null,
+      writer: writerState(),
+      backup: backup?.status() ?? { backend: 'off' },
+    });
   });
 
   // "Something not working?" reports → the reporting relay (problemReportRoute.ts, docs/REPORTS.md).
@@ -36,6 +47,10 @@ export function registerHttpRoutes(
 
   app.get('/api/rooms/:roomId', (req, res) => {
     res.setHeader('Cache-Control', 'no-store');
+    if (writerState() !== 'active') {
+      res.sendStatus(503);
+      return;
+    }
     res.status(200).json(getRoomAvailability(String(req.params.roomId || '')));
   });
 

@@ -23,6 +23,7 @@
  * `node server.ts` (type stripping only).
  */
 import fs from 'node:fs';
+import { randomUUID } from 'node:crypto';
 import path from 'node:path';
 import { promisify } from 'node:util';
 import { gzip, gunzipSync } from 'node:zlib';
@@ -104,6 +105,12 @@ export class DirBackend implements BackupBackend {
   }
 }
 
+export class GenerationConflict extends Error {
+  constructor(key: string) {
+    super(`GCS object changed concurrently: ${key}`);
+  }
+}
+
 export type FetchLike = (url: string, init?: RequestInit) => Promise<Response>;
 
 const REQUEST_TIMEOUT_MS = 20_000; // a hung request must not stall startup or the SIGTERM flush
@@ -116,6 +123,7 @@ const METADATA_TOKEN_URL = 'http://metadata.google.internal/computeMetadata/v1/i
  */
 export class GcsBackend implements BackupBackend {
   readonly label: string;
+  private readonly roomGenerations = new Map<string, string>();
   private readonly bucket: string;
   private readonly fetchImpl: FetchLike;
   private readonly apiBase: string;
@@ -166,28 +174,67 @@ export class GcsBackend implements BackupBackend {
     const url = `${this.apiBase}/storage/v1/b/${encodeURIComponent(this.bucket)}/o?maxResults=1&prefix=${encodeURIComponent(ROOMS_PREFIX)}`;
     const res = await this.request(url);
     if (!res.ok) await this.fail('probe', ROOMS_PREFIX, res);
+    const key = 'coordination/probe-' + randomUUID();
+    await this.writeVersion(key, new Uint8Array([1]), 'application/octet-stream', '0');
+    try {
+      if (!(await this.readVersion(key))) throw new Error('Backup write probe disappeared');
+    } finally {
+      await this.remove(key);
+    }
   }
 
-  async read(key: string): Promise<Uint8Array | null> {
+  async readVersion(key: string): Promise<{ bytes: Uint8Array; generation: string } | null> {
     const res = await this.request(`${this.objectUrl(key)}?alt=media`);
     if (res.status === 404) return null;
     if (!res.ok) await this.fail('read', key, res);
-    return new Uint8Array(await res.arrayBuffer());
+    const generation = res.headers.get('x-goog-generation');
+    if (!generation) throw new Error('GCS read missing object generation');
+    return { bytes: new Uint8Array(await res.arrayBuffer()), generation };
+  }
+
+  async read(key: string): Promise<Uint8Array | null> {
+    const obj = await this.readVersion(key);
+    if (key.startsWith(ROOMS_PREFIX)) this.roomGenerations.set(key, obj?.generation ?? '0');
+    return obj?.bytes ?? null;
+  }
+
+  async writeVersion(key: string, bytes: Uint8Array, contentType: string, expected?: string): Promise<string> {
+    const query = new URLSearchParams({ uploadType: 'media', name: key });
+    if (expected !== undefined) query.set('ifGenerationMatch', expected);
+    const res = await this.request(
+      `${this.apiBase}/upload/storage/v1/b/${encodeURIComponent(this.bucket)}/o?${query}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': contentType },
+        body: bytes,
+      }
+    );
+    if (res.status === 412) throw new GenerationConflict(key);
+    if (!res.ok) await this.fail('write', key, res);
+    const { generation } = (await res.json()) as { generation: string };
+    if (!generation) throw new Error('GCS write missing object generation');
+    return generation;
   }
 
   async write(key: string, bytes: Uint8Array, contentType: string): Promise<void> {
-    const url = `${this.apiBase}/upload/storage/v1/b/${encodeURIComponent(this.bucket)}/o?uploadType=media&name=${encodeURIComponent(key)}`;
-    const res = await this.request(url, {
-      method: 'POST',
-      headers: { 'Content-Type': contentType },
-      body: bytes,
-    });
-    if (!res.ok) await this.fail('write', key, res);
+    const room = key.startsWith(ROOMS_PREFIX);
+    const generation = await this.writeVersion(
+      key,
+      bytes,
+      contentType,
+      room ? (this.roomGenerations.get(key) ?? '0') : undefined
+    );
+    if (room) this.roomGenerations.set(key, generation);
   }
 
   async remove(key: string): Promise<void> {
-    const res = await this.request(this.objectUrl(key), { method: 'DELETE' });
+    const room = key.startsWith(ROOMS_PREFIX);
+    const expected = this.roomGenerations.get(key) ?? '0';
+    const url = this.objectUrl(key) + (room ? `?ifGenerationMatch=${expected}` : '');
+    const res = await this.request(url, { method: 'DELETE' });
+    if (res.status === 412) throw new GenerationConflict(key);
     if (!res.ok && res.status !== 404) await this.fail('delete', key, res);
+    if (room) this.roomGenerations.delete(key);
   }
 
   async exists(key: string): Promise<boolean> {
@@ -266,6 +313,21 @@ export class BackupMirror {
   private timer: NodeJS.Timeout | null = null;
   private chain: Promise<void> = Promise.resolve();
   private stopped = false;
+  private readonly outstanding = new Map<string, number>();
+  private readonly failed = new Set<string>();
+  restoreErrors = 0;
+
+  status() {
+    const overdue = [...this.outstanding.values()].some((since) => Date.now() - since > 60_000);
+    return {
+      backend: this.backend instanceof GcsBackend ? 'gcs' : 'directory',
+      target: this.backend instanceof GcsBackend ? this.backend.label : undefined,
+      pending: this.outstanding.size,
+      failed: this.failed.size,
+      overdue,
+      restoreErrors: this.restoreErrors,
+    };
+  }
 
   constructor(backend: BackupBackend, readLocalAsset: LocalAssetReader, intervalMs = 10_000) {
     this.backend = backend;
@@ -276,21 +338,27 @@ export class BackupMirror {
   // ---------- restore (boot) ----------
 
   /** Reads every backed-up room. Call once at startup, before accepting connections. */
-  async loadAllRooms(): Promise<BackedUpRoom[]> {
-    const out: BackedUpRoom[] = [];
+  async *rooms(): AsyncGenerator<BackedUpRoom> {
+    this.restoreErrors = 0;
     for (const key of await this.backend.list(ROOMS_PREFIX)) {
       if (!key.endsWith(ROOM_SUFFIX)) continue;
-      const roomId = decodeURIComponent(key.slice(ROOMS_PREFIX.length, -ROOM_SUFFIX.length));
       try {
+        const roomId = decodeURIComponent(key.slice(ROOMS_PREFIX.length, -ROOM_SUFFIX.length));
         const bytes = await this.backend.read(key);
         if (!bytes) continue;
         const state = JSON.parse(gunzipSync(bytes).toString('utf8'));
-        out.push({ roomId, state, lastActiveAt: Number(state?.lastActiveAt) || 0 });
+        yield { roomId, state, lastActiveAt: Number(state?.lastActiveAt) || 0 };
       } catch (err) {
+        this.restoreErrors++;
         console.error(`Backup: could not read "${key}", skipping:`, err);
       }
     }
-    return out;
+  }
+
+  async loadAllRooms(): Promise<BackedUpRoom[]> {
+    const rooms: BackedUpRoom[] = [];
+    for await (const room of this.rooms()) rooms.push(room);
+    return rooms;
   }
 
   /** Reads one asset from the backup (used when the local store misses after a cold start). */
@@ -312,6 +380,7 @@ export class BackupMirror {
   scheduleRoom(roomId: string, getState: RoomStateGetter): void {
     if (this.stopped) return;
     this.pending.set(roomId, getState);
+    if (!this.outstanding.has(roomId)) this.outstanding.set(roomId, Date.now());
     if (!this.timer) {
       this.timer = setTimeout(() => {
         this.timer = null;
@@ -332,13 +401,16 @@ export class BackupMirror {
       clearTimeout(this.timer);
       this.timer = null;
     }
-    const batch = [...this.pending.entries()];
-    this.pending.clear();
     this.chain = this.chain.then(async () => {
+      const batch = [...this.pending.entries()];
+      this.pending.clear();
       for (const [roomId, getState] of batch) {
         try {
           await this.writeRoom(roomId, getState());
+          this.failed.delete(roomId);
+          if (!this.pending.has(roomId)) this.outstanding.delete(roomId);
         } catch (err) {
+          this.failed.add(roomId);
           console.error(`Backup: failed to write room "${roomId}", will retry:`, err);
           if (!this.pending.has(roomId)) this.scheduleRoom(roomId, getState);
         }
@@ -347,14 +419,16 @@ export class BackupMirror {
     return this.chain;
   }
 
-  /** Flushes, then stops accepting new work. */
+  /** The caller has stopped mutations. Retry a transient failure once within the caller's deadline. */
   async stop(): Promise<void> {
     await this.flushNow();
+    if (this.pending.size) await this.flushNow();
     this.stopped = true;
     if (this.timer) {
       clearTimeout(this.timer);
       this.timer = null;
     }
+    if (this.pending.size) throw new Error(`Final backup incomplete for ${this.pending.size} room(s)`);
   }
 
   private async writeRoom(roomId: string, state: object | null): Promise<void> {
@@ -377,8 +451,7 @@ export class BackupMirror {
     if (!(await this.backend.exists(key))) {
       const bytes = this.readLocalAsset(hash);
       if (!bytes) {
-        console.error(`Backup: asset ${hash} is missing locally; room will reference a missing image.`);
-        return;
+        throw new Error(`Backup: worksheet asset ${hash} is missing`);
       }
       await this.backend.write(key, bytes, sniffMime(bytes));
     }

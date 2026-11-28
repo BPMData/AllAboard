@@ -60,7 +60,7 @@ export function socketPool() {
   const open: TestSocket[] = [];
   return {
     async join(
-      srv: ServerHandle,
+      srv: Pick<ServerHandle, 'port'>,
       params: { roomId: string; userId: string; name: string; color?: string; teacherPin?: string }
     ): Promise<{ socket: Socket; init: any }> {
       // Tests also send deliberately malformed wire payloads; keep the returned socket permissive.

@@ -11,3 +11,6 @@ coverage/
 human_tests/
 test-results/
 playwright-report/
+
+# Generated in the checkout by google-github-actions/auth.
+gha-creds-*.json

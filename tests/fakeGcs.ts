@@ -4,7 +4,7 @@
  */
 export interface FakeGcs {
   fetch: (url: string, init?: RequestInit) => Promise<Response>;
-  objects: Map<string, { bytes: Uint8Array; contentType: string }>;
+  objects: Map<string, { bytes: Uint8Array; contentType: string; generation: string }>;
   /** Make every request fail with this HTTP status (e.g. 403) until reset to 0. */
   failWith: number;
   requests: string[];
@@ -13,6 +13,7 @@ export interface FakeGcs {
 export function createFakeGcs(bucket: string, opts: { pageSize?: number; token?: string } = {}): FakeGcs {
   const pageSize = opts.pageSize ?? 1000;
   const token = opts.token ?? 'test-token';
+  let sequence = 0;
   const fake: FakeGcs = {
     objects: new Map(),
     failWith: 0,
@@ -30,8 +31,16 @@ export function createFakeGcs(bucket: string, opts: { pageSize?: number; token?:
       if (method === 'POST' && url.pathname === `/upload/storage/v1/b/${b}/o`) {
         const name = url.searchParams.get('name')!;
         const body = new Uint8Array(await new Response(init.body as BodyInit).arrayBuffer());
-        fake.objects.set(name, { bytes: body, contentType: new Headers(init.headers).get('Content-Type') ?? '' });
-        return Response.json({ name });
+        const expected = url.searchParams.get('ifGenerationMatch');
+        if (expected !== null && expected !== (fake.objects.get(name)?.generation ?? '0'))
+          return new Response(null, { status: 412 });
+        const generation = String(++sequence);
+        fake.objects.set(name, {
+          generation,
+          bytes: body,
+          contentType: new Headers(init.headers).get('Content-Type') ?? '',
+        });
+        return Response.json({ name, generation });
       }
       if (url.pathname === `/storage/v1/b/${b}/o` && method === 'GET') {
         const prefix = url.searchParams.get('prefix') ?? '';
@@ -47,11 +56,14 @@ export function createFakeGcs(bucket: string, opts: { pageSize?: number; token?:
         const obj = fake.objects.get(name);
         if (method === 'DELETE') {
           if (!obj) return new Response('', { status: 404 });
+          if (url.searchParams.has('ifGenerationMatch') && url.searchParams.get('ifGenerationMatch') !== obj.generation)
+            return new Response(null, { status: 412 });
           fake.objects.delete(name);
           return new Response(null, { status: 204 });
         }
         if (!obj) return new Response('not found', { status: 404 });
-        if (url.searchParams.get('alt') === 'media') return new Response(obj.bytes);
+        if (url.searchParams.get('alt') === 'media')
+          return new Response(obj.bytes, { headers: { 'x-goog-generation': obj.generation } });
         return Response.json({ name });
       }
       return new Response('unexpected request', { status: 400 });

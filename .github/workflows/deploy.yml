@@ -1,17 +1,16 @@
 name: Deploy to Cloud Run
 
 on:
-  push:
-    branches: [main]
-  workflow_dispatch:
+  workflow_call:
 
 concurrency:
   group: deploy-cloudrun-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   deploy:
-    name: Verify and deploy allaboard
+    if: github.ref == 'refs/heads/main'
+    name: Deploy verified commit
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
@@ -22,22 +21,15 @@ jobs:
           node-version: 22
           cache: npm
 
-      - name: Install dependencies
-        run: npm ci --no-audit --no-fund
-
-      - name: Typecheck
-        run: npm run lint
-
-      - name: Run unit and server tests
-        run: npm test
-
-      - name: Production build
-        run: npm run build
-
-      - name: Production boot smoke check
-        run: bash scripts/smoke.sh
+      # A slow check on an older merge can finish after the current main has deployed.
+      - name: Confirm this commit is still main
+        id: current
+        run: |
+          main_sha=$(git ls-remote --exit-code origin refs/heads/main | cut -f1)
+          if [[ "$main_sha" == "$GITHUB_SHA" ]]; then echo 'deploy=true' >> "$GITHUB_OUTPUT"; fi
 
       - name: Authenticate to Google Cloud
+        if: steps.current.outputs.deploy == 'true'
         uses: google-github-actions/auth@v3
         with:
           credentials_json: ${{ secrets.GCP_SA_KEY }}
@@ -47,14 +39,19 @@ jobs:
       # entrypoint override so the Buildpacks launcher runs `npm start` (`node server.ts`) on 3000.
       # Problem reports (docs/REPORTS.md): the relay URL and token come from GitHub secrets of the same names.
       # Without the secrets the flag is left out, so the deploy is exactly as before and reports fall back to email.
+      - name: Verify authenticated source manifest
+        if: steps.current.outputs.deploy == 'true'
+        run: bash scripts/check-upload.sh
+
       - name: Deploy to Cloud Run
+        if: steps.current.outputs.deploy == 'true'
         env:
           REPORT_RELAY_URL: ${{ secrets.REPORT_RELAY_URL }}
           REPORT_RELAY_TOKEN: ${{ secrets.REPORT_RELAY_TOKEN }}
         run: |
-          REPORT_FLAGS=()
+          RELEASE_ENV="RELEASE_SEQUENCE=$(date +%s)"
           if [ -n "$REPORT_RELAY_URL" ] && [ -n "$REPORT_RELAY_TOKEN" ]; then
-            REPORT_FLAGS=(--update-env-vars "^@^REPORT_RELAY_URL=${REPORT_RELAY_URL}@REPORT_RELAY_TOKEN=${REPORT_RELAY_TOKEN}")
+            RELEASE_ENV+="@REPORT_RELAY_URL=${REPORT_RELAY_URL}@REPORT_RELAY_TOKEN=${REPORT_RELAY_TOKEN}"
           fi
           gcloud run deploy allaboard \
             --source . \
@@ -69,5 +66,9 @@ jobs:
             --command "" \
             --args "" \
             --update-labels "managed-by=github-actions,commit-sha=${GITHUB_SHA}" \
-            "${REPORT_FLAGS[@]}" \
+            --update-env-vars "^@^${RELEASE_ENV}" \
             --quiet
+
+      - name: Verify serving revision and room backups
+        if: steps.current.outputs.deploy == 'true'
+        run: node scripts/check-release.mjs "$GITHUB_SHA"

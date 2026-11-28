@@ -6,6 +6,8 @@ on:
   push:
     branches: [main]
 
+  workflow_dispatch:
+
 jobs:
   test-and-build:
     name: Lint, Test & Build
@@ -22,6 +24,9 @@ jobs:
 
       - name: Install dependencies
         run: npm ci
+
+      - name: Check Cloud Build source manifest
+        run: bash scripts/check-upload.sh
 
       - name: Typecheck (tsc)
         run: npm run lint
@@ -65,6 +70,9 @@ jobs:
       - name: Run Playwright tests
         run: npm run test:e2e
 
+      - name: Build and test the production classroom
+        run: npm run build && npm run test:production
+
       - name: Upload Playwright report
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@v4
@@ -72,3 +80,9 @@ jobs:
           name: playwright-report
           path: playwright-report/
           retention-days: 14
+
+  deploy:
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    needs: [test-and-build, e2e]
+    uses: ./.github/workflows/deploy.yml
+    secrets: inherit

@@ -1,4 +1,6 @@
 import express from 'express';
+import { GcsBackend } from './backupMirror.ts';
+import { WriterLease } from './server/writerLease.ts';
 import { createServer } from 'http';
 import { monitorEventLoopDelay } from 'node:perf_hooks';
 import path from 'path';
@@ -39,12 +41,20 @@ export async function startServer(options: StartServerOptions = {}) {
   const backup = await openBackupMirror(store, options);
   const serialization = createRoomSerialization(store);
   const { cloneBackground, cleanRoundVariants } = serialization;
-  const portToBind = options.port !== undefined ? options.port : Number(process.env.PORT) || 3000;
+  const portToBind =
+    options.port !== undefined ? options.port : process.env.PORT === '0' ? 0 : Number(process.env.PORT) || 3000;
   const hostToBind = options.host || '0.0.0.0';
 
+  let closing = false;
+  let lease: WriterLease | undefined;
+  const writable = () => !closing && (!lease || lease.writable());
   const app = express();
   const httpServer = createServer(app);
   const io = new Server<ClientToServerEvents, ServerToClientEvents>(httpServer, {
+    allowRequest: (_req, done) => {
+      if (lease && !lease.writable()) lease.request();
+      done(null, writable());
+    },
     cors: {
       origin: '*',
     },
@@ -76,11 +86,24 @@ export async function startServer(options: StartServerOptions = {}) {
     flushRoomsToDiskAsync,
     cancelPendingSave,
   } = persistence;
-  registerHttpRoutes(app, { store, backup, options, getRoomAvailability });
+  registerHttpRoutes(app, {
+    store,
+    backup,
+    options,
+    getRoomAvailability,
+    writerState: () => {
+      if (lease && !lease.writable()) lease.request();
+      return lease?.state() ?? 'active';
+    },
+  });
 
-  migrateLegacyJsonStore();
-  await restoreFromBackup();
-  const housekeepingInterval = setInterval(runHousekeeping, HOUSEKEEPING_INTERVAL_MS);
+  async function restore() {
+    migrateLegacyJsonStore();
+    await restoreFromBackup();
+  }
+  const housekeepingInterval = setInterval(() => {
+    if (writable()) runHousekeeping();
+  }, HOUSEKEEPING_INTERVAL_MS);
   housekeepingInterval.unref();
 
   // ---------- Board channels ----------
@@ -144,6 +167,7 @@ export async function startServer(options: StartServerOptions = {}) {
 
   // 1-second check for running classroom countdown timers
   const timerTickInterval = setInterval(() => {
+    if (!writable()) return;
     const now = Date.now();
     for (const room of rooms.values()) {
       if (room.timer?.isRunning && room.timer.endsAt !== null && now >= room.timer.endsAt) {
@@ -189,6 +213,7 @@ export async function startServer(options: StartServerOptions = {}) {
   };
   let rateLimitedEvents = 0;
 
+  const handlers = new Set<Promise<unknown>>();
   io.on('connection', (socket) => {
     // Every handler for this socket runs in arrival order, one at a time, even when one awaits (PIN hashing).
     // Errors are logged, never thrown: with one instance, an uncaught throw takes every room down.
@@ -196,9 +221,14 @@ export async function startServer(options: StartServerOptions = {}) {
     const rawOn = socket.on.bind(socket) as (event: string, handler: (...args: any[]) => unknown) => unknown;
     (socket as any).on = (event: string, handler: (...args: any[]) => unknown) =>
       rawOn(event, (...args: any[]) => {
+        if (event !== 'disconnect' && !writable()) return;
+        handlers.delete(queue);
         queue = queue
           .then(() => handler(...args))
           .catch((err) => console.error(`[socket] ${event} handler failed:`, err));
+        handlers.add(queue);
+        const queued = queue;
+        void queued.finally(() => handlers.delete(queued));
       });
 
     // Per-socket allowances (socketGuards.ts). Over the limit, the event is dropped, not the connection.
@@ -230,6 +260,17 @@ export async function startServer(options: StartServerOptions = {}) {
     registerDrawingHandlers(socket, ctx, boardFull);
   });
 
+  let draining: Promise<void> | undefined;
+  if (backup?.backend instanceof GcsBackend && (options.releaseSequence !== undefined || process.env.K_SERVICE)) {
+    lease = new WriterLease(
+      backup.backend,
+      options.releaseSequence ?? (Number(process.env.RELEASE_SEQUENCE) || 0),
+      restore,
+      drain
+    );
+    await lease.start();
+  } else await restore();
+
   if (!options.skipVite && !isProductionRuntime()) {
     const vite = await createViteServer({
       server: { middlewareMode: true },
@@ -254,57 +295,57 @@ export async function startServer(options: StartServerOptions = {}) {
   const addr = httpServer.address();
   const actualPort = typeof addr === 'object' && addr ? addr.port : portToBind;
 
-  let isShuttingDown = false;
-  function handleShutdown(signal: string) {
-    if (isShuttingDown) return;
-    isShuttingDown = true;
-    console.log(`Received ${signal}, flushing rooms to disk and shutting down...`);
-    flushRoomsToDisk();
-
-    const forceExitTimeout = setTimeout(() => {
-      process.exit(0);
+  function drain() {
+    closing = true;
+    return (draining ??= (async () => {
+      clearInterval(housekeepingInterval);
+      clearInterval(timerTickInterval);
+      clearInterval(digestInterval);
+      clearInterval(cursorInterval);
+      clearInterval(loadLogInterval);
+      clearInterval(peakTracker);
+      loopDelay.disable();
+      // Closing transports makes browsers reconnect. A server namespace disconnect suppresses automatic retry.
+      for (const socket of io.sockets.sockets.values()) socket.conn.close();
+      await Promise.all(handlers);
+      cancelPendingSave();
+      flushRoomsToDisk();
+      await backup?.stop();
+    })());
+  }
+  let shutdown: Promise<void> | undefined;
+  function close() {
+    closing = true;
+    return (shutdown ??= (async () => {
+      try {
+        if (lease) await lease.stop();
+        else await drain();
+      } finally {
+        await io.close();
+        store.close();
+        process.off('SIGTERM', onSignal);
+        process.off('SIGINT', onSignal);
+      }
+    })());
+  }
+  function onSignal() {
+    if (shutdown) return;
+    const deadline = setTimeout(() => {
+      console.error('Shutdown deadline reached before the final backup completed.');
+      process.exit(1);
     }, 8000);
-    forceExitTimeout.unref();
-
-    // Cloud Run allows ~10 s after SIGTERM: push pending room backups before exiting.
-    void (backup ? backup.stop() : Promise.resolve()).finally(() => {
-      io.close(() => {
-        httpServer.close(() => {
-          process.exit(0);
-        });
-      });
-    });
+    deadline.unref();
+    void close().then(
+      () => process.exit(0),
+      (err) => {
+        console.error('Shutdown failed:', err);
+        process.exit(1);
+      }
+    );
   }
-
   if (!options.skipVite) {
-    process.on('SIGTERM', () => handleShutdown('SIGTERM'));
-    process.on('SIGINT', () => handleShutdown('SIGINT'));
-  }
-
-  async function close() {
-    clearInterval(housekeepingInterval);
-    clearInterval(timerTickInterval);
-    clearInterval(digestInterval);
-    clearInterval(cursorInterval);
-    clearInterval(loadLogInterval);
-    clearInterval(peakTracker);
-    loopDelay.disable();
-    cancelPendingSave();
-    await new Promise<void>((resolve) => {
-      io.close(() => {
-        resolve();
-      });
-    });
-    if (httpServer.listening) {
-      await new Promise<void>((resolve) => {
-        httpServer.close(() => {
-          resolve();
-        });
-      });
-    }
-    flushRoomsToDisk();
-    await backup?.stop();
-    store.close();
+    process.on('SIGTERM', onSignal);
+    process.on('SIGINT', onSignal);
   }
 
   return {

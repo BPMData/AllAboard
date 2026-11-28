@@ -29,16 +29,7 @@ export function isProductionRuntime(): boolean {
   );
 }
 
-/**
- * Picks where rooms are backed up. Candidates, tried in this order; the first one whose probe
- * succeeds wins:
- *   1. BACKUP_DIR (or options.backupDir) → plain files in that folder (local dev, or a mounted bucket)
- *   2. The bucket: options.backupBackend (tests only), else BACKUP_BUCKET (set "off" to disable),
- *      else DEFAULT_BACKUP_BUCKET when running on Cloud Run in production (K_SERVICE + non-dev NODE_ENV)
- * A candidate that fails its probe is skipped (and logged), so a stale BACKUP_DIR left behind by an
- * AI Studio redeploy (env var kept, volume mount dropped) falls through to the bucket API instead of
- * disabling backups. Returns null if nothing works. Never throws.
- */
+/** Cloud Run always uses the bucket. Local runs may explicitly select a directory. */
 export async function openBackupMirror(store: RoomStore, options: StartServerOptions): Promise<BackupMirror | null> {
   const dir = options.backupDir ?? process.env.BACKUP_DIR ?? '';
   const isProd = isProductionRuntime();
@@ -46,7 +37,7 @@ export async function openBackupMirror(store: RoomStore, options: StartServerOpt
   const bucket = process.env.BACKUP_BUCKET ?? (onCloudRun ? DEFAULT_BACKUP_BUCKET : '');
 
   const candidates: BackupBackend[] = [];
-  if (dir) candidates.push(new DirBackend(dir));
+  if (dir && !onCloudRun) candidates.push(new DirBackend(dir));
   if (options.backupBackend) candidates.push(options.backupBackend);
   else if (bucket && bucket !== 'off') candidates.push(new GcsBackend(bucket));
 
@@ -197,7 +188,7 @@ export function createRoomPersistence({
     if (!backup) return;
     try {
       let restored = 0;
-      for (const { roomId, state, lastActiveAt } of await backup.loadAllRooms()) {
+      for await (const { roomId, state, lastActiveAt } of backup.rooms()) {
         const room = hydrateRoom({ ...state, id: roomId, lastActiveAt });
         if (!room) {
           backup.deleteRoom(roomId); // expired
@@ -217,6 +208,7 @@ export function createRoomPersistence({
       }
       console.log(`Restored ${restored} room(s) from backup.`);
     } catch (err) {
+      backup.restoreErrors++;
       console.error('Restoring from backup failed; starting with local state only:', err);
     }
   }
