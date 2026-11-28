@@ -56,8 +56,14 @@ Browser  POST /api/report (JSON, 32 KB max)
       → MailApp: email the private part to the inbox
 ```
 
-One relay serves both apps: same inbox, same GitHub key, same deployment. It turns AllAboard posts away unless the
-token matches its `ALLABOARD_TOKEN` script property, and its limits (20 an hour, 40 a day) are shared with OverBoard.
+One relay serves OverBoard, AllAboard, AllHail and OverHeard: same inbox, same GitHub key, same deployment. It turns
+AllAboard posts away unless the token matches its `ALLABOARD_TOKEN` script property, and its limits (20 an hour, 40 a
+day) are shared by all of those apps.
+
+The server reads the relay's address and token from `REPORT_RELAY_URL` and `REPORT_RELAY_TOKEN`. In production
+`deploy.yml` sets both on every deploy from Secret Manager (`--set-secrets`, secrets `allaboard-report-relay-url` and
+`allaboard-report-relay-token` in `loyal-rookery-403218`). Only the service's runtime account, `allaboard-run`, can read
+them. They are not GitHub secrets, and nothing is pasted into the Cloud Run console.
 
 The browser never sees a GitHub token. `POST /api/report` answers `{ ok: true, issueUrl?, issueNumber?, emailed }`, or
 `{ ok: false, error }` with `invalid` (400/413), `rate-limited` (429), `not-configured` (503) or `relay-failed` (502).
@@ -65,25 +71,21 @@ Every failure shows the copy/download/email fallback.
 
 ## Setup (one time, by the owner)
 
-Until this is done, the app works and every report uses the fallback (copy, download, email). The relay is already
-running for OverBoard, so this only switches AllAboard on.
+The relay address and token are already in Secret Manager and reach Cloud Run on every deploy. The relay itself only
+accepts AllAboard reports once its `ALLABOARD_TOKEN` script property holds the same value as the
+`allaboard-report-relay-token` secret, and its GitHub token can open issues here. Until then the app works and every
+report uses the fallback (copy, download, email).
 
-1. **OverBoard:** merge BPMData/OverBoard PR 56, then follow "AllAboard reports (optional)" in OverBoard's
-   `docs/REPORTS.md`: add AllAboard to the `OverBoard reports` GitHub token, add the `ALLABOARD_TOKEN` script
-   property (a long random string, e.g. `openssl rand -hex 32`), paste in the new script, run **checkSetup**, and
-   **Deploy ▸ Manage deployments ▸ ✏️ ▸ New version** (the URL stays the same).
-2. **Label (optional):** in this repo, Issues ▸ Labels ▸ New label `user-report`. Without it issues are opened unlabeled.
-3. **GitHub secrets** on this repo (Settings → Secrets and variables → Actions): `REPORT_RELAY_URL` (the relay's
-   `/exec` URL, the same one as `RELAY_URL` in OverBoard's `app/report/index.html`) and `REPORT_RELAY_TOKEN` (the
-   same value as `ALLABOARD_TOKEN`). `deploy.yml` passes both to Cloud Run on the next deploy. Without them it leaves
-   the flag out and deploys exactly as before.
-4. **Test it** after the deploy: send a report from the lobby. Check that an issue appears here, that the email
-   arrives with `[AllAboard]` in the subject, and that the issue has no contact details.
+- **Label (optional):** in this repo, Issues ▸ Labels ▸ New label `user-report`. Without it issues are opened unlabeled.
+- **Test it** after a deploy: send a report from the lobby. Check that an issue appears here, that the email arrives
+  with `[AllAboard]` in the subject, and that the issue has no contact details.
+- **Changing the token:** add a new version to `allaboard-report-relay-token`, put the same value in the relay's
+  `ALLABOARD_TOKEN`, and redeploy (the deploy reads `:latest`).
 
 The script's permission to send email and call GitHub belongs to the reports Google account, not to AllAboard's
 Google sign-in, so it doesn't touch the OAuth scope rule in CLAUDE.md.
 
-To turn reports off again, delete the two secrets and redeploy, or remove `ALLABOARD_TOKEN` from the script.
+To turn reports off again, remove `ALLABOARD_TOKEN` from the relay's script properties.
 
 ## Not built
 

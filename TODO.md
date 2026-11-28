@@ -81,8 +81,9 @@ Plan: [`PLANS_LESSON_PACKS.md`](PLANS_LESSON_PACKS.md) phases 2–3, with the op
 ### Problem reports
 - [x] **"Something not working?"** guided report (issue #57): public GitHub issue plus private email to the shared
       inbox, with copy/download/email fallback. See [`docs/REPORTS.md`](docs/REPORTS.md).
-  - [ ] **Owner setup:** turn on AllAboard reports in OverBoard's report script (BPMData/OverBoard PR 56), add the
-        `REPORT_RELAY_URL` / `REPORT_RELAY_TOKEN` secrets, send a test report. Until then every report uses the fallback.
+  - [ ] **Owner setup:** the relay URL and token now come from Secret Manager on every deploy. Remaining: turn on
+        AllAboard reports in OverBoard's shared report script and send a test report. Until then every report uses the
+        fallback.
 
 ### A real eraser (remove objects instead of covering them)
 - [x] **Make the eraser delete or trim what it touches, instead of adding an "eraser stroke" element.**

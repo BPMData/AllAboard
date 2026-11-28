@@ -9,7 +9,7 @@
  * Config, all optional (no relay → 503 'not-configured', and the browser offers Copy / Download / email instead):
  *   REPORT_RELAY_URL   the relay's /exec URL
  *   REPORT_RELAY_TOKEN shared secret the relay checks (its Script Property ALLABOARD_TOKEN)
- * Both are passed by deploy.yml from GitHub secrets of the same names.
+ * In production deploy.yml sets both from Secret Manager (--set-secrets); see docs/REPORTS.md.
  */
 import express, { type NextFunction, type Request, type Response } from 'express';
 import {
