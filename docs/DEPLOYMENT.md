@@ -38,9 +38,7 @@ Because `allaboard` was migrated off **AI Studio** (whose Publish button rewrote
 
 ### R1. Every merge to `main` deploys. Config lives in `deploy.yml` or in code, never only in the console.
 
-`.github/workflows/deploy.yml` runs on every push to `main`: typecheck, unit tests, build, a plain-node boot check,
-then `gcloud run deploy --source .` (Buildpacks). The service settings that matter (`--port 3000`, `--max-instances 1`,
-`--concurrency 1000`, `--timeout 3600`, `--session-affinity`, `--allow-unauthenticated`) are flags in that file. Change them **there**, in a PR.
+`.github/workflows/ci.yml` runs on every PR and push to `main`: upload manifest check (`scripts/check-upload.sh`), typecheck/lint, Prettier, unit and server tests, build, a plain-node boot check (`scripts/smoke.sh`), Playwright E2E, and a production-bundle browser test (`npm run test:production`). Only after both CI jobs pass on `main` does it invoke `.github/workflows/deploy.yml`, which confirms the commit is still `main`, checks the authenticated upload manifest, runs `gcloud run deploy --source .` (Buildpacks), and verifies the live release via `scripts/check-release.mjs`. The service settings that matter (`--port 3000`, `--max-instances 1`, `--concurrency 1000`, `--timeout 3600`, `--session-affinity`, `--allow-unauthenticated`) are flags in `deploy.yml`. Change them **there**, in a PR.
 
 **History, and why code must tolerate stale env vars:** before the migration, AI Studio's Publish button
 **replaced** the revision template each time. Console-added volume mounts vanished (the `/backup` mount),
@@ -94,25 +92,28 @@ All storage setup **fails open**. `RoomStore` falls back to a temp dir; the back
 
 ## 4. How persistence works (code map)
 
-| Piece             | File                                              | What it does                                                                                                                                                                                                                                      |
-| ----------------- | ------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Working copy      | `roomStore.ts`                                    | SQLite (`node:sqlite`), one row per room plus content-addressed assets. Falls back to `os.tmpdir()` if `DATA_DIR` isn't writable.                                                                                                                 |
-| Backup engine     | `backupMirror.ts` → `BackupMirror`                | Batches changed rooms and writes every **10 s**. Writes images **before** the room that references them. Retries on failure. Flushes immediately on SIGTERM.                                                                                      |
-| Bucket backend    | `backupMirror.ts` → `GcsBackend`                  | Cloud Storage JSON API over `fetch`. Auth is a token from `http://metadata.google.internal/…/token` (built into Cloud Run, no keys). 20 s timeout per request.                                                                                    |
-| Folder backend    | `backupMirror.ts` → `DirBackend`                  | Plain files. Used for local dev, tests, and `BACKUP_DIR`.                                                                                                                                                                                         |
-| Choosing a target | `server/roomPersistence.ts` → `openBackupMirror`  | Tries `BACKUP_DIR`, then the bucket (`BACKUP_BUCKET`, else `allaboard-data` when `K_SERVICE` is set and `NODE_ENV !== 'development'`, or `NODE_ENV=production`). **The first one whose probe succeeds wins**, and the rest are logged as skipped. |
-| Restore           | `server/roomPersistence.ts` → `restoreFromBackup` | At boot, **before listening**: copies every backed-up room into SQLite. Images are restored lazily by `GET /api/assets/:hash`.                                                                                                                    |
+| Piece             | File                                              | What it does                                                                                                                                                                                                                    |
+| ----------------- | ------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Working copy      | `roomStore.ts`                                    | SQLite (`node:sqlite`), one row per room plus content-addressed assets. Falls back to `os.tmpdir()` if `DATA_DIR` isn't writable.                                                                                               |
+| Backup engine     | `backupMirror.ts` → `BackupMirror`                | Batches changed rooms (10 s interval; retries/shutdown can extend it). Writes images **before** the room that references them. Tracks `failed`, `overdue`, and `restoreErrors` for `/api/release`. Flushes on handoff/SIGTERM.  |
+| Bucket backend    | `backupMirror.ts` → `GcsBackend`                  | Cloud Storage JSON API over `fetch` with `ifGenerationMatch` checks (`GenerationConflict`). Auth is a token from `http://metadata.google.internal/…/token` (built into Cloud Run, no keys). 20 s timeout per request.           |
+| Writer lease      | `server/writerLease.ts` → `WriterLease`           | Coordinates overlapping Cloud Run revisions via `coordination/classroom-writer.json` and `RELEASE_SEQUENCE` so the old revision drains and flushes before the new revision restores and accepts clients.                        |
+| Folder backend    | `backupMirror.ts` → `DirBackend`                  | Plain files. Used for local dev, tests, and `BACKUP_DIR` (ignored on Cloud Run).                                                                                                                                                |
+| Choosing a target | `server/roomPersistence.ts` → `openBackupMirror`  | On Cloud Run (`K_SERVICE` + production runtime), the bucket (`BACKUP_BUCKET`, else `allaboard-data`) is authoritative and `BACKUP_DIR` is ignored even if writable. Locally, `BACKUP_DIR` is tried first, then `BACKUP_BUCKET`. |
+| Restore           | `server/roomPersistence.ts` → `restoreFromBackup` | At boot (after acquiring the writer lease), **before accepting clients**: streams backed-up rooms one by one (`backup.rooms()`) into SQLite. Images are restored lazily by `GET /api/assets/:hash`.                             |
 
-**Bucket layout:** `rooms/<roomId>.json.gz` and `assets/<sha256>`. The old `rooms-store.json` in the bucket
+**Bucket layout:** `rooms/<roomId>.json.gz`, `assets/<sha256>`, and `coordination/classroom-writer.json` (writer lease). The old `rooms-store.json` in the bucket
 root is legacy and harmless.
 
 **Production detection:** `server/roomPersistence.ts` treats either `NODE_ENV=production` or `K_SERVICE` (when `NODE_ENV !== 'development'`) as production, so both `dist/` serving and automatic `gs://allaboard-data` backups keep working on Cloud Run even if `NODE_ENV` is unset.
 
 ---
 
-## 5. After every deploy: the 60-second check
+## 5. After every deploy: release verification
 
-1. **Cloud Run → allaboard → Observability → Logs**, then search `Backing up`. You want:
+`deploy.yml` automatically runs `node scripts/check-release.mjs "$GITHUB_SHA"` after `gcloud run deploy` to verify Cloud Run traffic (`100%` on `latestReadyRevisionName`), the `commit-sha` label, and `GET /api/release` (`revision`, `writer: "active"`, `backup.backend === "gcs"`, `failed: 0`, `overdue: false`, `restoreErrors: 0`). You can also run `npm run check:release -- <sha>` locally when authenticated with `gcloud`.
+
+1. **Cloud Run → allaboard → Observability → Logs**, then search `Backing up` if you want to inspect startup logs:
    ```
    Backing up rooms to bucket "gs://allaboard-data".
    Restored N room(s) from backup.

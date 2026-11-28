@@ -12,6 +12,7 @@ export interface StartServerOptions {
   host?: string;
   dataDir?: string;
   backupDir?: string;
+  releaseSequence?: number;
   /** Tests only: use this backup backend instead of picking one from the environment. */
   backupBackend?: BackupBackend;
   skipVite?: boolean;
