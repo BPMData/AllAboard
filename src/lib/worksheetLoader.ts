@@ -467,49 +467,59 @@ async function renderImageFileToPage(file: File, importScale?: number): Promise<
 async function renderPdfToPages(file: File, range?: PageRange, importScale?: number): Promise<BackgroundPage[]> {
   const arrayBuffer = await file.arrayBuffer();
   const loadingTask = pdfjsLib.getDocument({ data: arrayBuffer });
-  const pdf = await loadingTask.promise;
+  try {
+    const pdf = await loadingTask.promise;
 
-  const { first, last } = clampPageRange(range?.first ?? 1, range?.last ?? MAX_PDF_PAGES, pdf.numPages, MAX_PDF_PAGES);
-  const pages: BackgroundPage[] = [];
+    const { first, last } = clampPageRange(
+      range?.first ?? 1,
+      range?.last ?? MAX_PDF_PAGES,
+      pdf.numPages,
+      MAX_PDF_PAGES
+    );
+    const pages: BackgroundPage[] = [];
 
-  for (let pageNum = first; pageNum <= last; pageNum++) {
-    const page = await pdf.getPage(pageNum);
-    const unscaledViewport = page.getViewport({ scale: 1 });
-    const baseScale = Math.min(2.0, 1400 / Math.max(unscaledViewport.width, 1));
-    const baseWidth = Math.round(unscaledViewport.width * baseScale);
-    const baseHeight = Math.round(unscaledViewport.height * baseScale);
+    for (let pageNum = first; pageNum <= last; pageNum++) {
+      const page = await pdf.getPage(pageNum);
+      const unscaledViewport = page.getViewport({ scale: 1 });
+      const baseScale = Math.min(2.0, 1400 / Math.max(unscaledViewport.width, 1));
+      const baseWidth = Math.round(unscaledViewport.width * baseScale);
+      const baseHeight = Math.round(unscaledViewport.height * baseScale);
 
-    const { width, height, renderWidth } = scalePageDimensions(baseWidth, baseHeight, importScale);
-    const renderScale = renderWidth / Math.max(unscaledViewport.width, 1);
-    const viewport = page.getViewport({ scale: renderScale });
+      const { width, height, renderWidth } = scalePageDimensions(baseWidth, baseHeight, importScale);
+      const renderScale = renderWidth / Math.max(unscaledViewport.width, 1);
+      const viewport = page.getViewport({ scale: renderScale });
 
-    const canvas = document.createElement('canvas');
-    const cWidth = Math.max(1, Math.round(viewport.width));
-    const cHeight = Math.max(1, Math.round(viewport.height));
-    canvas.width = cWidth;
-    canvas.height = cHeight;
+      const canvas = document.createElement('canvas');
+      const cWidth = Math.max(1, Math.round(viewport.width));
+      const cHeight = Math.max(1, Math.round(viewport.height));
+      canvas.width = cWidth;
+      canvas.height = cHeight;
 
-    const ctx = canvas.getContext('2d');
-    if (!ctx) continue;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) continue;
 
-    ctx.fillStyle = '#ffffff';
-    ctx.fillRect(0, 0, cWidth, cHeight);
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(0, 0, cWidth, cHeight);
 
-    await page.render({
-      canvasContext: ctx,
-      viewport,
-      canvas,
-    } as any).promise;
+      await page.render({
+        canvasContext: ctx,
+        viewport,
+        canvas,
+      } as any).promise;
 
-    const dataUrl = canvas.toDataURL('image/jpeg', 0.84);
-    pages.push({ dataUrl, width, height });
+      const dataUrl = canvas.toDataURL('image/jpeg', 0.84);
+      pages.push({ dataUrl, width, height });
+    }
+
+    if (pages.length === 0) {
+      throw new Error('No pages could be rendered from the PDF.');
+    }
+
+    return pages;
+  } finally {
+    // Tears down the document and its pdf.js worker; without this every import leaked one.
+    await loadingTask.destroy();
   }
-
-  if (pages.length === 0) {
-    throw new Error('No pages could be rendered from the PDF.');
-  }
-
-  return pages;
 }
 
 /** Wraps rendered worksheet pages in a centered `RoomBackground` (same defaults as a normal worksheet upload). */
