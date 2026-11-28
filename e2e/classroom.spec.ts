@@ -516,7 +516,10 @@ test.describe('teacher and students', () => {
           }),
         { offsetX: 1000 - teacherCanvas.x, offsetY: 600 - teacherCanvas.y }
       );
-    await expect.poll(hasLaser, { timeout: 1000 }).toBe(true);
+    // The trail only shows for ~1 s after the student receives it, and a busy machine can take most of a second to
+    // deliver and paint it. Look every 50 ms (the default back-off looks only 4 times in 1 s, the last at 850 ms) and
+    // give it time to arrive; a fast poll cannot step over a ~1 s trail.
+    await expect.poll(hasLaser, { timeout: 5000, intervals: [50] }).toBe(true);
     await expect.poll(hasLaser, { timeout: 3000 }).toBe(false);
     await expect(teacher.page.getByText('0 drawn')).toBeVisible();
     await expect(student.page.getByText('0 drawn')).toBeVisible();
