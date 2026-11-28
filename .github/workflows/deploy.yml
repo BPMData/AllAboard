@@ -13,6 +13,10 @@ jobs:
     name: Deploy verified commit
     runs-on: ubuntu-24.04
     timeout-minutes: 20
+    # Workload Identity Federation: GitHub's OIDC token is exchanged for github-deployer credentials (no SA key).
+    permissions:
+      id-token: write
+      contents: read
     steps:
       - uses: actions/checkout@v5
 
@@ -32,7 +36,8 @@ jobs:
         if: steps.current.outputs.deploy == 'true'
         uses: google-github-actions/auth@v3
         with:
-          credentials_json: ${{ secrets.GCP_SA_KEY }}
+          workload_identity_provider: projects/606573080592/locations/global/workloadIdentityPools/github/providers/allaboard
+          service_account: github-deployer@loyal-rookery-403218.iam.gserviceaccount.com
 
       # Call gcloud directly: deploy-cloudrun's flag parser turns `--command=` into a bare
       # `--command`, which gcloud rejects. --command="" / --args="" reset AI Studio's leftover

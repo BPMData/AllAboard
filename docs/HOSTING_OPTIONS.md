@@ -222,7 +222,7 @@ The OverHeard unit is the same shape, with its own user, directory and env file.
 
 Sketch: on merge to `main`, run the existing checks, then
 `gcloud compute ssh <vm> --command "cd /srv/allaboard && git pull && npm ci && npm run build && sudo systemctl restart allaboard"`,
-using the same `GCP_SA_KEY` secret (it would need Compute permissions). A restart still cuts live sockets for a few
+using the same Workload Identity Federation login as `deploy.yml` (`github-deployer` would need Compute permissions). A restart still cuts live sockets for a few
 seconds, as a Cloud Run deploy does today; clients reconnect on their own.
 
 ### 5.6 Ops checklist (what Cloud Run did for us)
