@@ -465,42 +465,38 @@ export default function App() {
       <div className="flex-1 flex flex-col min-w-0">
         <Canvas
           roomId={roomId}
-          activeBoardId={activeBoardId}
-          activeBoardTitle={activeBoardTitle}
-          elements={activeElements}
-          messages={activeMessages}
-          background={activeBackground}
-          subBoards={subBoards}
-          breakoutConfig={breakoutConfig}
-          roundTemplates={roundTemplates}
-          roundTemplateInk={roundTemplateInk}
-          roundVariants={roundVariants}
+          viewer={{ userId, userName, userColor, isTeacher }}
+          roomFlags={{
+            isCanvasLocked: roomSettings.isCanvasLocked,
+            hideStudentCursors: Boolean(roomSettings.hideStudentCursors),
+            oneNameStamp: Boolean(roomSettings.oneNameStamp),
+            hasTeacherPin: roomSettings.hasTeacherPin,
+            timer: roomSettings.timer,
+          }}
+          activeBoard={{
+            activeBoardId,
+            activeBoardTitle,
+            elements: activeElements,
+            messages: activeMessages,
+            background: activeBackground,
+          }}
+          mainBoard={{ fullMainElements: elements, fullMainMessages: messages, fullMainBackground: background }}
+          rounds={{ subBoards, breakoutConfig, roundTemplates, roundTemplateInk, roundVariants }}
+          chat={{
+            isChatHidden,
+            unreadChatCount,
+            onShowChat: () => {
+              setIsChatHidden(false);
+              storeChatHiddenChoice(window.localStorage, false);
+            },
+          }}
           users={users}
           remoteCursors={remoteCursors}
           laserSocket={socket}
           onSetStatus={handleSetStatus}
-          isCanvasLocked={roomSettings.isCanvasLocked}
-          hideStudentCursors={Boolean(roomSettings.hideStudentCursors)}
-          oneNameStamp={Boolean(roomSettings.oneNameStamp)}
-          hasTeacherPin={roomSettings.hasTeacherPin}
-          isTeacher={isTeacher}
-          userId={userId}
-          userName={userName}
-          userColor={userColor}
-          onSelectBoard={setTeacherSelectedBoardId}
-          timer={roomSettings.timer}
-          fullMainElements={elements}
-          fullMainMessages={messages}
-          fullMainBackground={background}
-          isChatHidden={isChatHidden}
           onReportProblem={openProblemReport}
-          unreadChatCount={unreadChatCount}
-          onShowChat={() => {
-            setIsChatHidden(false);
-            storeChatHiddenChoice(window.localStorage, false);
-          }}
           drawingActions={drawingActions}
-          teacherActions={teacherActions}
+          teacherActions={{ ...teacherActions, onSelectBoard: setTeacherSelectedBoardId }}
         />
       </div>
 

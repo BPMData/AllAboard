@@ -113,6 +113,7 @@ export interface CanvasDrawingActions {
 
 /** Teacher room actions, from `useClassroomActions`. */
 export interface CanvasTeacherActions {
+  onSelectBoard: (boardId: string) => void;
   onConfigureBreakout: (
     payload: ConfigureBreakoutPayload
   ) => Promise<{ ok: boolean; error?: string; roundId?: string }>;
@@ -139,13 +140,41 @@ export interface CanvasTeacherActions {
   onTeacherClearStatus: (targetUserId?: string) => void;
 }
 
-export interface CanvasProps {
-  roomId: string;
+/** Who is looking at the board. */
+export interface CanvasViewer {
+  userId: string;
+  userName: string;
+  userColor: string;
+  isTeacher: boolean;
+}
+
+/** Room-wide switches and the classroom timer. */
+export interface CanvasRoomFlags {
+  isCanvasLocked: boolean;
+  hideStudentCursors: boolean;
+  oneNameStamp: boolean;
+  hasTeacherPin?: boolean;
+  timer?: ClassroomTimerState;
+}
+
+/** The board being viewed (a sub-board for a student in a round, otherwise the main board). */
+export interface CanvasActiveBoard {
   activeBoardId: string;
   activeBoardTitle: string;
   elements: CanvasElement[];
   messages: ChatMessage[];
   background: RoomBackground | null;
+}
+
+/** The main board's full data, whichever board is active. */
+export interface CanvasMainBoard {
+  fullMainElements: CanvasElement[];
+  fullMainMessages: ChatMessage[];
+  fullMainBackground: RoomBackground | null;
+}
+
+/** Breakout rounds and their templates. */
+export interface CanvasRounds {
   subBoards: Record<string, SubBoardData>;
   breakoutConfig: BreakoutConfig;
   /** Teacher-only: each round's starting worksheet. */
@@ -154,26 +183,27 @@ export interface CanvasProps {
   roundTemplateInk?: Record<string, CanvasElement[]>;
   /** Teacher-only: worksheet variants B–D per individual round. */
   roundVariants?: Record<string, RoundVariants>;
+}
+
+/** Chat sidebar state as seen from the canvas. */
+export interface CanvasChat {
+  isChatHidden?: boolean;
+  unreadChatCount?: number;
+  onShowChat?: () => void;
+}
+
+export interface CanvasProps {
+  roomId: string;
+  viewer: CanvasViewer;
+  roomFlags: CanvasRoomFlags;
+  activeBoard: CanvasActiveBoard;
+  mainBoard: CanvasMainBoard;
+  rounds: CanvasRounds;
+  chat: CanvasChat;
   users: User[];
   remoteCursors: Record<string, RemoteCursor>;
   laserSocket: Socket<ServerToClientEvents, ClientToServerEvents> | null;
   onSetStatus: (status: StudentStatus) => void;
-  isCanvasLocked: boolean;
-  hideStudentCursors: boolean;
-  oneNameStamp: boolean;
-  hasTeacherPin?: boolean;
-  isTeacher: boolean;
-  userId: string;
-  userName: string;
-  userColor: string;
-  onSelectBoard: (boardId: string) => void;
-  timer?: ClassroomTimerState;
-  fullMainElements: CanvasElement[];
-  fullMainMessages: ChatMessage[];
-  fullMainBackground: RoomBackground | null;
-  isChatHidden?: boolean;
-  unreadChatCount?: number;
-  onShowChat?: () => void;
   /** Opens "Something not working?" (shown here only while the chat sidebar, which has the main link, is hidden). */
   onReportProblem?: () => void;
   drawingActions: CanvasDrawingActions;
@@ -207,40 +237,32 @@ export interface CanvasProps {
 
 export default function Canvas({
   roomId,
-  activeBoardId,
-  activeBoardTitle,
-  elements,
-  messages,
-  background,
-  subBoards,
-  breakoutConfig,
-  roundTemplates = EMPTY_ROUND_TEMPLATES,
-  roundTemplateInk = EMPTY_TEMPLATE_INK,
-  roundVariants = EMPTY_ROUND_VARIANTS,
+  viewer,
+  roomFlags,
+  activeBoard,
+  mainBoard,
+  rounds: roundsProp,
+  chat,
   users,
   remoteCursors,
   laserSocket,
   onSetStatus,
-  isCanvasLocked,
-  hideStudentCursors,
-  oneNameStamp,
-  hasTeacherPin = true,
-  isTeacher,
-  userId,
-  userName,
-  userColor,
-  onSelectBoard,
-  timer,
-  fullMainElements,
-  fullMainMessages,
-  fullMainBackground,
-  isChatHidden = false,
-  unreadChatCount = 0,
-  onShowChat,
   onReportProblem,
   drawingActions,
   teacherActions,
 }: CanvasProps) {
+  const { userId, userName, userColor, isTeacher } = viewer;
+  const { isCanvasLocked, hideStudentCursors, oneNameStamp, hasTeacherPin = true, timer } = roomFlags;
+  const { activeBoardId, activeBoardTitle, elements, messages, background } = activeBoard;
+  const { fullMainElements, fullMainMessages, fullMainBackground } = mainBoard;
+  const {
+    subBoards,
+    breakoutConfig,
+    roundTemplates = EMPTY_ROUND_TEMPLATES,
+    roundTemplateInk = EMPTY_TEMPLATE_INK,
+    roundVariants = EMPTY_ROUND_VARIANTS,
+  } = roundsProp;
+  const { isChatHidden = false, unreadChatCount = 0, onShowChat } = chat;
   const {
     onElementStart,
     onElementAppendPoints,
@@ -255,6 +277,7 @@ export default function Canvas({
     onClearMine,
   } = drawingActions;
   const {
+    onSelectBoard,
     onConfigureBreakout,
     onSpotlightBoard,
     onAssignUserToBoard,

@@ -3,12 +3,16 @@ import { getNoteFontSize, noteSize } from '../../lib/inkCore';
 import { CanvasElement } from '../../types';
 import type { HistoryAction } from './canvasHelpers';
 
-import type { CanvasDrawingActions, CanvasProps } from '../Canvas';
-type Options = Pick<CanvasProps, 'laserSocket' | 'activeBoardId'> &
-  Pick<
-    CanvasDrawingActions,
-    'onUndo' | 'onElementsBatchRemove' | 'onElementsBatchAdd' | 'onElementsBatchUpdate' | 'onElementsReplace'
-  > & {
+import type { Socket } from 'socket.io-client';
+import type { ClientToServerEvents, ServerToClientEvents } from '../../lib/socketContract';
+import type { CanvasActiveBoard, CanvasDrawingActions } from '../Canvas';
+type Options = {
+  laserSocket: Socket<ServerToClientEvents, ClientToServerEvents> | null;
+  activeBoardId: CanvasActiveBoard['activeBoardId'];
+} & Pick<
+  CanvasDrawingActions,
+  'onUndo' | 'onElementsBatchRemove' | 'onElementsBatchAdd' | 'onElementsBatchUpdate' | 'onElementsReplace'
+> & {
     canDraw: boolean;
     setSelectedIds: React.Dispatch<React.SetStateAction<string[]>>;
     setEditingNote: (value: null) => void;
