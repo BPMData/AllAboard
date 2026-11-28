@@ -169,12 +169,12 @@ BACKUP_BUCKET=allaboard-data   # must be explicit: the automatic default only ap
 NODE_ENV=production
 PORT=3001
 TRUST_PROXY_HOPS=1             # Caddy is the one proxy in front, as Cloud Run's front end was
-GOOGLE_TRANSLATE_API_KEY=...   # if used today; copy from the current Cloud Run settings
+GOOGLE_TRANSLATE_API_KEY=...   # from Secret Manager: overheard-google-translate-api-key
 ```
 
 - OverHeard rooms are in memory by design. Nothing to migrate.
-- **Student short links:** `OverHeard/deploy/github-pages-404.html` forwards `bpmdata.github.io/<room>` to the
-  `over-heard-…run.app` URL. Update it at cut-over.
+- **Student short links:** `404.html` in BPMData.github.io (a copy of `OverHeard/deploy/github-pages-404.html`)
+  forwards `bpmdata.github.io/<room>` to the `overheard-…run.app` URL. Update both at cut-over.
 
 ### 5.3 Caddy
 
