@@ -84,5 +84,10 @@ jobs:
   deploy:
     if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
     needs: [test-and-build, e2e]
+    # A called workflow can't get more token permissions than its caller grants; id-token is needed for WIF.
+    # secrets: inherit still passes REPORT_RELAY_URL / REPORT_RELAY_TOKEN.
+    permissions:
+      id-token: write
+      contents: read
     uses: ./.github/workflows/deploy.yml
     secrets: inherit
