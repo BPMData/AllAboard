@@ -32,7 +32,7 @@ async function walkToReview(page: Page, what: string) {
   await button(page, 'Next').click();
 
   await expect(dialog.getByRole('heading', { name: 'Anything else? (private)' })).toBeVisible();
-  await dialog.getByLabel('How can we reach you? (optional)').fill('teacher@example.org');
+  await dialog.getByLabel('Your email, to hear when it’s fixed (optional)').fill('teacher@example.org');
   await dialog.getByLabel('Anything else? (optional)').fill('private note for the developer');
   await button(page, 'Review').click();
   await expect(dialog.getByRole('heading', { name: 'Check what will be sent' })).toBeVisible();
