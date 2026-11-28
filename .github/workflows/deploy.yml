@@ -42,22 +42,15 @@ jobs:
       # Call gcloud directly: deploy-cloudrun's flag parser turns `--command=` into a bare
       # `--command`, which gcloud rejects. --command="" / --args="" reset AI Studio's leftover
       # entrypoint override so the Buildpacks launcher runs `npm start` (`node server.ts`) on 3000.
-      # Problem reports (docs/REPORTS.md): the relay URL and token come from GitHub secrets of the same names.
-      # Without the secrets the flag is left out, so the deploy is exactly as before and reports fall back to email.
       - name: Verify authenticated source manifest
         if: steps.current.outputs.deploy == 'true'
         run: bash scripts/check-upload.sh
 
       - name: Deploy to Cloud Run
         if: steps.current.outputs.deploy == 'true'
-        env:
-          REPORT_RELAY_URL: ${{ secrets.REPORT_RELAY_URL }}
-          REPORT_RELAY_TOKEN: ${{ secrets.REPORT_RELAY_TOKEN }}
+        # Runs as allaboard-run, which can use gs://allaboard-data and read only its own two report-relay secrets.
+        # Problem reports (docs/REPORTS.md): --set-secrets gives the server the relay URL and token from Secret Manager.
         run: |
-          RELEASE_ENV="RELEASE_SEQUENCE=$(date +%s)"
-          if [ -n "$REPORT_RELAY_URL" ] && [ -n "$REPORT_RELAY_TOKEN" ]; then
-            RELEASE_ENV+="@REPORT_RELAY_URL=${REPORT_RELAY_URL}@REPORT_RELAY_TOKEN=${REPORT_RELAY_TOKEN}"
-          fi
           gcloud run deploy allaboard \
             --source . \
             --region us-east1 \
@@ -71,7 +64,9 @@ jobs:
             --command "" \
             --args "" \
             --update-labels "managed-by=github-actions,commit-sha=${GITHUB_SHA}" \
-            --update-env-vars "^@^${RELEASE_ENV}" \
+            --service-account allaboard-run@loyal-rookery-403218.iam.gserviceaccount.com \
+            --set-secrets REPORT_RELAY_URL=allaboard-report-relay-url:latest,REPORT_RELAY_TOKEN=allaboard-report-relay-token:latest \
+            --update-env-vars "RELEASE_SEQUENCE=$(date +%s)" \
             --quiet
 
       - name: Verify serving revision and room backups
